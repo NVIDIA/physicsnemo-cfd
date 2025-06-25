@@ -319,6 +319,14 @@ def compute_gradients_gpu(points, u, grad_u, offsets, indices, N, D):
         for d in range(D):
             B[j, d] = 0.0
 
+    # Accumulate A and B
+    for n in range(num_neighbors):
+        for j in range(3):
+            for k in range(3):
+                A[j, k] += dv[n, j] * w[n] * dv[n, k]
+            for d in range(D):
+                B[j, d] += dv[n, j] * w[n] * du[n, d]
+
     # solve using explicit inverse
     det = (
         A[0, 0] * (A[1, 1] * A[2, 2] - A[1, 2] * A[2, 1])
