@@ -102,10 +102,11 @@ pip install .
 ```
 
 To get access to GPU accelerated functionalities from this repo when installing
-in a conda or a custom python environment please run below. The GPU specific
-dependencies are pre-installed in the PhysicsNeMo container, so the additional
-step is not required when using PhysicsNeMo-CFD via the
-[PhysicsNeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/physicsnemo/containers/physicsnemo)
+in a conda or a custom python environment please run below commands.
+
+If you are using the [PhysicsNeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/physicsnemo/containers/physicsnemo),
+the GPU specific dependencies are pre-installed, hence this additional step is
+not required.
 
 ```bash
 pip install .[gpu] --extra-index-url=https://pypi.nvidia.com
