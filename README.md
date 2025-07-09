@@ -99,7 +99,14 @@ You can also install PhysicsNeMo-CFD via pip:
 ```bash
 git clone https://github.com/NVIDIA/PhysicsNeMo-CFD.git
 cd physicsnemo-cfd
-pip install . --extra-index-url=https://pypi.nvidia.com
+pip install .
+```
+
+To get access to GPU accelerated functionalities from this repo when installing
+in a conda or a custom python environment please run
+
+```bash
+pip install .[gpu] --extra-index-url=https://pypi.nvidia.com
 ```
 
 > [!Note] PhysicsNeMo-CFD is an experimental library and currently v0; expect

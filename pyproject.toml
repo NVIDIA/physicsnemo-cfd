@@ -19,9 +19,6 @@ dependencies = [
     "scikit-learn>=1.6.1",
     "scipy>=1.15.0",
     "matplotlib>=3.10.0",
-    "cupy-cuda12x>=13.3.0",
-    "cuml-cu12>=25.2.0",
-    "warp-lang>=1.7.1",
     "trimesh>=4.6.9",
 ]
 classifiers = [
@@ -29,6 +26,17 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dynamic = ["version"]
+
+[project.optional-dependencies]
+# dependencies for GPU-accelerated functionality
+gpu = [
+    "cupy-cuda12x>=13.3.0",
+    "cuml-cu12>=25.2.0",
+    "warp-lang>=1.7.1",
+]
+all = [
+    "nvidia-physicsnemo-cfd[gpu]",
+]
 
 [tool.setuptools.dynamic]
 version = {attr = "physicsnemo.cfd.__version__"}
