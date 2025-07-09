@@ -93,7 +93,7 @@ For maximum cross-platform compatibility, we recommend using the PhysicsNeMo
 Docker container. Steps to use [PhysicsNeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/physicsnemo/containers/physicsnemo)
 can be found [in the Getting Started](https://docs.nvidia.com/deeplearning/physicsnemo/getting-started/index.html#physicsnemo-with-docker-image-recommended).
 
-You can also install PhysicsNeMo-CFD via pip:
+You can install PhysicsNeMo-CFD via pip:
 
 ```bash
 git clone https://github.com/NVIDIA/PhysicsNeMo-CFD.git
