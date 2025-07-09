@@ -90,9 +90,8 @@ PhysicsNeMo-CFD is a Python package that depends on the [NVIDIA PhysicsNeMo
 framework](https://github.com/NVIDIA/physicsnemo).
 
 For maximum cross-platform compatibility, we recommend using the PhysicsNeMo
-Docker container. Steps to use PhysicsNeMo container can be found [in the
-Getting
-Started](https://docs.nvidia.com/deeplearning/physicsnemo/getting-started/index.html#physicsnemo-with-docker-image-recommended).
+Docker container. Steps to use [PhysicsNeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/physicsnemo/containers/physicsnemo)
+can be found [in the Getting Started](https://docs.nvidia.com/deeplearning/physicsnemo/getting-started/index.html#physicsnemo-with-docker-image-recommended).
 
 You can also install PhysicsNeMo-CFD via pip:
 
@@ -103,7 +102,10 @@ pip install .
 ```
 
 To get access to GPU accelerated functionalities from this repo when installing
-in a conda or a custom python environment please run
+in a conda or a custom python environment please run below. The GPU specific
+dependencies are pre-installed in the PhysicsNeMo container, so the additional
+step is not required when using PhysicsNeMo-CFD via the
+[PhysicsNeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/physicsnemo/containers/physicsnemo)
 
 ```bash
 pip install .[gpu] --extra-index-url=https://pypi.nvidia.com
