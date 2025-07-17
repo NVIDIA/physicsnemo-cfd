@@ -49,8 +49,8 @@ First, you'll need to launch the DoMINO NIM container that provides ML-based
 flow predictions. There are two options to achieve this; in either case, you
 will need a NVIDIA NGC API key to download the latest model checkpoint files. If
 you don't already have one, you can obtain one
-[here](https://org.ngc.nvidia.com/setup/api-keys) after registering for a NVIDIA NGC
-account.
+[here](https://org.ngc.nvidia.com/setup/api-keys) after registering for a NVIDIA
+NGC account.
 
 **Option A - Using the provided script (recommended):**
 ```bash
@@ -68,7 +68,8 @@ export NGC_API_KEY="your_ngc_api_key_here"
 **Option B - Manual setup:** 
 
 Follow the detailed instructions
-[here](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/domino-automotive-aero). This allows more fine-grained control over the container launch process.
+[here](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/domino-automotive-aero).
+This allows more fine-grained control over the container launch process.
 
 ### Step 2: Launch the OpenFOAM Container Environment
 
@@ -83,25 +84,28 @@ cd /path/to/physicsnemo-cfd
 ./workflows/hybrid_initialization_example/openfoam_interactive.sh
 ```
 
-If this command is successful, you should be inside the container, with the entire `physicsnemo-cfd` repository mounted to `/workspace/`:
+If this command is successful, you should be inside the container, with the
+entire `physicsnemo-cfd` repository mounted to `/workspace/`:
 
 ```bash
 root@8a663debb154:/workspace# ls
 CHANGELOG.md  CONTRIBUTING.md  LICENSE.txt  Makefile  README.md  SECURITY.md  assets  build  nvidia_physicsnemo_cfd.egg-info  physicsnemo  pyproject.toml  test  workflows
 ```
 
-Alternatively, you may encounter an error indicating that the container image is not found. If so, you will be prompted to build the container locally before launching:
+Alternatively, you may encounter an error indicating that the container image is
+not found. If so, you will be prompted to build the container locally before
+launching:
 ```bash
 Docker image 'openfoam-python:latest' not found locally.
 Would you like to build it now? (this may take several hours) [y/N]: 
 ```
 
-You can also manually trigger a container build by running `make container` in the
-[`container/`](./container/) directory.
+You can also manually trigger a container build by running `make container` in
+the [`container/`](./container/) directory.
 
 > **⏰ Expected Build Time**: Building the container may take 3+ hours to
-> complete, depending on hardware and network speed, and whether any sub-components
-> of the container have already been built.
+> complete, depending on hardware and network speed, and whether any
+> sub-components of the container have already been built.
 
 Note that this image only contains OpenFOAM and Python, plus the underlying
 dependencies for `physicsnemo-cfd`. It does not contain `physicsnemo-cfd`
@@ -110,7 +114,14 @@ when `physicsnemo-cfd` is updated. It also does not contain the DoMINO
 Automotive Aero NIM, which is [available
 separately](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/domino-automotive-aero).
 
-> **Alternative for advanced users:** If you prefer not to use the OpenFOAM container, you can install required dependencies locally instead, and skip container usage. These dependencies are Python 3.10+ and OpenFOAM v2206; ensure that respective binaries are available on `PATH`. If you encounter dependency issues based on this approach, we recommend using the standard container approach instead. Note that the following steps assume that you are inside the container, so syntax may need to be slightly modified if this is not the case.
+> **Alternative for advanced users:** If you prefer not to use the OpenFOAM
+> container, you can install required dependencies locally instead, and skip
+> container usage. These dependencies are Python 3.10+ and OpenFOAM v2206;
+> ensure that respective binaries are available on `PATH`. If you encounter
+> dependency issues based on this approach, we recommend using the standard
+> container approach instead. Note that the following steps assume that you are
+> inside the container, so syntax may need to be slightly modified if this is
+> not the case.
 
 ### Step 3: Install PhysicsNeMo-CFD (Inside Container)
 
@@ -134,9 +145,10 @@ cd workflows/hybrid_initialization_example/
 ```
 
 > **⏰ Expected Runtime**: This workflow may require 7+ hours to complete on
-> typical hardware. Most of the time is spent on the transient CFD simulation. 
-> For testing purposes only, the transient CFD simulation can be interrupted after
-> a few time steps with CTRL+C, and the script will continue to post-processing.
+> typical hardware. Most of the time is spent on the transient CFD simulation.
+> For testing purposes only, the transient CFD simulation can be interrupted
+> after a few time steps with CTRL+C, and the script will continue to
+> post-processing.
 
 The script will automatically perform all workflow stages:
 1. Prepare DoMINO assets (geometry and predicted flow field)
@@ -150,7 +162,8 @@ The script will automatically perform all workflow stages:
 
 After completion, results will be available in:
 - `workflows/hybrid_initialization_example/VTK/` directory: Visualization files
-- `workflows/hybrid_initialization_example/postProcessing/` directory: Force time-histories and other analysis data
+- `workflows/hybrid_initialization_example/postProcessing/` directory: Force
+  time-histories and other analysis data
 
 ## Troubleshooting and Important Notes
 
