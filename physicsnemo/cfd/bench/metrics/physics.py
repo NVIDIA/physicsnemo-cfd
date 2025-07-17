@@ -502,7 +502,14 @@ def compute_continuity_residuals(
     pv.DataSet
         The input mesh with the continuity residuals added to the point data.
     """
-    adjacency = build_point_adjacency(mesh)
+
+    if "offsets" in mesh.field_data.keys() and "indices" in mesh.field_data.keys():
+        # Adjacency information already present. nothing to do.
+        adjacency = (mesh.field_data["offsets"], mesh.field_data["indices"])
+    else:
+        adjacency = build_point_adjacency(mesh)
+        mesh.field_data["offsets"] = adjacency[0]
+        mesh.field_data["indices"] = adjacency[1]
 
     # Cast fields to float64 for accurate gradient computation
     assert (
@@ -584,7 +591,14 @@ def compute_momentum_residuals(
     pv.DataSet
         The input mesh with the momentum residuals added to the point data.
     """
-    adjacency = build_point_adjacency(mesh)
+
+    if "offsets" in mesh.field_data.keys() and "indices" in mesh.field_data.keys():
+        # Adjacency information already present. nothing to do.
+        adjacency = (mesh.field_data["offsets"], mesh.field_data["indices"])
+    else:
+        adjacency = build_point_adjacency(mesh)
+        mesh.field_data["offsets"] = adjacency[0]
+        mesh.field_data["indices"] = adjacency[1]
 
     # Cast fields to float64 for accurate gradient computation
     assert (
