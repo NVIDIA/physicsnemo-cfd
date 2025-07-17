@@ -6,7 +6,7 @@ vehicle (car / aircraft) requires analysis of both surface and volume fields.
 Surface predictions are useful for computing quantities such as drag and lift,
 essential for evaluating the performance and efficiency of the vehicle design.
 The volumetric predictions are essential for analyzing the flow field around the
-vehicle, like vortices and wake structures. 
+vehicle, like vortices and wake structures.
 Refer to this [related publication](https://www.arxiv.org/abs/2507.10747) for more
 details.
 
