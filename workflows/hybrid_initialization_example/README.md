@@ -66,8 +66,12 @@ To run this workflow using the provided template within this directory:
      container step and instead running the workflow directly from your local
      machine.
 
-3. Run the workflow by executing the [`run.sh`](run.sh) script. The script
-   performs the following steps:
+3. Run the workflow by executing the [`run.sh`](run.sh) script. 
+   
+   > **⏰ Expected Runtime**: This workflow may require 7+ hours to 
+   complete on typical hardware.
+
+   The script performs the following steps:
     1. Prepares DoMINO assets (geometry and predicted flow field)
     2. Generates the computational mesh
     3. Computes the potential flow solution
@@ -197,6 +201,8 @@ To build the Docker container yourself, first `cd` to the
 [`container/`](./container/) directory, and then build the container with `make
 container`. Upon successful completion, you should see a container titled
 `openfoam-python` with tag `latest` when you run `docker images`.
+
+> **⏰ Expected Build Time**: Building the container may take 3+ hours to complete, depending on hardware and network speed.
 
 Note that this image only contains OpenFOAM and Python, plus the underlying
 dependencies for `physicsnemo-cfd`. It does not contain `physicsnemo-cfd`
