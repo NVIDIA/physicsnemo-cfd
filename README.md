@@ -60,7 +60,7 @@ can be found [in the Getting Started](https://docs.nvidia.com/deeplearning/physi
 You can install PhysicsNeMo-CFD via pip:
 
 ```bash
-git clone https://github.com/NVIDIA/PhysicsNeMo-CFD.git
+git clone https://github.com/NVIDIA/physicsnemo-cfd.git
 cd physicsnemo-cfd
 pip install .
 ```
