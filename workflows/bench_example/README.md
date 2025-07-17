@@ -41,6 +41,12 @@ true_data.point_data["pMeanTrimPred"] = np.random.rand(*true_data.point_data["pM
 true_data.save("./boundary_100_with_model_predictions.vtp")
 ```
 
+> **Note**: The benchmarking workflows only work with post-processed
+`.vtp` and `.vtu` files. Inferencing workflows other than the DoMINO NIM
+are presently out of the scope. For models present in PhysicsNeMo, please
+refer the [`examples/cfd/external_aerodynamics`](https://github.com/NVIDIA/physicsnemo/tree/main/examples/cfd/external_aerodynamics)
+directory of PhysicsNeMo for training and testing / inference code.
+
 ### Executing the workflows
 
 The workflows are designed to be run via command line and can be configured by
