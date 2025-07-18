@@ -7,6 +7,8 @@ Surface predictions are useful for computing quantities such as drag and lift,
 essential for evaluating the performance and efficiency of the vehicle design.
 The volumetric predictions are essential for analyzing the flow field around the
 vehicle, like vortices and wake structures.
+Refer to this [related publication](https://www.arxiv.org/abs/2507.10747) for more
+details.
 
 ## Using the benchmarking workflows
 
@@ -38,6 +40,12 @@ true_data.point_data["pMeanTrimPred"] = np.random.rand(*true_data.point_data["pM
 
 true_data.save("./boundary_100_with_model_predictions.vtp")
 ```
+
+> **Note**: The benchmarking workflows only work with post-processed
+`.vtp` and `.vtu` files. Inferencing workflows other than the DoMINO NIM
+are presently out of the scope. For models present in PhysicsNeMo, please
+refer to the [`examples/cfd/external_aerodynamics`](https://github.com/NVIDIA/physicsnemo/tree/main/examples/cfd/external_aerodynamics)
+directory of PhysicsNeMo for training and testing / inference code.
 
 ### Executing the workflows
 

@@ -19,6 +19,9 @@ import pyvista as pv
 import numpy as np
 from tqdm import tqdm
 from numba import njit, prange, cuda, float64
+from collections import namedtuple
+
+AdjacencyList = namedtuple("AdjacencyList", ["offsets", "indices"])
 
 
 @njit
@@ -184,9 +187,7 @@ def get_edges(mesh: pv.DataSet) -> np.ndarray:
     return edges
 
 
-def build_point_adjacency(
-    mesh: pv.DataSet, progress_bar=False
-) -> tuple[np.ndarray, np.ndarray]:
+def build_point_adjacency(mesh: pv.DataSet, progress_bar=False) -> AdjacencyList:
     """
     Build an adjacency list for the points in a mesh.
 
@@ -200,10 +201,8 @@ def build_point_adjacency(
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray]
-        A tuple of two numpy arrays. The first array is a 1D array of shape (n_points,)
-        containing the indices of the neighbors of each point. The second array is a 1D
-        array of shape (n_points,) containing the indices of the neighbors of each point.
+    AdjacencyList
+        A named tuple with 'offsets' and 'indices' fields containing the adjacency data.
     """
     # edges = get_edges(mesh)
 
@@ -223,7 +222,18 @@ def build_point_adjacency(
 
     adjacency = edges_to_adjacency(sorted_bidirectional_edges, mesh.n_points)
 
-    return adjacency
+    return AdjacencyList(offsets=adjacency[0], indices=adjacency[1])
+
+
+def get_adjacency_from_mesh(mesh):
+    """Get adjacency list from mesh field data or build it if not present."""
+    if "offsets" in mesh.field_data.keys() and "indices" in mesh.field_data.keys():
+        return AdjacencyList(mesh.field_data["offsets"], mesh.field_data["indices"])
+    else:
+        adjacency = build_point_adjacency(mesh)
+        mesh.field_data["offsets"] = adjacency.offsets
+        mesh.field_data["indices"] = adjacency.indices
+        return adjacency
 
 
 @njit(fastmath=True, parallel=False)
@@ -502,7 +512,8 @@ def compute_continuity_residuals(
     pv.DataSet
         The input mesh with the continuity residuals added to the point data.
     """
-    adjacency = build_point_adjacency(mesh)
+
+    adjacency = get_adjacency_from_mesh(mesh)
 
     # Cast fields to float64 for accurate gradient computation
     assert (
@@ -584,7 +595,8 @@ def compute_momentum_residuals(
     pv.DataSet
         The input mesh with the momentum residuals added to the point data.
     """
-    adjacency = build_point_adjacency(mesh)
+
+    adjacency = get_adjacency_from_mesh(mesh)
 
     # Cast fields to float64 for accurate gradient computation
     assert (
@@ -641,5 +653,5 @@ if __name__ == "__main__":
     # mesh = mesh.cast_to_unstructured_grid()
     # mesh = pv.read(r"/raid/psharpe/automotive_cfd_data_generation/reference_openfoam_configs/volume_4_predicted_new.vtu")
 
-    adj = build_point_adjacency(mesh)
+    adj = get_adjacency_from_mesh(mesh)
     mesh = compute_continuity_residuals(mesh, "U", "U", device="gpu")

@@ -38,15 +38,50 @@ from a Python interface, facilitating scalable deployment of trained models.
   - A benchmark for evaluating and validating the results of trained ML models
   against traditional CFD results using broad set of built-in engineering
   metrics (for example, pointwise errors, integrated quantities, spectral
-  metrics, PDE residuals)
+  metrics, PDE residuals). [Related publication](https://www.arxiv.org/abs/2507.10747)
   - Utilities to extend and build custom metrics, analyze, and visulaize the
     results of trained ML model, both mesh-based and point-cloud based models
 
 - **Hybrid Initialization**:
   - An end-to-end recipe illustrating initializing a CFD simulation with a
   trained ML model hybridized with potential flow solutions, to accelerate CFD
-  convergence (particularly for high-fidelity, unsteady cases).[related
+  convergence (particularly for high-fidelity, unsteady cases). [Related
   publication](https://arxiv.org/abs/2503.15766)
+
+## Installation
+
+PhysicsNeMo-CFD is a Python package that depends on the [NVIDIA PhysicsNeMo
+framework](https://github.com/NVIDIA/physicsnemo).
+
+For maximum cross-platform compatibility, we recommend using the PhysicsNeMo
+Docker container. Steps to use [PhysicsNeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/physicsnemo/containers/physicsnemo)
+can be found [in the Getting Started](https://docs.nvidia.com/deeplearning/physicsnemo/getting-started/index.html#physicsnemo-with-docker-image-recommended).
+
+You can install PhysicsNeMo-CFD via pip:
+
+```bash
+git clone https://github.com/NVIDIA/physicsnemo-cfd.git
+cd physicsnemo-cfd
+pip install .
+```
+
+To get access to GPU accelerated functionalities from this repo when installing
+in a conda or a custom python environment please run below commands.
+
+If you are using the [PhysicsNeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/physicsnemo/containers/physicsnemo),
+the GPU specific dependencies are pre-installed, hence this additional step is
+not required.
+
+```bash
+pip install .[gpu] --extra-index-url=https://pypi.nvidia.com
+```
+
+> [!Note] PhysicsNeMo-CFD is an experimental library and currently v0; expect
+> breaking changes. PhysicsNeMo-CFD is for *demonstrating* workflows, rather
+than providing a stable API for production-level deployments.
+
+When updating, see the latest changes in the [CHANGELOG.md](./CHANGELOG.md)
+file.
 
 ## Getting started
 
@@ -83,41 +118,6 @@ Refer to the [`workflows` directory](./workflows) for detailed instructions on
 executing individual reference workflows and samples. These are primarily
 packaged as Jupyter notebooks where possible, to provide for inline
 documentation and visualization of expected results.
-
-## Installation
-
-PhysicsNeMo-CFD is a Python package that depends on the [NVIDIA PhysicsNeMo
-framework](https://github.com/NVIDIA/physicsnemo).
-
-For maximum cross-platform compatibility, we recommend using the PhysicsNeMo
-Docker container. Steps to use [PhysicsNeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/physicsnemo/containers/physicsnemo)
-can be found [in the Getting Started](https://docs.nvidia.com/deeplearning/physicsnemo/getting-started/index.html#physicsnemo-with-docker-image-recommended).
-
-You can install PhysicsNeMo-CFD via pip:
-
-```bash
-git clone https://github.com/NVIDIA/PhysicsNeMo-CFD.git
-cd physicsnemo-cfd
-pip install .
-```
-
-To get access to GPU accelerated functionalities from this repo when installing
-in a conda or a custom python environment please run below commands.
-
-If you are using the [PhysicsNeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/physicsnemo/containers/physicsnemo),
-the GPU specific dependencies are pre-installed, hence this additional step is
-not required.
-
-```bash
-pip install .[gpu] --extra-index-url=https://pypi.nvidia.com
-```
-
-> [!Note] PhysicsNeMo-CFD is an experimental library and currently v0; expect
-> breaking changes. PhysicsNeMo-CFD is for *demonstrating* workflows, rather
-than providing a stable API for production-level deployments.
-
-When updating, see the latest changes in the [CHANGELOG.md](./CHANGELOG.md)
-file.
 
 ## Contributing to PhysicsNeMo
 
