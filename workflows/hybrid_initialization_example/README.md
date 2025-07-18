@@ -14,7 +14,6 @@ OpenFOAM-based case:
 
 ![workflow](./assets/workflow.drawio.png)
 
-
 This hybrid initialization workflow consists of six main stages:
 
 1. **DoMINO NIM Setup**: Launch the DoMINO Automotive Aero NIM container that
@@ -53,6 +52,7 @@ you don't already have one, you can obtain one
 NGC account.
 
 **Option A - Using the provided script (recommended):**
+
 ```bash
 # Navigate to the repository root directory
 cd /path/to/physicsnemo-cfd
@@ -95,6 +95,7 @@ CHANGELOG.md  CONTRIBUTING.md  LICENSE.txt  Makefile  README.md  SECURITY.md  as
 Alternatively, you may encounter an error indicating that the container image is
 not found. If so, you will be prompted to build the container locally before
 launching:
+
 ```bash
 Docker image 'openfoam-python:latest' not found locally.
 Would you like to build it now? (this may take several hours) [y/N]: 
@@ -151,6 +152,7 @@ cd workflows/hybrid_initialization_example/
 > post-processing.
 
 The script will automatically perform all workflow stages:
+
 1. Prepare DoMINO assets (geometry and predicted flow field)
 2. Generate the computational mesh
 3. Compute the potential flow solution  
@@ -161,6 +163,7 @@ The script will automatically perform all workflow stages:
 ### Step 5: View Results
 
 After completion, results will be available in:
+
 - `workflows/hybrid_initialization_example/VTK/` directory: Visualization files
 - `workflows/hybrid_initialization_example/postProcessing/` directory: Force
   time-histories and other analysis data
