@@ -96,12 +96,23 @@ def call_domino_nim(
             print(
                 f"Sending POST request to DoMINO NIM inference API at {inference_api_url}..."
             )
-        response = httpx.post(
-            inference_api_url,
-            files=files,
-            data=data,
-            timeout=timeout,
-        )
+        try:
+            response = httpx.post(
+                inference_api_url,
+                files=files,
+                data=data,
+                timeout=timeout,
+            )
+        except httpx.ConnectError as e:
+            raise RuntimeError(
+                f"Failed to connect to DoMINO NIM inference API at {inference_api_url}. "
+                f"Please ensure the API is running and accessible. Error: {e}"
+            )
+        except httpx.TimeoutException as e:
+            raise RuntimeError(
+                f"Timeout while connecting to DoMINO NIM inference API at {inference_api_url}. "
+                f"Please ensure the API is running and accessible. Error: {e}"
+            )
 
     # Check if the request was successful
     if response.status_code != 200:
