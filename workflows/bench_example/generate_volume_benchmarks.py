@@ -203,7 +203,7 @@ if __name__ == "__main__":
 
         for key, value in mesh_result["l2_errors"].items():
             mean_l2_errors[key].append(value)
-    
+
     for key, values in mean_l2_errors.items():
         mean_l2_errors[key] = np.mean(np.array(values))
 
