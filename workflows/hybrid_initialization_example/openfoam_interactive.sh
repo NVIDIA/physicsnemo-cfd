@@ -5,6 +5,7 @@ set -e  # Exit on error
 IMAGE_NAME="openfoam-python:latest"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTAINER_DIR="${SCRIPT_DIR}/container"
+REPO_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # Check if the image exists locally
 if ! docker image inspect "${IMAGE_NAME}" > /dev/null 2>&1; then
@@ -29,7 +30,7 @@ docker run \
     --shm-size=1g \
     --ulimit memlock=-1 \
     --ulimit stack=67108864 \
-    -v "${PWD}:/workspace" \
+    -v "${REPO_DIR}:/workspace" \
     -w /workspace \
     -it \
     ${IMAGE_NAME}
