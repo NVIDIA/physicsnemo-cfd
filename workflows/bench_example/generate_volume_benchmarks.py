@@ -204,8 +204,8 @@ if __name__ == "__main__":
         for key, value in mesh_result["l2_errors"].items():
             mean_l2_errors[key].append(value)
 
-    for key, value in mesh_result["l2_errors"].items():
-        mean_l2_errors[key] = np.mean(np.array(value))
+    for key, values in mean_l2_errors.items():
+        mean_l2_errors[key] = np.mean(np.array(values))
 
     for key, value in mean_l2_errors.items():
         print(f"L2 Errors for {key}: {value}")
