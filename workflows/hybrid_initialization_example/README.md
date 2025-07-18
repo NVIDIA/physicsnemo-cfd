@@ -65,7 +65,7 @@ export NGC_API_KEY="your_ngc_api_key_here"
 ./physicsnemo/cfd/inference/launch_local_domino_nim.sh
 ```
 
-**Option B - Manual setup:** 
+**Option B - Manual setup:**
 
 Follow the detailed instructions
 [here](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/domino-automotive-aero).
