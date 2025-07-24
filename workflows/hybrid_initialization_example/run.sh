@@ -25,7 +25,7 @@
 #   - If interrupted during the transient simulation, post-processing will still run.
 #   - For troubleshooting, inspect the log.* files.
 
-set -euo pipefail
+set -exo pipefail
 
 # Helper: Print error and exit if a required command is missing
 require_command() {
