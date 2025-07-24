@@ -55,7 +55,7 @@ NGC account.
 
 ```bash
 # Navigate to the repository root directory
-cd /path/to/PhysicsNeMo-CFD
+cd /path/to/physicsnemo-cfd
 
 # Set your NGC API key
 export NGC_API_KEY="your_ngc_api_key_here"
@@ -77,7 +77,7 @@ In a separate shell, attempt to launch the OpenFOAM container:
 
 ```bash
 # Navigate to the repository root (if not already there)
-cd /path/to/PhysicsNeMo-CFD
+cd /path/to/physicsnemo-cfd
 
 # Launch the OpenFOAM + Python container with proper mounting
 ./workflows/hybrid_initialization_example/openfoam_interactive.sh
