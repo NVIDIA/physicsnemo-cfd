@@ -85,9 +85,9 @@ for ax in ["x", "y"]:
         a = plt.gca().xaxis if ax == "x" else plt.gca().yaxis
         locator = ticker.SymmetricalLogLocator(
             base=1000 if kind == "major" else 10,
-            linthresh=x_minscale
-            if ax == "x"
-            else np.abs(analytical_gradient) * x_minscale,
+            linthresh=(
+                x_minscale if ax == "x" else np.abs(analytical_gradient) * x_minscale
+            ),
         )
         locator.numticks = 1000
 
