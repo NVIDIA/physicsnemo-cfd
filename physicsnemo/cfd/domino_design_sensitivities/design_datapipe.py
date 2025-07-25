@@ -40,6 +40,8 @@ import torch
 
 
 class DesignDatapipe(Dataset):
+    """PyTorch Dataset for processing surface meshes into DoMINO inputs."""
+
     def __init__(
         self,
         mesh: pv.PolyData,

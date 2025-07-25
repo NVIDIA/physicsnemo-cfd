@@ -45,6 +45,28 @@ from dataclasses import dataclass
 
 @dataclass
 class DoMINOInference:
+    """Distributed inference pipeline for DoMINO on an automotive aero case.
+
+    Attributes:
+
+        cfg: Hydra configuration containing model parameters, data
+            specifications, and variable definitions
+
+        model_checkpoint_path: Path to pre-trained model weights. If None, model
+            loads without checkpoint (not recommended for production)
+
+        dist: Distributed training manager for multi-GPU inference. If None,
+              runs on single device
+
+        device: PyTorch device for computation. Auto-detected if not specified
+
+        model: DoMINO neural network model instance. Auto-constructed if not
+        provided
+
+    See Also:
+        DesignDatapipe: Data preprocessing pipeline for DoMINO inputs DoMINO:
+        The underlying model architecture
+    """
 
     cfg: DictConfig
     model_checkpoint_path: Path | str | None = None
@@ -102,6 +124,7 @@ class DoMINOInference:
 
     @cached_property
     def num_vol_vars(self) -> int:
+        """Number of volume variables (scalar + vector components)."""
         return sum(
             3 if v == "vector" else 1
             for k, v in self.cfg.variables.volume.solution.items()
@@ -109,6 +132,7 @@ class DoMINOInference:
 
     @cached_property
     def num_surf_vars(self) -> int:
+        """Number of surface variables (scalar + vector components)."""
         return sum(
             3 if v == "vector" else 1
             for k, v in self.cfg.variables.surface.solution.items()

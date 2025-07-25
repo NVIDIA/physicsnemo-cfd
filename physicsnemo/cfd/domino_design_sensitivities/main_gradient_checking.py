@@ -71,6 +71,23 @@ if __name__ == "__main__":
         epsilon: float,
         sensitivities: np.ndarray,
     ) -> float:
+        """
+        Compute the drag force for a mesh perturbed along a sensitivity direction.
+
+        This function perturbs the mesh geometry by a small amount `epsilon` in the direction
+        of the provided `sensitivities` (typically a sensitivity field such as the gradient
+        of drag with respect to point positions), then evaluates the drag force for the
+        perturbed geometry using the DoMINO inference pipeline. Uses a finite-difference
+        approximation to estimate the drag gradient.
+
+        Args:
+            epsilon: The perturbation magnitude to apply to the mesh points.
+            sensitivities: An array of shape (n_points, 3) representing the direction and
+                magnitude of perturbation for each mesh point.
+
+        Returns:
+            The drag force (float) computed for the perturbed mesh.
+        """
         print(f"Doing Warped Run with epsilon: {epsilon}")
         warped_mesh = pv.PolyData(
             mesh.points + epsilon * sensitivities,
