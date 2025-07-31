@@ -40,8 +40,8 @@ from utils import (
     plot_surface_results,
     save_results_to_csv,
     load_results_from_csv,
-    save_vtps,
-    load_vtps,
+    save_polydata,
+    load_polydata,
 )
 
 if __name__ == "__main__":
@@ -90,6 +90,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--plot-aggregate-surface-errors",
         type=bool,
+        action='store_true',
         default=False,
         help='whether to plot the aggregated surface results'
     )
@@ -136,16 +137,16 @@ if __name__ == "__main__":
     l2_errors = load_results_from_csv(l2_errors_csv)
     l2_errors_area_wt = load_results_from_csv(l2_errors_area_wt_csv)
     l2_errors_pc = load_results_from_csv(l2_errors_pc_csv)
-    top_centerlines = load_vtps(output_dir, "top_centerline", run_idx_list)
-    bottom_centerlines = load_vtps(output_dir, "bottom_centerline", run_idx_list)
+    top_centerlines = load_polydata(output_dir, "top_centerline", run_idx_list)
+    bottom_centerlines = load_polydata(output_dir, "bottom_centerline", run_idx_list)
 
     if args.plot_aggregate_surface_errors:
-        pos_xy_projections = load_vtps(output_dir, "projection_XY", run_idx_list)
-        neg_xy_projections = load_vtps(output_dir, "projection_-XY", run_idx_list)
-        pos_yz_projections = load_vtps(output_dir, "projection_YZ", run_idx_list)
-        neg_yz_projections = load_vtps(output_dir, "projection_-YZ", run_idx_list)
-        pos_zx_projections = load_vtps(output_dir, "projection_ZX", run_idx_list)
-        neg_zx_projections = load_vtps(output_dir, "projection_-ZX", run_idx_list)
+        pos_xy_projections = load_polydata(output_dir, "projection_XY", run_idx_list)
+        neg_xy_projections = load_polydata(output_dir, "projection_-XY", run_idx_list)
+        pos_yz_projections = load_polydata(output_dir, "projection_YZ", run_idx_list)
+        neg_yz_projections = load_polydata(output_dir, "projection_-YZ", run_idx_list)
+        pos_zx_projections = load_polydata(output_dir, "projection_ZX", run_idx_list)
+        neg_zx_projections = load_polydata(output_dir, "projection_-ZX", run_idx_list)
 
     if (
         not results
@@ -281,19 +282,19 @@ if __name__ == "__main__":
             save_results_to_csv(l2_errors_pc, l2_errors_pc_csv, l2_errors_pc.keys())
 
         # Save centerlines
-        save_vtps(top_centerlines, output_dir, "top_centerline", results["run_idx"])
-        save_vtps(
+        save_polydata(top_centerlines, output_dir, "top_centerline", results["run_idx"])
+        save_polydata(
             bottom_centerlines, output_dir, "bottom_centerline", results["run_idx"]
         )
 
         # Save projections
         if args.plot_aggregate_surface_errors:
-            save_vtps(pos_xy_projections, output_dir, "projection_XY", results["run_idx"])
-            save_vtps(neg_xy_projections, output_dir, "projection_-XY", results["run_idx"])
-            save_vtps(pos_yz_projections, output_dir, "projection_YZ", results["run_idx"])
-            save_vtps(neg_yz_projections, output_dir, "projection_-YZ", results["run_idx"])
-            save_vtps(pos_zx_projections, output_dir, "projection_ZX", results["run_idx"])
-            save_vtps(neg_zx_projections, output_dir, "projection_-ZX", results["run_idx"])
+            save_polydata(pos_xy_projections, output_dir, "projection_XY", results["run_idx"])
+            save_polydata(neg_xy_projections, output_dir, "projection_-XY", results["run_idx"])
+            save_polydata(pos_yz_projections, output_dir, "projection_YZ", results["run_idx"])
+            save_polydata(neg_yz_projections, output_dir, "projection_-YZ", results["run_idx"])
+            save_polydata(pos_zx_projections, output_dir, "projection_ZX", results["run_idx"])
+            save_polydata(neg_zx_projections, output_dir, "projection_-ZX", results["run_idx"])
         
     else:
         # Load mesh_results from the saved CSVs

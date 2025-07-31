@@ -243,10 +243,13 @@ def process_surface_results(filenames, field_mapping, compute_projections=False)
 def process_volume_results(
     mesh_filename,
     field_mapping,
+    bounds=[-3.5, 8.5, -2.25, 2.25, -0.32, 3.00],
     nu=None,
     rho=None,
     compute_continuity_metrics=False,
     compute_momentum_metrics=False,
+    compute_on_resampled_grid=False,
+    voxel_size=0.03,
 ):
     results = {}
     print(f"Processing: {mesh_filename}")
@@ -322,7 +325,7 @@ def process_volume_results(
         mesh,
         l2_errors_true_fields,
         l2_errors_pred_fields,
-        bounds=[-3.5, 8.5, -2.25, 2.25, -0.32, 3.00],
+        bounds=bounds,
         dtype="point",
     )
 
@@ -337,6 +340,18 @@ def process_volume_results(
     results["wake_x_4"] = x_slice.slice(normal="y", origin=(0, 0, 0))
     x_slice = mesh.slice(normal="x", origin=(5, 0, 0))
     results["wake_x_5"] = x_slice.slice(normal="y", origin=(0, 0, 0))
+
+    # Resample the volume
+    if compute_on_resampled_grid:
+        x = np.arange(bounds[0], bounds[1]+voxel_size, voxel_size)
+        y = np.arange(bounds[2], bounds[3]+voxel_size, voxel_size)
+        z = np.arange(bounds[4], bounds[5]+voxel_size, voxel_size)
+        x, y, z = np.meshgrid(x, y, z, indexing='ij')
+        grid = pv.StructuredGrid(x, y, z)        
+        grid = grid.sample(mesh)
+        results["resampled_volume"] = grid
+    else:
+        results["resampled_volume"] = None
 
     return results
 
@@ -555,17 +570,17 @@ def load_results_from_csv(filename):
     return None
 
 
-def save_vtps(vtps, directory, prefix, run_idx):
-    for idx, vtp in zip(run_idx, vtps):
-        vtp.save(os.path.join(directory, f"{prefix}_{idx}.vtp"))
+def save_polydata(meshes, directory, prefix, run_idx, extension="vtp"):
+    for idx, mesh in zip(run_idx, meshes):
+        mesh.save(os.path.join(directory, f"{prefix}_{idx}.{extension}"))
 
 
-def load_vtps(directory, prefix, run_idx):
-    vtps = []
+def load_polydata(directory, prefix, run_idx, extension="vtp"):
+    meshes = []
     for idx in run_idx:
-        filepath = os.path.join(directory, f"{prefix}_{idx}.vtp")
+        filepath = os.path.join(directory, f"{prefix}_{idx}.{extension}")
         if os.path.exists(filepath):
-            vtps.append(pv.read(filepath))
+            meshes.append(pv.read(filepath))
         else:
             return None
-    return vtps
+    return meshes

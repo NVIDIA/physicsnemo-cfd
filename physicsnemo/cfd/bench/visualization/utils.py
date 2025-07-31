@@ -377,6 +377,170 @@ def plot_field_comparisons(
     return plotter
 
 
+def plot_fields(
+    data,
+    fields,
+    view="xy",
+    dtype="cell",
+    plot_vector_components=False,
+    window_size=[2560, 3840],
+    view_negative=False,
+    **kwargs,
+):
+    """Helper function to plot fields"""
+    
+    # identify vector and scalar quantities
+    field_type = {}
+    for field in fields:
+        arr = data.get_array(field, preference=dtype)
+        if len(arr.shape) == 1:
+            field_type[field] = "scalar"
+        else:
+            field_type[field] = "vector"
+
+    num_vector_fields = sum(1 for key, value in field_type.items() if value == "vector")
+    num_scalar_fields = sum(1 for key, value in field_type.items() if value == "scalar")
+
+    if plot_vector_components:
+        plotter = pv.Plotter(
+            shape=((num_vector_fields * 3 + num_scalar_fields), 1),
+            window_size=window_size,
+            off_screen=True,
+        )
+    else:
+        plotter = pv.Plotter(
+            shape=((num_vector_fields + num_scalar_fields), 1),
+            window_size=window_size,
+            off_screen=True,
+        )
+
+    cmap = plt.get_cmap(kwargs.get("cmap", "viridis"), lut=kwargs.get("lut", None))
+
+    plot_idx = 0
+    for field in fields:
+        if field_type[field] == "scalar":
+            field_data = data.get_array(field, preference=dtype)
+            mean = np.mean(field_data)
+            std = np.std(field_data)
+            vmin = mean - 2 * std
+            vmax = mean + 2 * std
+
+            plotter.subplot(plot_idx, 0)
+            data.set_active_scalars(field, preference=dtype)
+
+            if np.log10(np.abs(vmin)) < -1 or np.log10(np.abs(vmax)) < -1:
+                scalar_bar_args = {**kwargs.get("scalar_bar_args", {}), "fmt": "%.2g"}
+            else:
+                scalar_bar_args = {**kwargs.get("scalar_bar_args", {}), "fmt": "%.1f"}
+
+            plotter.add_mesh(
+                data,
+                copy_mesh=True,
+                cmap=cmap,
+                clim=(vmin, vmax),
+                scalar_bar_args=scalar_bar_args,
+            )
+            plotter.add_text(f"{field}")
+            if view == "xy":
+                plotter.view_xy(negative=view_negative)
+            elif view == "yz":
+                plotter.view_yz(negative=view_negative)
+            elif view == "xz":
+                plotter.view_xz(negative=view_negative)
+
+            plot_idx += 1
+
+        if field_type[field] == "vector":
+            if plot_vector_components:
+                for i, component in enumerate(["x", "y", "z"]):
+                    field_data = data.get_array(field, preference=dtype)[:, i]
+                    mean = np.mean(field_data)
+                    std = np.std(field_data)
+                    vmin = mean - 2 * std
+                    vmax = mean + 2 * std
+
+                    if dtype == "cell":
+                        data.cell_data[f"{field}_{component}"] = field_data
+                    elif dtype == "point":
+                        data.point_data[f"{field}_{component}"] = field_data
+
+                    if np.log10(np.abs(vmin)) < -1 or np.log10(np.abs(vmax)) < -1:
+                        scalar_bar_args = {
+                            **kwargs.get("scalar_bar_args", {}),
+                            "fmt": "%.2g",
+                        }
+                    else:
+                        scalar_bar_args = {
+                            **kwargs.get("scalar_bar_args", {}),
+                            "fmt": "%.1f",
+                        }
+
+                    plotter.subplot(plot_idx, 0)
+                    data.set_active_scalars(
+                        f"{field}_{component}", preference=dtype
+                    )
+                    plotter.add_mesh(
+                        data,
+                        copy_mesh=True,
+                        cmap=cmap,
+                        clim=(vmin, vmax),
+                        scalar_bar_args=scalar_bar_args,
+                    )
+                    plotter.add_text(f"{field}_{component}")
+                    if view == "xy":
+                        plotter.view_xy(negative=view_negative)
+                    elif view == "yz":
+                        plotter.view_yz(negative=view_negative)
+                    elif view == "xz":
+                        plotter.view_xz(negative=view_negative)
+
+                    plot_idx += 1
+            else:
+                field_data = data.get_array(field, preference=dtype)
+                field_magnitude = np.linalg.norm(field_data, axis=1)
+                mean = np.mean(field_magnitude)
+                std = np.std(field_magnitude)
+                vmin = mean - 2 * std
+                vmax = mean + 2 * std
+
+                if np.log10(np.abs(vmin)) < -1 or np.log10(np.abs(vmax)) < -1:
+                    scalar_bar_args = {
+                        **kwargs.get("scalar_bar_args", {}),
+                        "fmt": "%.2g",
+                    }
+                else:
+                    scalar_bar_args = {
+                        **kwargs.get("scalar_bar_args", {}),
+                        "fmt": "%.1f",
+                    }
+
+                if dtype == "cell":
+                    data.cell_data[f"{field}_mag"] = field_magnitude
+                elif dtype == "point":
+                    data.point_data[f"{field}_mag"] = field_magnitude
+
+                plotter.subplot(plot_idx, 0)
+                data.set_active_scalars(f"{field}_mag", preference=dtype)
+                plotter.add_mesh(
+                    data,
+                    copy_mesh=True,
+                    cmap=cmap,
+                    clim=(vmin, vmax),
+                    scalar_bar_args=scalar_bar_args,
+                )
+                plotter.add_text(f"{field}")
+                if view == "xy":
+                    plotter.view_xy(negative=view_negative)
+                elif view == "yz":
+                    plotter.view_yz(negative=view_negative)
+                elif view == "xz":
+                    plotter.view_xz(negative=view_negative)
+
+                plot_idx += 1
+
+    return plotter
+
+
 def plot_streamlines(
     true_streamlines,
     pred_streamlines,
