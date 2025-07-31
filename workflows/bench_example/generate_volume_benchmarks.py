@@ -105,7 +105,7 @@ if __name__ == "__main__":
 
     compute_continuity_metrics = args.compute_continuity_metrics
     compute_momentum_metrics = args.compute_momentum_metrics
-    compute_on_resampled_grid = args.plot-aggregate-volume-errors
+    compute_on_resampled_grid = args.plot_aggregate_volume_errors
     plot_continuity_metrics = args.compute_continuity_metrics
     plot_momentum_metrics = args.compute_momentum_metrics
     sim_mesh_results_dir = args.sim_results_dir
@@ -242,8 +242,8 @@ if __name__ == "__main__":
         for key, value in mesh_result["l2_errors"].items():
             mean_l2_errors[key].append(value)
 
-    for key, value in mesh_result["l2_errors"].items():
-        mean_l2_errors[key] = np.mean(np.array(value))
+    for key, values in mean_l2_errors.items():
+        mean_l2_errors[key] = np.mean(np.array(values))
 
     for key, value in mean_l2_errors.items():
         print(f"L2 Errors for {key}: {value}")
@@ -339,8 +339,8 @@ if __name__ == "__main__":
     fig.savefig(f"./{output_dir}/volume_x_5_wake.png")
 
     if args.plot_aggregate_volume_errors:
-        true_fields = [field_mapping["p"], field_mapping["U"], field_mapping["nut"]]
-        pred_fields = [field_mapping["pPred"], field_mapping["UPred"], field_mapping["nutPred"]]
+        true_fields = [args.field_mapping["p"], args.field_mapping["U"], args.field_mapping["nut"]]
+        pred_fields = [args.field_mapping["pPred"], args.field_mapping["UPred"], args.field_mapping["nutPred"]]
         error_arrays = {f"{k}_error": [] for k in true_fields}
         for resampled_volume in resampled_volumes:
             for true_field, pred_field in zip(true_fields, pred_fields):
@@ -371,6 +371,7 @@ if __name__ == "__main__":
             dtype="point",
             cmap="jet",
             lut=20,
+            window_size=[1280, 3840],
         )
         plotter.screenshot(f"./{output_dir}/aggregate_volume_y_slice.png")
 
@@ -383,6 +384,7 @@ if __name__ == "__main__":
             dtype="point",
             cmap="jet",
             lut=20,
+            window_size=[1280, 3840],
         )
         plotter.screenshot(f"./{output_dir}/aggregate_volume_z_slice.png")
 
