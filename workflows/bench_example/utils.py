@@ -20,6 +20,7 @@ import re
 import pyvista as pv
 import pandas as pd
 import warnings
+import numpy as np
 
 from physicsnemo.cfd.bench.metrics.aero_forces import compute_drag_and_lift
 from physicsnemo.cfd.bench.metrics.l2_errors import (
@@ -34,7 +35,7 @@ from physicsnemo.cfd.bench.metrics.physics import (
     compute_continuity_residuals,
     compute_momentum_residuals,
 )
-from physicsnemo.cfd.bench.visualization.utils import plot_field_comparisons
+from physicsnemo.cfd.bench.visualization.utils import get_visible_point_indices, plot_field_comparisons
 
 
 def load_mapping(s):
@@ -44,7 +45,7 @@ def load_mapping(s):
     return json.loads(s)
 
 
-def process_surface_results(filenames, field_mapping):
+def process_surface_results(filenames, field_mapping, compute_projections=False):
     mesh_filename, pc_filename = filenames[0], filenames[1]
     results = {}
     if pc_filename is None:
@@ -55,9 +56,19 @@ def process_surface_results(filenames, field_mapping):
     run_idx = re.search(r"(\d+)(?=\D*$)", mesh_filename).group()
     results["run_idx"] = run_idx
 
+    # Read mesh
+    reader = pv.get_reader(mesh_filename)
+    
+    for field in field_mapping.values():
+        if field in reader.point_array_names:    
+            reader.enable_point_array(field)
+        elif field in reader.cell_array_names:
+            reader.enable_cell_array(field)
+    
+    mesh = reader.read()
+    mesh = mesh.point_data_to_cell_data(pass_point_data=True)
+    
     # compute drag and lift coefficients
-    mesh = pv.read(mesh_filename)
-    mesh = mesh.point_data_to_cell_data()
     (
         results["Cd_true"],
         results["Cd_p_true"],
@@ -184,6 +195,48 @@ def process_surface_results(filenames, field_mapping):
         results["Cl_p_pred_pc"] = None
         results["Cl_f_pred_pc"] = None
 
+    # Compute the projections
+    if compute_projections:
+        camera_directions = {
+            'XY':  'xy',    # +z
+            'YZ':  'yz',    # +x
+            'ZX':  'xz',    # +y
+            '-XY': (0, 0, -1),  # -z
+            '-YZ': (-1, 0, 0),  # -x
+            '-ZX': (0, -1, 0),  # -y
+        }
+
+        mesh = mesh.cell_data_to_point_data(pass_cell_data=True)
+        for cam_dir in camera_directions.keys():
+            idx_visible = get_visible_point_indices(mesh, camera_directions[cam_dir])
+            if len(idx_visible) == 0:
+                continue
+            
+            # assemble coordinates
+            pts = mesh.points[idx_visible]
+            if cam_dir in ['XY', '-XY']:
+                x = pts[:, 0] if cam_dir == 'XY' else -pts[:, 0]
+                y = pts[:, 1]
+            elif cam_dir in ['YZ', '-YZ']:
+                x = pts[:, 1]
+                y = pts[:, 2] if cam_dir == 'YZ' else -pts[:, 2]
+            elif cam_dir in ['ZX', '-ZX']:
+                x = pts[:, 2]
+                y = pts[:, 0] if cam_dir == 'ZX' else -pts[:, 0]
+            
+            # assemble fields
+            z = np.zeros_like(x)
+            proj_points = np.column_stack((x, y, z))
+            proj_pc = pv.PolyData(proj_points)
+            proj_pc["p_error"] = np.abs(mesh.point_data[field_mapping["pPred"]][idx_visible] - mesh.point_data[field_mapping["p"]][idx_visible])
+            proj_pc["wallShearStress_error"] = np.linalg.norm(np.abs(mesh.point_data[field_mapping["wallShearStressPred"]][idx_visible] - mesh.point_data[field_mapping["wallShearStress"]][idx_visible]), axis=1)
+            
+            results[f"projection_{cam_dir}"] = proj_pc
+    else:
+        # Initialize empty projections if not computing them
+        for cam_dir in ['XY', '-XY', 'YZ', '-YZ', 'ZX', '-ZX']:
+            results[f"projection_{cam_dir}"] = None
+    
     return results
 
 
@@ -200,7 +253,15 @@ def process_volume_results(
     run_idx = re.search(r"(\d+)(?=\D*$)", mesh_filename).group()
     results["run_idx"] = run_idx
 
-    mesh = pv.read(mesh_filename)
+    reader = pv.get_reader(mesh_filename)
+    
+    for field in field_mapping.values():
+        if field in reader.point_array_names:    
+            reader.enable_point_array(field)
+        elif field in reader.cell_array_names:
+            reader.enable_cell_array(field)
+    
+    mesh = reader.read()
     l2_errors_true_fields = [
         field_mapping["p"],
         field_mapping["U"],
@@ -282,7 +343,15 @@ def process_volume_results(
 
 def plot_surface_results(filename, field_mapping, output_dir):
     run_idx = re.search(r"(\d+)(?=\D*$)", filename).group()
-    mesh = pv.read(filename)
+    reader = pv.get_reader(filename)
+    
+    for field in field_mapping.values():
+        if field in reader.point_array_names:    
+            reader.enable_point_array(field)
+        elif field in reader.cell_array_names:
+            reader.enable_cell_array(field)
+    
+    mesh = reader.read()
     mesh = mesh.point_data_to_cell_data()
 
     default_scalar_bar_args = {
@@ -359,7 +428,15 @@ def plot_volume_results(
     bounds=[-3.5, 8.5, -2.25, 2.25, -0.32, 3.00],
 ):
     run_idx = re.search(r"(\d+)(?=\D*$)", filename).group()
-    mesh = pv.read(filename)
+    reader = pv.get_reader(filename)
+    
+    for field in field_mapping.values():
+        if field in reader.point_array_names:    
+            reader.enable_point_array(field)
+        elif field in reader.cell_array_names:
+            reader.enable_cell_array(field)
+    
+    mesh = reader.read()
 
     default_scalar_bar_args = {
         "title_font_size": 42,
