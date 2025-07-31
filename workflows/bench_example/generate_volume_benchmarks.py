@@ -105,6 +105,7 @@ if __name__ == "__main__":
 
     compute_continuity_metrics = args.compute_continuity_metrics
     compute_momentum_metrics = args.compute_momentum_metrics
+    compute_on_resampled_grid = args.plot-aggregate-volume-errors
     plot_continuity_metrics = args.compute_continuity_metrics
     plot_momentum_metrics = args.compute_momentum_metrics
     sim_mesh_results_dir = args.sim_results_dir
@@ -149,6 +150,7 @@ if __name__ == "__main__":
                     field_mapping=args.field_mapping,
                     compute_continuity_metrics=compute_continuity_metrics,
                     compute_momentum_metrics=compute_momentum_metrics,
+                    compute_on_resampled_grid=compute_on_resampled_grid,
                 ),
                 mesh_filenames,
             )
