@@ -58,7 +58,9 @@ def process_surface_results(filenames, field_mapping, compute_projections=False)
 
     # Read mesh
     reader = pv.get_reader(mesh_filename)
-    
+    reader.disable_all_point_arrays()
+    reader.disable_all_cell_arrays()
+
     for field in field_mapping.values():
         if field in reader.point_array_names:    
             reader.enable_point_array(field)
@@ -257,7 +259,9 @@ def process_volume_results(
     results["run_idx"] = run_idx
 
     reader = pv.get_reader(mesh_filename)
-    
+    reader.disable_all_point_arrays()
+    reader.disable_all_cell_arrays()
+
     for field in field_mapping.values():
         if field in reader.point_array_names:    
             reader.enable_point_array(field)
@@ -348,7 +352,7 @@ def process_volume_results(
         z = np.arange(bounds[4], bounds[5]+voxel_size, voxel_size)
         x, y, z = np.meshgrid(x, y, z, indexing='ij')
         grid = pv.StructuredGrid(x, y, z)        
-        grid = grid.sample(mesh)
+        grid = interpolate_mesh_to_pc(grid, mesh, field_mapping.values(), mesh_dtype="point")
         results["resampled_volume"] = grid
     else:
         results["resampled_volume"] = None
@@ -359,7 +363,9 @@ def process_volume_results(
 def plot_surface_results(filename, field_mapping, output_dir):
     run_idx = re.search(r"(\d+)(?=\D*$)", filename).group()
     reader = pv.get_reader(filename)
-    
+    reader.disable_all_point_arrays()
+    reader.disable_all_cell_arrays()
+
     for field in field_mapping.values():
         if field in reader.point_array_names:    
             reader.enable_point_array(field)
@@ -444,6 +450,8 @@ def plot_volume_results(
 ):
     run_idx = re.search(r"(\d+)(?=\D*$)", filename).group()
     reader = pv.get_reader(filename)
+    reader.disable_all_point_arrays()
+    reader.disable_all_cell_arrays()
     
     for field in field_mapping.values():
         if field in reader.point_array_names:    

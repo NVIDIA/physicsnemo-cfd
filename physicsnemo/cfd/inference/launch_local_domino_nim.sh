@@ -6,7 +6,7 @@ docker run \
     --rm \
     --runtime=nvidia \
     --gpus 1 \
-    --shm-size 2g \
+    --shm-size 32g \
     -p 8000:8000 \
     -e NGC_API_KEY \
-    -t nvcr.io/nim/nvidia/domino-automotive-aero:1.0.0
+    -t nvcr.io/nim/nvidia/domino-automotive-aero:2.0.0

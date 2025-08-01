@@ -26,6 +26,8 @@ def call_domino_nim(
     data: dict[str, str] = None,
     timeout: float = 120.0,
     verbose: bool = True,
+    point_cloud: str | Path = None,
+    batch_size: str | int = None,
 ) -> dict[str, np.ndarray | float]:
     """
     Performs a DoMINO NIM inference on a given STL file.
@@ -50,6 +52,11 @@ def call_domino_nim(
         Maximum time in seconds to wait for the API response. Defaults to 120 seconds.
     verbose : bool, optional
         Whether to print status messages during execution. Defaults to True.
+    point_cloud : str or Path, optional
+        Path to the point cloud file (.npy) to use for inference. If provided, the results
+        will be computed on this point cloud instead of a random one.
+    batch_size : str or int, optional
+        Batch size parameter to pass to the inference API. 
 
     Returns
     -------
@@ -74,6 +81,10 @@ def call_domino_nim(
             "stencil_size": "1",
             "point_cloud_size": "500000",
         }
+    
+    # Add batch_size to data if provided
+    if batch_size is not None:
+        data["batch_size"] = str(batch_size)
 
     input_file = Path(stl_path)
     output_file = input_file.with_stem(input_file.stem + "_single_solid").with_suffix(
@@ -87,21 +98,40 @@ def call_domino_nim(
     m.export(output_file)
 
     # Open the STL file and send it to the NIM
-    with open(output_file, "rb") as stl_file:
-        files = {
-            "design_stl": (str(output_file), stl_file),
-        }
-
-        if verbose:
-            print(
-                f"Sending POST request to DoMINO NIM inference API at {inference_api_url}..."
+    if point_cloud is not None:
+        point_cloud_path = Path(point_cloud)
+        with open(output_file, "rb") as stl_file, open(point_cloud_path, "rb") as pc_file:
+            files = {
+                "design_stl": (str(output_file), stl_file),
+                "point_cloud": (point_cloud_path.name, pc_file)
+            }
+            
+            if verbose:
+                print(
+                    f"Sending POST request to DoMINO NIM inference API at {inference_api_url}..."
+                )
+            response = httpx.post(
+                inference_api_url,
+                files=files,
+                data=data,
+                timeout=timeout,
             )
-        response = httpx.post(
-            inference_api_url,
-            files=files,
-            data=data,
-            timeout=timeout,
-        )
+    else:
+        with open(output_file, "rb") as stl_file:
+            files = {
+                "design_stl": (str(output_file), stl_file),
+            }
+            
+            if verbose:
+                print(
+                    f"Sending POST request to DoMINO NIM inference API at {inference_api_url}..."
+                )
+            response = httpx.post(
+                inference_api_url,
+                files=files,
+                data=data,
+                timeout=timeout,
+            )
 
     # Check if the request was successful
     if response.status_code != 200:
