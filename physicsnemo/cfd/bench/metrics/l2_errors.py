@@ -247,9 +247,9 @@ def compute_l2_error_vs_sdf(data, true_fields, pred_fields, stl_mesh, bin_edges,
                 true_field[:, 2:3] - pred_field[:, 2:3]
             ) / np.linalg.norm(true_field[:, 2:3])
 
-            output_dict[f"{true}_x_l2_error"] = err_x
-            output_dict[f"{true}_y_l2_error"] = err_y
-            output_dict[f"{true}_z_l2_error"] = err_z
+            # output_dict[f"{true}_x_l2_error"] = err_x
+            # output_dict[f"{true}_y_l2_error"] = err_y
+            # output_dict[f"{true}_z_l2_error"] = err_z
 
             # Compute per-point error magnitude for histogram
             per_point_error = np.linalg.norm(true_field - pred_field, axis=1)
@@ -258,7 +258,7 @@ def compute_l2_error_vs_sdf(data, true_fields, pred_fields, stl_mesh, bin_edges,
             # scalar quantity
             err = np.linalg.norm(true_field - pred_field) / np.linalg.norm(true_field)
 
-            output_dict[f"{true}_l2_error"] = err
+            # output_dict[f"{true}_l2_error"] = err
 
             # Per-point error for histogram
             per_point_error = np.abs(true_field - pred_field)
