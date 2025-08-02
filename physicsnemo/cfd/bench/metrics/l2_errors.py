@@ -193,7 +193,7 @@ def compute_area_weighted_l2_errors(data, true_fields, pred_fields, dtype="point
 
     return output_dict
 
-def compute_l2_error_vs_sdf(data, true_fields, pred_fields, stl_mesh, bin_edges, bounds=None, dtype="point"):
+def compute_error_vs_sdf(data, true_fields, pred_fields, stl_mesh, bin_edges, bounds=None, dtype="point"):
     stl_vertices = stl_mesh.points
     stl_indices = np.arange(0, stl_mesh.points.shape[0])
 
@@ -236,30 +236,10 @@ def compute_l2_error_vs_sdf(data, true_fields, pred_fields, stl_mesh, bin_edges,
             sdf_sub = sdf_field
 
         if field_type[true] == "vector":
-            # vector quantity
-            err_x = np.linalg.norm(
-                true_field[:, 0:1] - pred_field[:, 0:1]
-            ) / np.linalg.norm(true_field[:, 0:1])
-            err_y = np.linalg.norm(
-                true_field[:, 1:2] - pred_field[:, 1:2]
-            ) / np.linalg.norm(true_field[:, 1:2])
-            err_z = np.linalg.norm(
-                true_field[:, 2:3] - pred_field[:, 2:3]
-            ) / np.linalg.norm(true_field[:, 2:3])
-
-            # output_dict[f"{true}_x_l2_error"] = err_x
-            # output_dict[f"{true}_y_l2_error"] = err_y
-            # output_dict[f"{true}_z_l2_error"] = err_z
-
             # Compute per-point error magnitude for histogram
             per_point_error = np.linalg.norm(true_field - pred_field, axis=1)
 
         elif field_type[true] == "scalar":
-            # scalar quantity
-            err = np.linalg.norm(true_field - pred_field) / np.linalg.norm(true_field)
-
-            # output_dict[f"{true}_l2_error"] = err
-
             # Per-point error for histogram
             per_point_error = np.abs(true_field - pred_field)
 
