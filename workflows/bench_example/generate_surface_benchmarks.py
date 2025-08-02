@@ -31,7 +31,7 @@ from physicsnemo.cfd.bench.visualization.utils import (
     plot_design_scatter,
     plot_design_trend,
     plot_line,
-    plot_projections_hexbin
+    plot_projections_hexbin,
 )
 
 from utils import (
@@ -90,9 +90,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--plot-aggregate-surface-errors",
         type=bool,
-        action='store_true',
+        action="store_true",
         default=False,
-        help='whether to plot the aggregated surface results'
+        help="whether to plot the aggregated surface results",
     )
     args = parser.parse_args()
 
@@ -158,7 +158,11 @@ if __name__ == "__main__":
         # Process the data if any of the required files are missing
         with Pool(processes=args.num_procs) as pool:
             mesh_results = pool.map(
-                partial(process_surface_results, field_mapping=args.field_mapping, compute_projections=args.plot_aggregate_surface_errors),
+                partial(
+                    process_surface_results,
+                    field_mapping=args.field_mapping,
+                    compute_projections=args.plot_aggregate_surface_errors,
+                ),
                 filenames,
             )
 
@@ -289,13 +293,25 @@ if __name__ == "__main__":
 
         # Save projections
         if args.plot_aggregate_surface_errors:
-            save_polydata(pos_xy_projections, output_dir, "projection_XY", results["run_idx"])
-            save_polydata(neg_xy_projections, output_dir, "projection_-XY", results["run_idx"])
-            save_polydata(pos_yz_projections, output_dir, "projection_YZ", results["run_idx"])
-            save_polydata(neg_yz_projections, output_dir, "projection_-YZ", results["run_idx"])
-            save_polydata(pos_zx_projections, output_dir, "projection_ZX", results["run_idx"])
-            save_polydata(neg_zx_projections, output_dir, "projection_-ZX", results["run_idx"])
-        
+            save_polydata(
+                pos_xy_projections, output_dir, "projection_XY", results["run_idx"]
+            )
+            save_polydata(
+                neg_xy_projections, output_dir, "projection_-XY", results["run_idx"]
+            )
+            save_polydata(
+                pos_yz_projections, output_dir, "projection_YZ", results["run_idx"]
+            )
+            save_polydata(
+                neg_yz_projections, output_dir, "projection_-YZ", results["run_idx"]
+            )
+            save_polydata(
+                pos_zx_projections, output_dir, "projection_ZX", results["run_idx"]
+            )
+            save_polydata(
+                neg_zx_projections, output_dir, "projection_-ZX", results["run_idx"]
+            )
+
     else:
         # Load mesh_results from the saved CSVs
         mesh_results = []
@@ -331,12 +347,12 @@ if __name__ == "__main__":
                 mesh_result.update(
                     {
                         "projection_XY": pos_xy_projections[i],
-                        "projection_-XY": neg_xy_projections[i], 
+                        "projection_-XY": neg_xy_projections[i],
                         "projection_YZ": pos_yz_projections[i],
-                        "projection_-YZ": neg_yz_projections[i], 
+                        "projection_-YZ": neg_yz_projections[i],
                         "projection_ZX": pos_zx_projections[i],
                         "projection_-ZX": neg_zx_projections[i],
-                    } 
+                    }
                 )
 
             if args.pc_results_dir:

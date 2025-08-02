@@ -388,7 +388,7 @@ def plot_fields(
     **kwargs,
 ):
     """Helper function to plot fields"""
-    
+
     # identify vector and scalar quantities
     field_type = {}
     for field in fields:
@@ -476,9 +476,7 @@ def plot_fields(
                         }
 
                     plotter.subplot(plot_idx, 0)
-                    data.set_active_scalars(
-                        f"{field}_{component}", preference=dtype
-                    )
+                    data.set_active_scalars(f"{field}_{component}", preference=dtype)
                     plotter.add_mesh(
                         data,
                         copy_mesh=True,
@@ -987,10 +985,13 @@ def plot_line(
 
     return fig
 
-def get_visible_point_indices(mesh, camera_direction, camera_focal_point=None, tol=1e-8):
+
+def get_visible_point_indices(
+    mesh, camera_direction, camera_focal_point=None, tol=1e-8
+):
     """
     Get indices of points that are visible from a given camera direction.
-    
+
     Parameters:
     -----------
     mesh : pyvista.PolyData
@@ -1001,7 +1002,7 @@ def get_visible_point_indices(mesh, camera_direction, camera_focal_point=None, t
         Camera focal point. If None, uses mesh center
     tol : float, optional
         Tolerance for point matching
-    
+
     Returns:
     --------
     numpy.ndarray
@@ -1012,7 +1013,7 @@ def get_visible_point_indices(mesh, camera_direction, camera_focal_point=None, t
 
     plotter = pv.Plotter(off_screen=True)
     plotter.add_mesh(mesh)
-    
+
     # Set camera position based on direction
     if isinstance(camera_direction, str):
         if camera_direction == "xy":
@@ -1025,10 +1026,10 @@ def get_visible_point_indices(mesh, camera_direction, camera_focal_point=None, t
             plotter.camera_position = camera_direction
     else:
         plotter.view_vector(camera_direction)
-    
+
     # Reset camera to fit the mesh properly
     plotter.reset_camera()
-    
+
     render_window = plotter.renderer.GetRenderWindow()
     render_window.Render()
 
@@ -1042,15 +1043,17 @@ def get_visible_point_indices(mesh, camera_direction, camera_focal_point=None, t
 
     if len(visible.points) == 0:
         return np.array([], dtype=int)
-    
+
     tree = cKDTree(mesh.points)
     dists, idxs = tree.query(visible.points, distance_upper_bound=tol)
     # Filter out points that didn't match (distance == inf)
     idxs = idxs[np.isfinite(dists)]
-    
+
     return idxs
 
+
 def plot_projections_hexbin(meshes, field, direction, grid_size=50):
+    """Helper function to plot HexBin plots across multiple meshes"""
 
     # Aggregate results
     x = []
@@ -1058,8 +1061,8 @@ def plot_projections_hexbin(meshes, field, direction, grid_size=50):
     field_arr = []
 
     for mesh in meshes:
-        x.append(mesh.points[:,0])
-        y.append(mesh.points[:,1])
+        x.append(mesh.points[:, 0])
+        y.append(mesh.points[:, 1])
         field_arr.append(mesh.point_data[field])
 
     x = np.concatenate(x)
@@ -1069,27 +1072,31 @@ def plot_projections_hexbin(meshes, field, direction, grid_size=50):
     # Hexbin plot
     fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(16, 6))
     ax = axs[0]
-    hb = ax.hexbin(x, y, C=field_arr, gridsize=grid_size, reduce_C_function=np.mean, cmap='jet')
+    hb = ax.hexbin(
+        x, y, C=field_arr, gridsize=grid_size, reduce_C_function=np.mean, cmap="jet"
+    )
     cb = fig.colorbar(hb, ax=ax)
     cb.set_label("Mean")
-    ax.set_aspect('equal', adjustable='datalim')
+    ax.set_aspect("equal", adjustable="datalim")
 
-    if direction in ['-YZ', '-ZX']:
+    if direction in ["-YZ", "-ZX"]:
         ax.invert_yaxis()
-    elif direction in ['-XY']:
+    elif direction in ["-XY"]:
         ax.invert_xaxis()
-    
+
     ax = axs[1]
-    hb = ax.hexbin(x, y, C=field_arr, gridsize=grid_size, reduce_C_function=np.std, cmap='jet')
+    hb = ax.hexbin(
+        x, y, C=field_arr, gridsize=grid_size, reduce_C_function=np.std, cmap="jet"
+    )
     cb = fig.colorbar(hb, ax=ax)
     cb.set_label("StdDev")
-    ax.set_aspect('equal', adjustable='datalim')
+    ax.set_aspect("equal", adjustable="datalim")
 
-    if direction in ['-YZ', '-ZX']:
+    if direction in ["-YZ", "-ZX"]:
         ax.invert_yaxis()
-    elif direction in ['-XY']:
+    elif direction in ["-XY"]:
         ax.invert_xaxis()
-    
+
     plt.tight_layout()
-    
+
     return fig

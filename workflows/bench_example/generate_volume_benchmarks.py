@@ -84,21 +84,21 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--plot-aggregate-volume-errors",
-        action='store_true',
+        action="store_true",
         default=False,
-        help='whether to plot the aggregated volume results'
+        help="whether to plot the aggregated volume results",
     )
     parser.add_argument(
         "--compute-continuity-metrics",
-        action='store_true',
+        action="store_true",
         default=False,
-        help='whether to compute the continuity metrics'
+        help="whether to compute the continuity metrics",
     )
     parser.add_argument(
         "--compute-momentum-metrics",
-        action='store_true',
+        action="store_true",
         default=False,
-        help='whether to compute the momentum metrics'
+        help="whether to compute the momentum metrics",
     )
 
     args = parser.parse_args()
@@ -132,7 +132,9 @@ if __name__ == "__main__":
     wakes_x_5 = load_polydata(output_dir, "wake_x_5", run_idx_list)
 
     if args.plot_aggregate_volume_errors:
-        resampled_volumes = load_polydata(output_dir, "resampled_volume", run_idx_list, extension="vtk")
+        resampled_volumes = load_polydata(
+            output_dir, "resampled_volume", run_idx_list, extension="vtk"
+        )
 
     if (
         not l2_errors
@@ -189,13 +191,21 @@ if __name__ == "__main__":
         save_polydata(
             front_wheel_wakes, output_dir, "front_wheel_wake", l2_errors["run_idx"]
         )
-        save_polydata(rear_wheel_wakes, output_dir, "rear_wheel_wake", l2_errors["run_idx"])
+        save_polydata(
+            rear_wheel_wakes, output_dir, "rear_wheel_wake", l2_errors["run_idx"]
+        )
         save_polydata(wakes_x_4, output_dir, "wake_x_4", l2_errors["run_idx"])
         save_polydata(wakes_x_5, output_dir, "wake_x_5", l2_errors["run_idx"])
-        
+
         # Save resampled volumes
         if args.plot_aggregate_volume_errors:
-            save_polydata(resampled_volumes, output_dir, "resampled_volume", run_idx_list, extension="vtk")
+            save_polydata(
+                resampled_volumes,
+                output_dir,
+                "resampled_volume",
+                run_idx_list,
+                extension="vtk",
+            )
 
     else:
         # Load results from saved CSVs
@@ -339,8 +349,16 @@ if __name__ == "__main__":
     fig.savefig(f"./{output_dir}/volume_x_5_wake.png")
 
     if args.plot_aggregate_volume_errors:
-        true_fields = [args.field_mapping["p"], args.field_mapping["U"], args.field_mapping["nut"]]
-        pred_fields = [args.field_mapping["pPred"], args.field_mapping["UPred"], args.field_mapping["nutPred"]]
+        true_fields = [
+            args.field_mapping["p"],
+            args.field_mapping["U"],
+            args.field_mapping["nut"],
+        ]
+        pred_fields = [
+            args.field_mapping["pPred"],
+            args.field_mapping["UPred"],
+            args.field_mapping["nutPred"],
+        ]
         error_arrays = {f"{k}_error": [] for k in true_fields}
         for resampled_volume in resampled_volumes:
             for true_field, pred_field in zip(true_fields, pred_fields):
@@ -359,12 +377,12 @@ if __name__ == "__main__":
             resampled_volume.point_data[f"{k}_std"] = std
             fields_to_plot.append(f"{k}_mean")
             fields_to_plot.append(f"{k}_std")
-            
+
         resampled_volume.save(f"./{output_dir}/aggregate_resampled_volume.vtk")
-        
+
         y_slice = resampled_volume.slice(normal="y", origin=(0, 0, 0))
         plotter = plot_fields(
-            y_slice, 
+            y_slice,
             fields_to_plot,
             plot_vector_components=True,
             view="xz",
@@ -377,7 +395,7 @@ if __name__ == "__main__":
 
         z_slice = resampled_volume.slice(normal="z", origin=(0, 0, -0.2376))
         plotter = plot_fields(
-            z_slice, 
+            z_slice,
             fields_to_plot,
             plot_vector_components=True,
             view="xy",

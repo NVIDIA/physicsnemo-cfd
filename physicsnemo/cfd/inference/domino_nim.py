@@ -56,7 +56,7 @@ def call_domino_nim(
         Path to the point cloud file (.npy) to use for inference. If provided, the results
         will be computed on this point cloud instead of a random one.
     batch_size : str or int, optional
-        Batch size parameter to pass to the inference API. 
+        Batch size parameter to pass to the inference API.
 
     Returns
     -------
@@ -81,7 +81,7 @@ def call_domino_nim(
             "stencil_size": "1",
             "point_cloud_size": "500000",
         }
-    
+
     # Add batch_size to data if provided
     if batch_size is not None:
         data["batch_size"] = str(batch_size)
@@ -100,12 +100,15 @@ def call_domino_nim(
     # Open the STL file and send it to the NIM
     if point_cloud is not None:
         point_cloud_path = Path(point_cloud)
-        with open(output_file, "rb") as stl_file, open(point_cloud_path, "rb") as pc_file:
+        with (
+            open(output_file, "rb") as stl_file,
+            open(point_cloud_path, "rb") as pc_file,
+        ):
             files = {
                 "design_stl": (str(output_file), stl_file),
-                "point_cloud": (point_cloud_path.name, pc_file)
+                "point_cloud": (point_cloud_path.name, pc_file),
             }
-            
+
             if verbose:
                 print(
                     f"Sending POST request to DoMINO NIM inference API at {inference_api_url}..."
@@ -121,7 +124,7 @@ def call_domino_nim(
             files = {
                 "design_stl": (str(output_file), stl_file),
             }
-            
+
             if verbose:
                 print(
                     f"Sending POST request to DoMINO NIM inference API at {inference_api_url}..."

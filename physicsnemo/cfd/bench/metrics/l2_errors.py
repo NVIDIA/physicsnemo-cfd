@@ -193,12 +193,49 @@ def compute_area_weighted_l2_errors(data, true_fields, pred_fields, dtype="point
 
     return output_dict
 
-def compute_error_vs_sdf(data, true_fields, pred_fields, stl_mesh, bin_edges, bounds=None, dtype="point"):
+
+def compute_error_vs_sdf(
+    data, true_fields, pred_fields, stl_mesh, bin_edges, bounds=None, dtype="point"
+):
+    """Compute L2 error vs signed distance field (SDF) for a given mesh with true and pred fields
+
+    This function computes error metrics as a function of distance from a surface defined by an STL mesh.
+    The errors are binned based on the signed distance field values and mean errors are computed for each bin.
+
+    Parameters
+    ----------
+    data :
+        PyVista Dataset
+    true_fields :
+        List of fields to compute L2 errors for. Should contain the names of true fields.
+    pred_fields :
+        List of fields to compute L2 errors for. Should contain the names of predicted fields.
+    stl_mesh :
+        PyVista mesh object representing the surface for SDF computation
+    bin_edges :
+        Array defining the bin edges for SDF-based error analysis
+    bounds :
+        Bounds if clipping of the data is required. Bounds must be in following format
+        [xmin, xmax, ymin, ymax, zmin, zmax], by default None, which uses entire data
+    dtype : str, optional
+        Whether to compute errors from cell data or point data, by default "point"
+
+    Returns
+    -------
+    dict
+        Output dictionary containing L2 error histograms with bin edges and mean errors for each field.
+        For vector fields, returns magnitude of error. For scalar fields, returns absolute error.
+        Each field entry contains:
+        - "bin_edges": List of SDF bin edges
+        - "mean_errors": List of mean errors for each SDF bin
+    """
     stl_vertices = stl_mesh.points
     stl_indices = np.arange(0, stl_mesh.points.shape[0])
 
-    sdf_field = signed_distance_field(stl_vertices, stl_indices, data.points, use_sign_winding_number=True)
-    
+    sdf_field = signed_distance_field(
+        stl_vertices, stl_indices, data.points, use_sign_winding_number=True
+    )
+
     true_fields_list = true_fields
     pred_fields_list = pred_fields
 

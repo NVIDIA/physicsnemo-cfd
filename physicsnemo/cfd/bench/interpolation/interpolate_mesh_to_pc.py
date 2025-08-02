@@ -19,9 +19,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 
-def _create_nbrs_surface(
-    coords_source, n_neighbors=5, device="cpu"
-):
+def _create_nbrs_surface(coords_source, n_neighbors=5, device="cpu"):
     if device == "cpu":
         nbrs_surface = cKDTree(coords_source)
     elif device == "gpu":
@@ -38,12 +36,17 @@ def _create_nbrs_surface(
 
 
 def _interpolate(
-    nbrs_surface, coords_target, field, device="cpu", batch_size=1_000_000, n_neighbors=5
+    nbrs_surface,
+    coords_target,
+    field,
+    device="cpu",
+    batch_size=1_000_000,
+    n_neighbors=5,
 ):
 
     if device == "cpu":
         distances, indices = nbrs_surface.query(coords_target, k=n_neighbors, workers=8)
-               
+
         epsilon = 1e-8
         weights = 1 / (distances + epsilon)
         weights_sum = np.sum(weights, axis=1, keepdims=True)
@@ -110,16 +113,14 @@ def interpolate_mesh_to_pc(pc, mesh, fields_to_interpolate, mesh_dtype="cell"):
         Point cloud with interpolated values
     """
     k = 5
-    
+
     if mesh_dtype == "point":
         source_points = mesh.points
     elif mesh_dtype == "cell":
         cell_centers = mesh.cell_centers()
         source_points = cell_centers.points
-    
-    nbrs_surface = _create_nbrs_surface(
-        source_points, n_neighbors=k
-    )
+
+    nbrs_surface = _create_nbrs_surface(source_points, n_neighbors=k)
 
     if mesh_dtype == "point":
         # TODO: Possible to vectorize
