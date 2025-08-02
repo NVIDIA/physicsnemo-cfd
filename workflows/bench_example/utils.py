@@ -20,6 +20,7 @@ import re
 import pyvista as pv
 import pandas as pd
 import warnings
+import numpy as np
 
 from physicsnemo.cfd.bench.metrics.aero_forces import compute_drag_and_lift
 from physicsnemo.cfd.bench.metrics.l2_errors import (
@@ -34,7 +35,10 @@ from physicsnemo.cfd.bench.metrics.physics import (
     compute_continuity_residuals,
     compute_momentum_residuals,
 )
-from physicsnemo.cfd.bench.visualization.utils import plot_field_comparisons
+from physicsnemo.cfd.bench.visualization.utils import (
+    get_visible_point_indices,
+    plot_field_comparisons,
+)
 
 
 def load_mapping(s):
@@ -44,7 +48,7 @@ def load_mapping(s):
     return json.loads(s)
 
 
-def process_surface_results(filenames, field_mapping):
+def process_surface_results(filenames, field_mapping, compute_projections=False):
     mesh_filename, pc_filename = filenames[0], filenames[1]
     results = {}
     if pc_filename is None:
@@ -55,9 +59,21 @@ def process_surface_results(filenames, field_mapping):
     run_idx = re.search(r"(\d+)(?=\D*$)", mesh_filename).group()
     results["run_idx"] = run_idx
 
+    # Read mesh
+    reader = pv.get_reader(mesh_filename)
+    reader.disable_all_point_arrays()
+    reader.disable_all_cell_arrays()
+
+    for field in field_mapping.values():
+        if field in reader.point_array_names:
+            reader.enable_point_array(field)
+        elif field in reader.cell_array_names:
+            reader.enable_cell_array(field)
+
+    mesh = reader.read()
+    mesh = mesh.point_data_to_cell_data(pass_point_data=True)
+
     # compute drag and lift coefficients
-    mesh = pv.read(mesh_filename)
-    mesh = mesh.point_data_to_cell_data()
     (
         results["Cd_true"],
         results["Cd_p_true"],
@@ -184,23 +200,87 @@ def process_surface_results(filenames, field_mapping):
         results["Cl_p_pred_pc"] = None
         results["Cl_f_pred_pc"] = None
 
+    # Compute the projections
+    if compute_projections:
+        camera_directions = {
+            "XY": "xy",  # +z
+            "YZ": "yz",  # +x
+            "ZX": "xz",  # +y
+            "-XY": (0, 0, -1),  # -z
+            "-YZ": (-1, 0, 0),  # -x
+            "-ZX": (0, -1, 0),  # -y
+        }
+
+        mesh = mesh.cell_data_to_point_data(pass_cell_data=True)
+        for cam_dir in camera_directions.keys():
+            idx_visible = get_visible_point_indices(mesh, camera_directions[cam_dir])
+            if len(idx_visible) == 0:
+                continue
+
+            # assemble coordinates
+            pts = mesh.points[idx_visible]
+            if cam_dir in ["XY", "-XY"]:
+                x = pts[:, 0] if cam_dir == "XY" else -pts[:, 0]
+                y = pts[:, 1]
+            elif cam_dir in ["YZ", "-YZ"]:
+                x = pts[:, 1]
+                y = pts[:, 2] if cam_dir == "YZ" else -pts[:, 2]
+            elif cam_dir in ["ZX", "-ZX"]:
+                x = pts[:, 2]
+                y = pts[:, 0] if cam_dir == "ZX" else -pts[:, 0]
+
+            # assemble fields
+            z = np.zeros_like(x)
+            proj_points = np.column_stack((x, y, z))
+            proj_pc = pv.PolyData(proj_points)
+            proj_pc["p_error"] = np.abs(
+                mesh.point_data[field_mapping["pPred"]][idx_visible]
+                - mesh.point_data[field_mapping["p"]][idx_visible]
+            )
+            proj_pc["wallShearStress_error"] = np.linalg.norm(
+                np.abs(
+                    mesh.point_data[field_mapping["wallShearStressPred"]][idx_visible]
+                    - mesh.point_data[field_mapping["wallShearStress"]][idx_visible]
+                ),
+                axis=1,
+            )
+
+            results[f"projection_{cam_dir}"] = proj_pc
+    else:
+        # Initialize empty projections if not computing them
+        for cam_dir in ["XY", "-XY", "YZ", "-YZ", "ZX", "-ZX"]:
+            results[f"projection_{cam_dir}"] = None
+
     return results
 
 
 def process_volume_results(
     mesh_filename,
     field_mapping,
+    bounds=[-3.5, 8.5, -2.25, 2.25, -0.32, 3.00],
     nu=None,
     rho=None,
     compute_continuity_metrics=False,
     compute_momentum_metrics=False,
+    compute_on_resampled_grid=False,
+    voxel_size=0.03,
 ):
     results = {}
     print(f"Processing: {mesh_filename}")
     run_idx = re.search(r"(\d+)(?=\D*$)", mesh_filename).group()
     results["run_idx"] = run_idx
 
-    mesh = pv.read(mesh_filename)
+    reader = pv.get_reader(mesh_filename)
+    reader.disable_all_point_arrays()
+    reader.disable_all_cell_arrays()
+
+    for field in field_mapping.values():
+        if field in reader.point_array_names:
+            reader.enable_point_array(field)
+        elif field in reader.cell_array_names:
+            reader.enable_cell_array(field)
+
+    mesh = reader.read()
     l2_errors_true_fields = [
         field_mapping["p"],
         field_mapping["U"],
@@ -261,7 +341,7 @@ def process_volume_results(
         mesh,
         l2_errors_true_fields,
         l2_errors_pred_fields,
-        bounds=[-3.5, 8.5, -2.25, 2.25, -0.32, 3.00],
+        bounds=bounds,
         dtype="point",
     )
 
@@ -277,12 +357,36 @@ def process_volume_results(
     x_slice = mesh.slice(normal="x", origin=(5, 0, 0))
     results["wake_x_5"] = x_slice.slice(normal="y", origin=(0, 0, 0))
 
+    # Resample the volume
+    if compute_on_resampled_grid:
+        x = np.arange(bounds[0], bounds[1] + voxel_size, voxel_size)
+        y = np.arange(bounds[2], bounds[3] + voxel_size, voxel_size)
+        z = np.arange(bounds[4], bounds[5] + voxel_size, voxel_size)
+        x, y, z = np.meshgrid(x, y, z, indexing="ij")
+        grid = pv.StructuredGrid(x, y, z)
+        grid = interpolate_mesh_to_pc(
+            grid, mesh, field_mapping.values(), mesh_dtype="point"
+        )
+        results["resampled_volume"] = grid
+    else:
+        results["resampled_volume"] = None
+
     return results
 
 
 def plot_surface_results(filename, field_mapping, output_dir):
     run_idx = re.search(r"(\d+)(?=\D*$)", filename).group()
-    mesh = pv.read(filename)
+    reader = pv.get_reader(filename)
+    reader.disable_all_point_arrays()
+    reader.disable_all_cell_arrays()
+
+    for field in field_mapping.values():
+        if field in reader.point_array_names:
+            reader.enable_point_array(field)
+        elif field in reader.cell_array_names:
+            reader.enable_cell_array(field)
+
+    mesh = reader.read()
     mesh = mesh.point_data_to_cell_data()
 
     default_scalar_bar_args = {
@@ -359,7 +463,17 @@ def plot_volume_results(
     bounds=[-3.5, 8.5, -2.25, 2.25, -0.32, 3.00],
 ):
     run_idx = re.search(r"(\d+)(?=\D*$)", filename).group()
-    mesh = pv.read(filename)
+    reader = pv.get_reader(filename)
+    reader.disable_all_point_arrays()
+    reader.disable_all_cell_arrays()
+
+    for field in field_mapping.values():
+        if field in reader.point_array_names:
+            reader.enable_point_array(field)
+        elif field in reader.cell_array_names:
+            reader.enable_cell_array(field)
+
+    mesh = reader.read()
 
     default_scalar_bar_args = {
         "title_font_size": 42,
@@ -478,17 +592,17 @@ def load_results_from_csv(filename):
     return None
 
 
-def save_vtps(vtps, directory, prefix, run_idx):
-    for idx, vtp in zip(run_idx, vtps):
-        vtp.save(os.path.join(directory, f"{prefix}_{idx}.vtp"))
+def save_polydata(meshes, directory, prefix, run_idx, extension="vtp"):
+    for idx, mesh in zip(run_idx, meshes):
+        mesh.save(os.path.join(directory, f"{prefix}_{idx}.{extension}"))
 
 
-def load_vtps(directory, prefix, run_idx):
-    vtps = []
+def load_polydata(directory, prefix, run_idx, extension="vtp"):
+    meshes = []
     for idx in run_idx:
-        filepath = os.path.join(directory, f"{prefix}_{idx}.vtp")
+        filepath = os.path.join(directory, f"{prefix}_{idx}.{extension}")
         if os.path.exists(filepath):
-            vtps.append(pv.read(filepath))
+            meshes.append(pv.read(filepath))
         else:
             return None
-    return vtps
+    return meshes

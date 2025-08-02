@@ -16,16 +16,12 @@
 
 import pyvista as pv
 import numpy as np
-from sklearn.neighbors import NearestNeighbors
+from scipy.spatial import cKDTree
 
 
-def _create_nbrs_surface(
-    coords_source, n_neighbors=5, algorithm="ball_tree", device="cpu"
-):
+def _create_nbrs_surface(coords_source, n_neighbors=5, device="cpu"):
     if device == "cpu":
-        nbrs_surface = NearestNeighbors(
-            n_neighbors=n_neighbors, algorithm=algorithm
-        ).fit(coords_source)
+        nbrs_surface = cKDTree(coords_source)
     elif device == "gpu":
         import cupy as cp
         from cuml.neighbors import NearestNeighbors as NearestNeighborsGPU
@@ -40,12 +36,17 @@ def _create_nbrs_surface(
 
 
 def _interpolate(
-    nbrs_surface, coords_target, field, device="cpu", batch_size=1_000_000
+    nbrs_surface,
+    coords_target,
+    field,
+    device="cpu",
+    batch_size=1_000_000,
+    n_neighbors=5,
 ):
 
     if device == "cpu":
-        # Find the k nearest neighbors and their distances
-        distances, indices = nbrs_surface.kneighbors(coords_target)
+        distances, indices = nbrs_surface.query(coords_target, k=n_neighbors, workers=8)
+
         epsilon = 1e-8
         weights = 1 / (distances + epsilon)
         weights_sum = np.sum(weights, axis=1, keepdims=True)
@@ -92,7 +93,7 @@ def _interpolate(
     return field_interp
 
 
-def interpolate_mesh_to_pc(pc, mesh, fields_to_interpolate):
+def interpolate_mesh_to_pc(pc, mesh, fields_to_interpolate, mesh_dtype="cell"):
     """Interpolate mesh results on a point cloud using inverse weighted kNN
 
     Parameters
@@ -103,26 +104,35 @@ def interpolate_mesh_to_pc(pc, mesh, fields_to_interpolate):
         Mesh for the source values (PyVista Dataset)
     fields_to_interpolate :
         List of fields (str) to interpolate (must be present in the mesh dataset)
+    mesh_dtype :
+        Whether the mesh fields are of point or cell type. Default cell.
 
     Returns
     -------
     _type_
         Point cloud with interpolated values
     """
-    mesh = mesh.compute_normals()
-    mesh = mesh.compute_cell_sizes()
     k = 5
-    cell_centers = mesh.cell_centers()
-    surface_cell_centers = cell_centers.points
 
-    # Fit the kNN model
-    nbrs_surface = _create_nbrs_surface(
-        surface_cell_centers, n_neighbors=k, algorithm="ball_tree"
-    )
+    if mesh_dtype == "point":
+        source_points = mesh.points
+    elif mesh_dtype == "cell":
+        cell_centers = mesh.cell_centers()
+        source_points = cell_centers.points
 
-    for field in fields_to_interpolate:
-        pc.point_data[field] = _interpolate(
-            nbrs_surface, pc.points, mesh.cell_data[field]
-        )
+    nbrs_surface = _create_nbrs_surface(source_points, n_neighbors=k)
+
+    if mesh_dtype == "point":
+        # TODO: Possible to vectorize
+        for field in fields_to_interpolate:
+            pc.point_data[field] = _interpolate(
+                nbrs_surface, pc.points, mesh.point_data[field], n_neighbors=k
+            )
+    elif mesh_dtype == "cell":
+        # TODO: Possible to vectorize
+        for field in fields_to_interpolate:
+            pc.point_data[field] = _interpolate(
+                nbrs_surface, pc.points, mesh.cell_data[field], n_neighbors=k
+            )
 
     return pc

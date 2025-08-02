@@ -21,6 +21,7 @@ dependencies = [
     "scipy>=1.15.0",
     "matplotlib>=3.10.0",
     "trimesh>=4.6.9",
+    "nvidia-physicsnemo>=1.1.1",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

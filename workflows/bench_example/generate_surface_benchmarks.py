@@ -31,6 +31,7 @@ from physicsnemo.cfd.bench.visualization.utils import (
     plot_design_scatter,
     plot_design_trend,
     plot_line,
+    plot_projections_hexbin,
 )
 
 from utils import (
@@ -39,8 +40,8 @@ from utils import (
     plot_surface_results,
     save_results_to_csv,
     load_results_from_csv,
-    save_vtps,
-    load_vtps,
+    save_polydata,
+    load_polydata,
 )
 
 if __name__ == "__main__":
@@ -86,7 +87,13 @@ if __name__ == "__main__":
         },
         help='mapping of field names to use for benchmarking, either as a path to a json file or a json string. Example: --field-mapping \'{"p": "pMeanTrim", "wallShearStress": "wallShearStressMeanTrim", "pPred": "pMeanTrimPred", "wallShearStressPred": "wallShearStressMeanTrimPred"}\'',
     )
-
+    parser.add_argument(
+        "--plot-aggregate-surface-errors",
+        type=bool,
+        action="store_true",
+        default=False,
+        help="whether to plot the aggregated surface results",
+    )
     args = parser.parse_args()
 
     sim_mesh_results_dir = args.sim_results_dir
@@ -130,8 +137,16 @@ if __name__ == "__main__":
     l2_errors = load_results_from_csv(l2_errors_csv)
     l2_errors_area_wt = load_results_from_csv(l2_errors_area_wt_csv)
     l2_errors_pc = load_results_from_csv(l2_errors_pc_csv)
-    top_centerlines = load_vtps(output_dir, "top_centerline", run_idx_list)
-    bottom_centerlines = load_vtps(output_dir, "bottom_centerline", run_idx_list)
+    top_centerlines = load_polydata(output_dir, "top_centerline", run_idx_list)
+    bottom_centerlines = load_polydata(output_dir, "bottom_centerline", run_idx_list)
+
+    if args.plot_aggregate_surface_errors:
+        pos_xy_projections = load_polydata(output_dir, "projection_XY", run_idx_list)
+        neg_xy_projections = load_polydata(output_dir, "projection_-XY", run_idx_list)
+        pos_yz_projections = load_polydata(output_dir, "projection_YZ", run_idx_list)
+        neg_yz_projections = load_polydata(output_dir, "projection_-YZ", run_idx_list)
+        pos_zx_projections = load_polydata(output_dir, "projection_ZX", run_idx_list)
+        neg_zx_projections = load_polydata(output_dir, "projection_-ZX", run_idx_list)
 
     if (
         not results
@@ -143,7 +158,11 @@ if __name__ == "__main__":
         # Process the data if any of the required files are missing
         with Pool(processes=args.num_procs) as pool:
             mesh_results = pool.map(
-                partial(process_surface_results, field_mapping=args.field_mapping),
+                partial(
+                    process_surface_results,
+                    field_mapping=args.field_mapping,
+                    compute_projections=args.plot_aggregate_surface_errors,
+                ),
                 filenames,
             )
 
@@ -178,6 +197,7 @@ if __name__ == "__main__":
             "Cl_p_pred_pc": [],
             "Cl_f_pred_pc": [],
         }
+
         l2_errors = {"run_idx": []}
         for key in mesh_results[0]["l2_errors"].keys():
             l2_errors[key] = []
@@ -194,6 +214,12 @@ if __name__ == "__main__":
 
         top_centerlines = []
         bottom_centerlines = []
+        pos_xy_projections = []
+        neg_xy_projections = []
+        pos_yz_projections = []
+        neg_yz_projections = []
+        pos_zx_projections = []
+        neg_zx_projections = []
 
         for mesh_result in mesh_results:
             results["run_idx"].append(mesh_result["run_idx"])
@@ -241,6 +267,12 @@ if __name__ == "__main__":
 
             top_centerlines.append(mesh_result["centerline_top"])
             bottom_centerlines.append(mesh_result["centerline_bottom"])
+            pos_xy_projections.append(mesh_result["projection_XY"])
+            neg_xy_projections.append(mesh_result["projection_-XY"])
+            pos_yz_projections.append(mesh_result["projection_YZ"])
+            neg_yz_projections.append(mesh_result["projection_-YZ"])
+            pos_zx_projections.append(mesh_result["projection_ZX"])
+            neg_zx_projections.append(mesh_result["projection_-ZX"])
 
         # Save results to CSV
         save_results_to_csv(results, results_csv, results.keys())
@@ -254,10 +286,32 @@ if __name__ == "__main__":
             save_results_to_csv(l2_errors_pc, l2_errors_pc_csv, l2_errors_pc.keys())
 
         # Save centerlines
-        save_vtps(top_centerlines, output_dir, "top_centerline", results["run_idx"])
-        save_vtps(
+        save_polydata(top_centerlines, output_dir, "top_centerline", results["run_idx"])
+        save_polydata(
             bottom_centerlines, output_dir, "bottom_centerline", results["run_idx"]
         )
+
+        # Save projections
+        if args.plot_aggregate_surface_errors:
+            save_polydata(
+                pos_xy_projections, output_dir, "projection_XY", results["run_idx"]
+            )
+            save_polydata(
+                neg_xy_projections, output_dir, "projection_-XY", results["run_idx"]
+            )
+            save_polydata(
+                pos_yz_projections, output_dir, "projection_YZ", results["run_idx"]
+            )
+            save_polydata(
+                neg_yz_projections, output_dir, "projection_-YZ", results["run_idx"]
+            )
+            save_polydata(
+                pos_zx_projections, output_dir, "projection_ZX", results["run_idx"]
+            )
+            save_polydata(
+                neg_zx_projections, output_dir, "projection_-ZX", results["run_idx"]
+            )
+
     else:
         # Load mesh_results from the saved CSVs
         mesh_results = []
@@ -288,6 +342,18 @@ if __name__ == "__main__":
                 "centerline_top": top_centerlines[i],
                 "centerline_bottom": bottom_centerlines[i],
             }
+
+            if args.plot_aggregate_surface_errors:
+                mesh_result.update(
+                    {
+                        "projection_XY": pos_xy_projections[i],
+                        "projection_-XY": neg_xy_projections[i],
+                        "projection_YZ": pos_yz_projections[i],
+                        "projection_-YZ": neg_yz_projections[i],
+                        "projection_ZX": pos_zx_projections[i],
+                        "projection_-ZX": neg_zx_projections[i],
+                    }
+                )
 
             if args.pc_results_dir:
                 mesh_result.update(
@@ -349,6 +415,13 @@ if __name__ == "__main__":
         idx_dict["Cl"].append(mesh_result["run_idx"])
         top_centerlines.append(mesh_result["centerline_top"])
         bottom_centerlines.append(mesh_result["centerline_bottom"])
+        if args.plot_aggregate_surface_errors:
+            pos_xy_projections.append(mesh_result["projection_XY"])
+            neg_xy_projections.append(mesh_result["projection_-XY"])
+            pos_yz_projections.append(mesh_result["projection_YZ"])
+            neg_yz_projections.append(mesh_result["projection_-YZ"])
+            pos_zx_projections.append(mesh_result["projection_ZX"])
+            neg_zx_projections.append(mesh_result["projection_-ZX"])
 
         for key, value in mesh_result["l2_errors"].items():
             mean_l2_errors[key].append(value)
@@ -447,6 +520,20 @@ if __name__ == "__main__":
     )
     fig.savefig(f"./{output_dir}/bottom_centerline.png")
 
+    if args.plot_aggregate_surface_errors:
+        fig = plot_projections_hexbin(pos_xy_projections, "p_error", "XY")
+        fig.savefig(f"./{output_dir}/hexbin_p_error_XY.png", dpi=300)
+        fig = plot_projections_hexbin(pos_xy_projections, "wallShearStress_error", "XY")
+        fig.savefig(f"./{output_dir}/hexbin_wallShearStress_error_XY.png", dpi=300)
+        fig = plot_projections_hexbin(pos_yz_projections, "p_error", "YZ")
+        fig.savefig(f"./{output_dir}/hexbin_p_error_YZ.png", dpi=300)
+        fig = plot_projections_hexbin(pos_yz_projections, "wallShearStress_error", "YZ")
+        fig.savefig(f"./{output_dir}/hexbin_wallShearStress_error_YZ.png", dpi=300)
+        fig = plot_projections_hexbin(pos_zx_projections, "p_error", "ZX")
+        fig.savefig(f"./{output_dir}/hexbin_p_error_ZX.png", dpi=300)
+        fig = plot_projections_hexbin(pos_zx_projections, "wallShearStress_error", "ZX")
+        fig.savefig(f"./{output_dir}/hexbin_wallShearStress_error_ZX.png", dpi=300)
+
     for key, value in mean_l2_errors.items():
         print(f"L2 Errors for {key}: {value}")
 
@@ -457,20 +544,21 @@ if __name__ == "__main__":
         for key, value in mean_l2_errors_pc.items():
             print(f"L2 Errors for PC, {key}: {value}")
 
-    plot_filenames = []
-    for filename in mesh_filenames:
-        run_idx = re.search(r"(\d+)(?=\D*$)", filename).group()
+    if args.contour_plot_ids is not None:
+        plot_filenames = []
+        for filename in mesh_filenames:
+            run_idx = re.search(r"(\d+)(?=\D*$)", filename).group()
 
-        if run_idx in args.contour_plot_ids:
-            plot_filenames.append(filename)
+            if run_idx in args.contour_plot_ids:
+                plot_filenames.append(filename)
 
-    print(f"Plotting contour plots for {args.contour_plot_ids}")
-    with Pool(processes=args.num_procs) as pool:
-        _ = pool.map(
-            partial(
-                plot_surface_results,
-                field_mapping=args.field_mapping,
-                output_dir=args.output_dir,
-            ),
-            plot_filenames,
-        )
+        print(f"Plotting contour plots for {args.contour_plot_ids}")
+        with Pool(processes=args.num_procs) as pool:
+            _ = pool.map(
+                partial(
+                    plot_surface_results,
+                    field_mapping=args.field_mapping,
+                    output_dir=args.output_dir,
+                ),
+                plot_filenames,
+            )

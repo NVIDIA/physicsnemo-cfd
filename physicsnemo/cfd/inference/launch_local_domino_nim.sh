@@ -55,4 +55,4 @@ docker run \
     --shm-size 2g \
     -p ${PORT_TO_USE}:${PORT_TO_USE} \
     -e NGC_API_KEY \
-    -t nvcr.io/nim/nvidia/domino-automotive-aero:1.0.0
+    -t nvcr.io/nim/nvidia/domino-automotive-aero:2.0.0

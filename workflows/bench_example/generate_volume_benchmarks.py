@@ -27,19 +27,20 @@ import argparse
 import json
 from functools import partial
 import vtk
+import numpy as np
 
 vtk.vtkObject.GlobalWarningDisplayOff()
 
 
-from physicsnemo.cfd.bench.visualization.utils import plot_line
+from physicsnemo.cfd.bench.visualization.utils import plot_line, plot_fields
 from utils import (
     load_mapping,
     process_volume_results,
     plot_volume_results,
     save_results_to_csv,
     load_results_from_csv,
-    save_vtps,
-    load_vtps,
+    save_polydata,
+    load_polydata,
 )
 
 if __name__ == "__main__":
@@ -81,13 +82,32 @@ if __name__ == "__main__":
         },
         help='mapping of field names to use for benchmarking, either as a path to a json file or a json string. Example: --field-mapping \'{"p": "pMeanTrim", "wallShearStress": "wallShearStressMeanTrim", "pPred": "pMeanTrimPred", "wallShearStressPred": "wallShearStressMeanTrimPred"}\'',
     )
+    parser.add_argument(
+        "--plot-aggregate-volume-errors",
+        action="store_true",
+        default=False,
+        help="whether to plot the aggregated volume results",
+    )
+    parser.add_argument(
+        "--compute-continuity-metrics",
+        action="store_true",
+        default=False,
+        help="whether to compute the continuity metrics",
+    )
+    parser.add_argument(
+        "--compute-momentum-metrics",
+        action="store_true",
+        default=False,
+        help="whether to compute the momentum metrics",
+    )
 
     args = parser.parse_args()
 
-    compute_continuity_metrics = True
-    compute_momentum_metrics = False
-    plot_continuity_metrics = True
-    plot_momentum_metrics = True
+    compute_continuity_metrics = args.compute_continuity_metrics
+    compute_momentum_metrics = args.compute_momentum_metrics
+    compute_on_resampled_grid = args.plot_aggregate_volume_errors
+    plot_continuity_metrics = args.compute_continuity_metrics
+    plot_momentum_metrics = args.compute_momentum_metrics
     sim_mesh_results_dir = args.sim_results_dir
 
     mesh_filenames = glob.glob(os.path.join(sim_mesh_results_dir, "*.vtu"))
@@ -105,11 +125,16 @@ if __name__ == "__main__":
     l2_errors_csv = os.path.join(output_dir, "l2_errors.csv")
     l2_errors = load_results_from_csv(l2_errors_csv)
 
-    centerlines_bottom = load_vtps(output_dir, "centerline_bottom", run_idx_list)
-    front_wheel_wakes = load_vtps(output_dir, "front_wheel_wake", run_idx_list)
-    rear_wheel_wakes = load_vtps(output_dir, "rear_wheel_wake", run_idx_list)
-    wakes_x_4 = load_vtps(output_dir, "wake_x_4", run_idx_list)
-    wakes_x_5 = load_vtps(output_dir, "wake_x_5", run_idx_list)
+    centerlines_bottom = load_polydata(output_dir, "centerline_bottom", run_idx_list)
+    front_wheel_wakes = load_polydata(output_dir, "front_wheel_wake", run_idx_list)
+    rear_wheel_wakes = load_polydata(output_dir, "rear_wheel_wake", run_idx_list)
+    wakes_x_4 = load_polydata(output_dir, "wake_x_4", run_idx_list)
+    wakes_x_5 = load_polydata(output_dir, "wake_x_5", run_idx_list)
+
+    if args.plot_aggregate_volume_errors:
+        resampled_volumes = load_polydata(
+            output_dir, "resampled_volume", run_idx_list, extension="vtk"
+        )
 
     if (
         not l2_errors
@@ -127,6 +152,7 @@ if __name__ == "__main__":
                     field_mapping=args.field_mapping,
                     compute_continuity_metrics=compute_continuity_metrics,
                     compute_momentum_metrics=compute_momentum_metrics,
+                    compute_on_resampled_grid=compute_on_resampled_grid,
                 ),
                 mesh_filenames,
             )
@@ -141,6 +167,7 @@ if __name__ == "__main__":
         rear_wheel_wakes = []
         wakes_x_4 = []
         wakes_x_5 = []
+        resampled_volumes = []
 
         for mesh_result in mesh_results:
             l2_errors["run_idx"].append(mesh_result["run_idx"])
@@ -152,20 +179,33 @@ if __name__ == "__main__":
             rear_wheel_wakes.append(mesh_result["rear_wheel_wake"])
             wakes_x_4.append(mesh_result["wake_x_4"])
             wakes_x_5.append(mesh_result["wake_x_5"])
+            resampled_volumes.append(mesh_result["resampled_volume"])
 
         # Save results to CSV
         save_results_to_csv(l2_errors, l2_errors_csv, l2_errors.keys())
 
         # Save vtps
-        save_vtps(
+        save_polydata(
             centerlines_bottom, output_dir, "centerline_bottom", l2_errors["run_idx"]
         )
-        save_vtps(
+        save_polydata(
             front_wheel_wakes, output_dir, "front_wheel_wake", l2_errors["run_idx"]
         )
-        save_vtps(rear_wheel_wakes, output_dir, "rear_wheel_wake", l2_errors["run_idx"])
-        save_vtps(wakes_x_4, output_dir, "wake_x_4", l2_errors["run_idx"])
-        save_vtps(wakes_x_5, output_dir, "wake_x_5", l2_errors["run_idx"])
+        save_polydata(
+            rear_wheel_wakes, output_dir, "rear_wheel_wake", l2_errors["run_idx"]
+        )
+        save_polydata(wakes_x_4, output_dir, "wake_x_4", l2_errors["run_idx"])
+        save_polydata(wakes_x_5, output_dir, "wake_x_5", l2_errors["run_idx"])
+
+        # Save resampled volumes
+        if args.plot_aggregate_volume_errors:
+            save_polydata(
+                resampled_volumes,
+                output_dir,
+                "resampled_volume",
+                run_idx_list,
+                extension="vtk",
+            )
 
     else:
         # Load results from saved CSVs
@@ -182,6 +222,14 @@ if __name__ == "__main__":
                 "wake_x_4": wakes_x_4[i],
                 "wake_x_5": wakes_x_5[i],
             }
+
+            if args.plot_aggregate_volume_errors:
+                mesh_result.update(
+                    {
+                        "resampled_volume": resampled_volumes[i],
+                    }
+                )
+
             mesh_results.append(mesh_result)
 
     centerlines_bottom = []
@@ -300,22 +348,81 @@ if __name__ == "__main__":
     )
     fig.savefig(f"./{output_dir}/volume_x_5_wake.png")
 
-    plot_filenames = []
-    for filename in mesh_filenames:
-        run_idx = re.search(r"(\d+)(?=\D*$)", filename).group()
+    if args.plot_aggregate_volume_errors:
+        true_fields = [
+            args.field_mapping["p"],
+            args.field_mapping["U"],
+            args.field_mapping["nut"],
+        ]
+        pred_fields = [
+            args.field_mapping["pPred"],
+            args.field_mapping["UPred"],
+            args.field_mapping["nutPred"],
+        ]
+        error_arrays = {f"{k}_error": [] for k in true_fields}
+        for resampled_volume in resampled_volumes:
+            for true_field, pred_field in zip(true_fields, pred_fields):
+                error = np.abs(
+                    resampled_volume.point_data[true_field]
+                    - resampled_volume.point_data[pred_field]
+                )
+                error_arrays[f"{true_field}_error"].append(error)
 
-        if run_idx in args.contour_plot_ids:
-            plot_filenames.append(filename)
+        resampled_volume = resampled_volumes[0]
+        fields_to_plot = []
+        for k, v in error_arrays.items():
+            mean = np.mean(np.stack(v, axis=0), axis=0)
+            std = np.std(np.stack(v, axis=0), axis=0)
+            resampled_volume.point_data[f"{k}_mean"] = mean
+            resampled_volume.point_data[f"{k}_std"] = std
+            fields_to_plot.append(f"{k}_mean")
+            fields_to_plot.append(f"{k}_std")
 
-    print(f"Plotting contour plots for {args.contour_plot_ids}")
-    with Pool(processes=args.num_procs) as pool:
-        _ = pool.map(
-            partial(
-                plot_volume_results,
-                field_mapping=args.field_mapping,
-                output_dir=args.output_dir,
-                compute_continuity_metrics=plot_continuity_metrics,
-                compute_momentum_metrics=plot_momentum_metrics,
-            ),
-            plot_filenames,
+        resampled_volume.save(f"./{output_dir}/aggregate_resampled_volume.vtk")
+
+        y_slice = resampled_volume.slice(normal="y", origin=(0, 0, 0))
+        plotter = plot_fields(
+            y_slice,
+            fields_to_plot,
+            plot_vector_components=True,
+            view="xz",
+            dtype="point",
+            cmap="jet",
+            lut=20,
+            window_size=[1280, 3840],
         )
+        plotter.screenshot(f"./{output_dir}/aggregate_volume_y_slice.png")
+
+        z_slice = resampled_volume.slice(normal="z", origin=(0, 0, -0.2376))
+        plotter = plot_fields(
+            z_slice,
+            fields_to_plot,
+            plot_vector_components=True,
+            view="xy",
+            dtype="point",
+            cmap="jet",
+            lut=20,
+            window_size=[1280, 3840],
+        )
+        plotter.screenshot(f"./{output_dir}/aggregate_volume_z_slice.png")
+
+    if args.contour_plot_ids is not None:
+        plot_filenames = []
+        for filename in mesh_filenames:
+            run_idx = re.search(r"(\d+)(?=\D*$)", filename).group()
+
+            if run_idx in args.contour_plot_ids:
+                plot_filenames.append(filename)
+
+        print(f"Plotting contour plots for {args.contour_plot_ids}")
+        with Pool(processes=args.num_procs) as pool:
+            _ = pool.map(
+                partial(
+                    plot_volume_results,
+                    field_mapping=args.field_mapping,
+                    output_dir=args.output_dir,
+                    compute_continuity_metrics=plot_continuity_metrics,
+                    compute_momentum_metrics=plot_momentum_metrics,
+                ),
+                plot_filenames,
+            )

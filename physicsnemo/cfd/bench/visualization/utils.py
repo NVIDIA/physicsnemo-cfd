@@ -20,6 +20,8 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import r2_score
 from scipy.stats import spearmanr
 from scipy.interpolate import interp1d
+import vtk
+from scipy.spatial import cKDTree
 
 pv.start_xvfb()
 
@@ -363,6 +365,168 @@ def plot_field_comparisons(
                     scalar_bar_args=err_scalar_bar_args,
                 )
                 plotter.add_text(f"|{true_field} - {pred_field}|")
+                if view == "xy":
+                    plotter.view_xy(negative=view_negative)
+                elif view == "yz":
+                    plotter.view_yz(negative=view_negative)
+                elif view == "xz":
+                    plotter.view_xz(negative=view_negative)
+
+                plot_idx += 1
+
+    return plotter
+
+
+def plot_fields(
+    data,
+    fields,
+    view="xy",
+    dtype="cell",
+    plot_vector_components=False,
+    window_size=[2560, 3840],
+    view_negative=False,
+    **kwargs,
+):
+    """Helper function to plot fields"""
+
+    # identify vector and scalar quantities
+    field_type = {}
+    for field in fields:
+        arr = data.get_array(field, preference=dtype)
+        if len(arr.shape) == 1:
+            field_type[field] = "scalar"
+        else:
+            field_type[field] = "vector"
+
+    num_vector_fields = sum(1 for key, value in field_type.items() if value == "vector")
+    num_scalar_fields = sum(1 for key, value in field_type.items() if value == "scalar")
+
+    if plot_vector_components:
+        plotter = pv.Plotter(
+            shape=((num_vector_fields * 3 + num_scalar_fields), 1),
+            window_size=window_size,
+            off_screen=True,
+        )
+    else:
+        plotter = pv.Plotter(
+            shape=((num_vector_fields + num_scalar_fields), 1),
+            window_size=window_size,
+            off_screen=True,
+        )
+
+    cmap = plt.get_cmap(kwargs.get("cmap", "viridis"), lut=kwargs.get("lut", None))
+
+    plot_idx = 0
+    for field in fields:
+        if field_type[field] == "scalar":
+            field_data = data.get_array(field, preference=dtype)
+            mean = np.mean(field_data)
+            std = np.std(field_data)
+            vmin = mean - 2 * std
+            vmax = mean + 2 * std
+
+            plotter.subplot(plot_idx, 0)
+            data.set_active_scalars(field, preference=dtype)
+
+            if np.log10(np.abs(vmin)) < -1 or np.log10(np.abs(vmax)) < -1:
+                scalar_bar_args = {**kwargs.get("scalar_bar_args", {}), "fmt": "%.2g"}
+            else:
+                scalar_bar_args = {**kwargs.get("scalar_bar_args", {}), "fmt": "%.1f"}
+
+            plotter.add_mesh(
+                data,
+                copy_mesh=True,
+                cmap=cmap,
+                clim=(vmin, vmax),
+                scalar_bar_args=scalar_bar_args,
+            )
+            plotter.add_text(f"{field}")
+            if view == "xy":
+                plotter.view_xy(negative=view_negative)
+            elif view == "yz":
+                plotter.view_yz(negative=view_negative)
+            elif view == "xz":
+                plotter.view_xz(negative=view_negative)
+
+            plot_idx += 1
+
+        if field_type[field] == "vector":
+            if plot_vector_components:
+                for i, component in enumerate(["x", "y", "z"]):
+                    field_data = data.get_array(field, preference=dtype)[:, i]
+                    mean = np.mean(field_data)
+                    std = np.std(field_data)
+                    vmin = mean - 2 * std
+                    vmax = mean + 2 * std
+
+                    if dtype == "cell":
+                        data.cell_data[f"{field}_{component}"] = field_data
+                    elif dtype == "point":
+                        data.point_data[f"{field}_{component}"] = field_data
+
+                    if np.log10(np.abs(vmin)) < -1 or np.log10(np.abs(vmax)) < -1:
+                        scalar_bar_args = {
+                            **kwargs.get("scalar_bar_args", {}),
+                            "fmt": "%.2g",
+                        }
+                    else:
+                        scalar_bar_args = {
+                            **kwargs.get("scalar_bar_args", {}),
+                            "fmt": "%.1f",
+                        }
+
+                    plotter.subplot(plot_idx, 0)
+                    data.set_active_scalars(f"{field}_{component}", preference=dtype)
+                    plotter.add_mesh(
+                        data,
+                        copy_mesh=True,
+                        cmap=cmap,
+                        clim=(vmin, vmax),
+                        scalar_bar_args=scalar_bar_args,
+                    )
+                    plotter.add_text(f"{field}_{component}")
+                    if view == "xy":
+                        plotter.view_xy(negative=view_negative)
+                    elif view == "yz":
+                        plotter.view_yz(negative=view_negative)
+                    elif view == "xz":
+                        plotter.view_xz(negative=view_negative)
+
+                    plot_idx += 1
+            else:
+                field_data = data.get_array(field, preference=dtype)
+                field_magnitude = np.linalg.norm(field_data, axis=1)
+                mean = np.mean(field_magnitude)
+                std = np.std(field_magnitude)
+                vmin = mean - 2 * std
+                vmax = mean + 2 * std
+
+                if np.log10(np.abs(vmin)) < -1 or np.log10(np.abs(vmax)) < -1:
+                    scalar_bar_args = {
+                        **kwargs.get("scalar_bar_args", {}),
+                        "fmt": "%.2g",
+                    }
+                else:
+                    scalar_bar_args = {
+                        **kwargs.get("scalar_bar_args", {}),
+                        "fmt": "%.1f",
+                    }
+
+                if dtype == "cell":
+                    data.cell_data[f"{field}_mag"] = field_magnitude
+                elif dtype == "point":
+                    data.point_data[f"{field}_mag"] = field_magnitude
+
+                plotter.subplot(plot_idx, 0)
+                data.set_active_scalars(f"{field}_mag", preference=dtype)
+                plotter.add_mesh(
+                    data,
+                    copy_mesh=True,
+                    cmap=cmap,
+                    clim=(vmin, vmax),
+                    scalar_bar_args=scalar_bar_args,
+                )
+                plotter.add_text(f"{field}")
                 if view == "xy":
                     plotter.view_xy(negative=view_negative)
                 elif view == "yz":
@@ -818,5 +982,121 @@ def plot_line(
             ax.set_xlabel(kwargs.get("xlabel"))
         if kwargs.get("ylabel", None) is not None:
             ax.set_ylabel(kwargs.get("ylabel"))
+
+    return fig
+
+
+def get_visible_point_indices(
+    mesh, camera_direction, camera_focal_point=None, tol=1e-8
+):
+    """
+    Get indices of points that are visible from a given camera direction.
+
+    Parameters:
+    -----------
+    mesh : pyvista.PolyData
+        The mesh to analyze
+    camera_direction : str or array-like
+        Camera direction. Can be a string like 'xy', 'yz', 'xz' or a 3D vector
+    camera_focal_point : array-like, optional
+        Camera focal point. If None, uses mesh center
+    tol : float, optional
+        Tolerance for point matching
+
+    Returns:
+    --------
+    numpy.ndarray
+        Indices of visible points
+    """
+    if camera_focal_point is None:
+        camera_focal_point = mesh.center
+
+    plotter = pv.Plotter(off_screen=True)
+    plotter.add_mesh(mesh)
+
+    # Set camera position based on direction
+    if isinstance(camera_direction, str):
+        if camera_direction == "xy":
+            plotter.view_xy()
+        elif camera_direction == "yz":
+            plotter.view_yz()
+        elif camera_direction == "xz":
+            plotter.view_xz()
+        else:
+            plotter.camera_position = camera_direction
+    else:
+        plotter.view_vector(camera_direction)
+
+    # Reset camera to fit the mesh properly
+    plotter.reset_camera()
+
+    render_window = plotter.renderer.GetRenderWindow()
+    render_window.Render()
+
+    select_visible_points = vtk.vtkSelectVisiblePoints()
+    select_visible_points.SetInputData(mesh)
+    select_visible_points.SetRenderer(plotter.renderer)
+    select_visible_points.Update()
+
+    visible = pv.wrap(select_visible_points.GetOutput())
+    plotter.close()
+
+    if len(visible.points) == 0:
+        return np.array([], dtype=int)
+
+    tree = cKDTree(mesh.points)
+    dists, idxs = tree.query(visible.points, distance_upper_bound=tol)
+    # Filter out points that didn't match (distance == inf)
+    idxs = idxs[np.isfinite(dists)]
+
+    return idxs
+
+
+def plot_projections_hexbin(meshes, field, direction, grid_size=50):
+    """Helper function to plot HexBin plots across multiple meshes"""
+
+    # Aggregate results
+    x = []
+    y = []
+    field_arr = []
+
+    for mesh in meshes:
+        x.append(mesh.points[:, 0])
+        y.append(mesh.points[:, 1])
+        field_arr.append(mesh.point_data[field])
+
+    x = np.concatenate(x)
+    y = np.concatenate(y)
+    field_arr = np.concatenate(field_arr)
+
+    # Hexbin plot
+    fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(16, 6))
+    ax = axs[0]
+    hb = ax.hexbin(
+        x, y, C=field_arr, gridsize=grid_size, reduce_C_function=np.mean, cmap="jet"
+    )
+    cb = fig.colorbar(hb, ax=ax)
+    cb.set_label("Mean")
+    ax.set_aspect("equal", adjustable="datalim")
+
+    if direction in ["-YZ", "-ZX"]:
+        ax.invert_yaxis()
+    elif direction in ["-XY"]:
+        ax.invert_xaxis()
+
+    ax = axs[1]
+    hb = ax.hexbin(
+        x, y, C=field_arr, gridsize=grid_size, reduce_C_function=np.std, cmap="jet"
+    )
+    cb = fig.colorbar(hb, ax=ax)
+    cb.set_label("StdDev")
+    ax.set_aspect("equal", adjustable="datalim")
+
+    if direction in ["-YZ", "-ZX"]:
+        ax.invert_yaxis()
+    elif direction in ["-XY"]:
+        ax.invert_xaxis()
+
+    plt.tight_layout()
 
     return fig
