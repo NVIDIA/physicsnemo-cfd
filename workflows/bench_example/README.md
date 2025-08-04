@@ -139,6 +139,21 @@ this. Code to generate the evaluation point clounds is provided in
 Note, a similar script can be written for the volume point clouds as well (using
 the `sample_interior` function PhysicsNeMo-Sym)
 
+###### Summary
+
+To summarize, the surface benchmarking workflow computes/plots the below metrics
+
+| Metric                         | Details                                                                                     |
+|--------------------------------|---------------------------------------------------------------------------------------------|
+| L2 erros                       | L2 errors computed at the cell centers                                                      |
+| Area weighted L2 errors        | L2 errors multiplied by each cell's surface area                                            |
+| Regression plot for forces     | Drag and lift forces and regression plot                                                    |
+| Trend plot for forces          | Drag and lift force trends (as a function of design changes)                                |
+| Centerline plots for Pressure  | Pressure along the centerline (y=0 plane)                                                   |
+| Aggregate surface errors       | Error distributions across the samples (aggregated using hexagonal binning the projections) |
+| Surface contour visualizations | Plots of selected design IDs in various views                                               |
+| Streamline visualizations      | Plots surface streamlines for selected design IDs (only supported in the notebook)          |
+
 ##### Volume benchmarking
 
 The volume files have below variables:
@@ -175,6 +190,20 @@ L2 Errors for Continuity_l2_error: 155.8505539704951
 Plotting contour plots for ['1', '2']
 
 ```
+
+###### Summary
+
+To summarize, the volume benchmarking workflow computes/plots the below metrics
+
+| Metric                                     | Details                                                                                                                  |
+|--------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| L2 erros                                   | L2 errors computed at the nodes                                                                                          |
+| Continuity and Momentum Residuals          | L2 errors for equation residuals (optional)                                                                              |
+| Line plots for key locations and variables | Variation of Velocity at certain key locations such as wheel wake, under the vehicle, wake of vehicle, etc.              |
+| Aggregate volume errors                    | Error distributions across the samples (aggregated by resampling on a fixed voxel grid)                                  |
+| Volume contour visualizations              | Plots of slices of selected design IDs in various views                                                                  |
+| Error distribution w.r.t SDF               | Plots for distribution of errros as a function of distance from the vehicle (only supported in the notebook)             |
+| Integral residuals                         | Residuals in an integral sense (computed on arbitrary control volume within the domain) (only supported in the notebook) |
 
 ## Using standardized datasets for inter-model comparisons
 
@@ -248,3 +277,15 @@ Results from volume benchmarking on the validation set:
 | Velocity (y)        | 0.1848 |
 | Velocity (z)        | 0.2040 |
 | Turbulent Viscosity | 0.3404 |
+
+## Benchmarking in the absence of Ground Truth data
+
+Comparing the model prediction with the simulation / experimental data
+is an excellent way to build confidence in the model predictions.
+However, in a test scenario, where the model is used in the absence of
+any ground truth data, it is difficult to estimate
+whether the model predictions are reasonable and trustworthy.
+
+[Notebook](./notebooks/benchmarking_in_absence_of_gt.ipynb) explores
+ideas on how this can currently be tackled using PhysicsNeMo-CFD utilities.
+
