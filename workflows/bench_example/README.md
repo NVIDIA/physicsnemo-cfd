@@ -139,6 +139,7 @@ this. Code to generate the evaluation point clounds is provided in
 Note, a similar script can be written for the volume point clouds as well (using
 the `sample_interior` function PhysicsNeMo-Sym)
 
+<!-- markdownlint-disable -->
 ###### Summary
 
 To summarize, the surface benchmarking workflow computes/plots the below metrics
@@ -153,6 +154,7 @@ To summarize, the surface benchmarking workflow computes/plots the below metrics
 | Aggregate surface errors       | Error distributions across the samples (aggregated using hexagonal binning the projections) |
 | Surface contour visualizations | Plots of selected design IDs in various views                                               |
 | Streamline visualizations      | Plots surface streamlines for selected design IDs (only supported in the notebook)          |
+<!-- markdownlint-enable -->
 
 ##### Volume benchmarking
 
@@ -191,6 +193,7 @@ Plotting contour plots for ['1', '2']
 
 ```
 
+<!-- markdownlint-disable -->
 ###### Summary
 
 To summarize, the volume benchmarking workflow computes/plots the below metrics
@@ -204,6 +207,7 @@ To summarize, the volume benchmarking workflow computes/plots the below metrics
 | Volume contour visualizations              | Plots of slices of selected design IDs in various views                                                                  |
 | Error distribution w.r.t SDF               | Plots for distribution of errros as a function of distance from the vehicle (only supported in the notebook)             |
 | Integral residuals                         | Residuals in an integral sense (computed on arbitrary control volume within the domain) (only supported in the notebook) |
+<!-- markdownlint-enable -->
 
 ## Using standardized datasets for inter-model comparisons
 
@@ -288,4 +292,3 @@ whether the model predictions are reasonable and trustworthy.
 
 [Notebook](./notebooks/benchmarking_in_absence_of_gt.ipynb) explores
 ideas on how this can currently be tackled using PhysicsNeMo-CFD utilities.
-
