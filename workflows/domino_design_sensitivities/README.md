@@ -41,7 +41,7 @@ surface geometry coordinates. This enables:
 Install the required dependencies:
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt --no-build-isolation
 ```
 
 **Note**: This pipeline requires a pre-trained DoMINO model checkpoint. The
