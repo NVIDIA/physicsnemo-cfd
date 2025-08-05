@@ -486,7 +486,7 @@ if __name__ == "__main__":
     dist = DistributedManager()
 
     if dist.world_size > 1:
-        torch.distributed.barrier()
+        torch.distributed.barrier()  # ty: ignore[possibly-unbound-attribute]
 
     domino = DoMINOInference(
         cfg=cfg,
@@ -496,7 +496,7 @@ if __name__ == "__main__":
 
     input_file = Path(__file__).parent / "geometries" / "drivaer_1_single_solid.stl"
 
-    mesh: pv.PolyData = pv.read(input_file)
+    mesh: pv.PolyData = pv.read(input_file)  # ty: ignore[invalid-assignment]
     results: dict[str, np.ndarray] = domino(
         mesh=mesh,
         stream_velocity=38.889,  # m/s
