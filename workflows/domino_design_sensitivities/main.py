@@ -477,8 +477,7 @@ class DoMINOInference:
 if __name__ == "__main__":
     torch.cuda.set_per_process_memory_fraction(0.9)
 
-    config_path = Path() / ".." / "domino" / "src" / "conf"
-    assert config_path.exists(), f"{config_path=} does not exist!"
+    config_path = Path(".") / "conf"
     with hydra.initialize(version_base="1.3", config_path=str(config_path)):
         cfg: DictConfig = hydra.compose(config_name="config")
 
