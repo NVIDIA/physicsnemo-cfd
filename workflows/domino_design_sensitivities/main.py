@@ -316,13 +316,7 @@ class DoMINOInference:
         )
         geometry_sensitivity: np.ndarray = np.zeros_like(geometry_coordinates)
 
-        def _print_memory_usage(label: str) -> None:
-            if verbose:
-                print(
-                    f"VRAM usage after {label:<20}: {(torch.cuda.memory_allocated()/(1024**3)):.2f} GB"
-                )
-
-        for sample_batched in tqdm(dataloader, desc="Processing batches"):
+        for sample_batched in tqdm(dataloader, desc="Processing batches", disable=not verbose):
             # Update input dictionary with surface mesh data from sampled batch
             input_dict_batch: dict[str, torch.Tensor] = {
                 **input_dict,
@@ -330,11 +324,7 @@ class DoMINOInference:
             }
             input_dict_batch["geometry_coordinates"].requires_grad_(True)
 
-            _print_memory_usage(label="data loading")
-
             prediction_vol_batch, prediction_surf_batch = self.model(input_dict_batch)
-
-            _print_memory_usage(label="model forward")
 
             # This is required to free memory. It's a bit atypical to do this,
             # but in this case it allows us to drop all references to the
@@ -367,7 +357,6 @@ class DoMINOInference:
             (
                 -1 * drag_force_batch
             ).backward()  # Vectors represent how you should modify the geometry to *reduce* drag
-            _print_memory_usage(label="surface backward")
 
             # Compute the sensitivity of the drag force to the geometry coordinates, from this batch
             geometry_sensitivity_batch = input_dict_batch["geometry_coordinates"].grad[
