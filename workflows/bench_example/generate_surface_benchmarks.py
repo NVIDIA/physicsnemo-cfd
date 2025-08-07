@@ -89,7 +89,6 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--plot-aggregate-surface-errors",
-        type=bool,
         action="store_true",
         default=False,
         help="whether to plot the aggregated surface results",
