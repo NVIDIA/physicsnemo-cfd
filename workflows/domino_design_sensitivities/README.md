@@ -44,10 +44,18 @@ Install the required dependencies:
 pip install -r requirements.txt --no-build-isolation
 ```
 
-**Note**: This pipeline requires a pre-trained DoMINO model checkpoint. The
-example uses `DoMINO.0.41.pt` which should be placed in the same directory as
-the scripts. See the [main DoMINO example](../domino/) for details on how to
-train your own model checkpoint.
+In addition to these package dependencies, this pipeline also requires:
+
+- A pre-trained DoMINO model checkpoint. Refer to the [main DoMINO
+  example](https://github.com/NVIDIA/physicsnemo/tree/main/examples/cfd/external_aerodynamics/domino)
+  for details on how to train your own model checkpoint. Once this is completed,
+  replace references in this directory to `DoMINO.0.41.pt` with the path to your
+  own checkpoint.
+
+- A geometry file to run the sensitivity analysis on. This pipeline uses the
+  `drivaer_1_single_solid.stl` geometry from the [DrivAer
+  dataset](https://drivaer.com/dataset) as the baseline case. This geometry can
+  be obtained by downloading the `run_1` sample from the DrivAerML dataset.
 
 ## Pipeline Components
 
