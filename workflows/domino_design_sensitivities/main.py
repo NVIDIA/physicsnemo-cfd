@@ -317,7 +317,9 @@ class DoMINOInference:
         )
         geometry_sensitivity: np.ndarray = np.zeros_like(geometry_coordinates)
 
-        for sample_batched in tqdm(dataloader, desc="Processing batches", disable=not verbose):
+        for sample_batched in tqdm(
+            dataloader, desc="Processing batches", disable=not verbose
+        ):
             # Update input dictionary with surface mesh data from sampled batch
             input_dict_batch: dict[str, torch.Tensor] = {
                 **input_dict,
