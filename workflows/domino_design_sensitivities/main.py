@@ -280,6 +280,7 @@ class DoMINOInference:
             >>> forces = results['aerodynamic_force']
             >>> print(f"Drag force: {forces[0]:.2f} N")
         """
+        torch.random.manual_seed(0)
 
         datapipe = DesignDatapipe(
             mesh=mesh,
