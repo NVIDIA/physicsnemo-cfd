@@ -473,7 +473,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=(
             "Distributed DoMINO inference pipeline. "
-            "Specify the model checkpoint path via --model-checkpoint-path."
+            "Specify the model checkpoint path via --model-checkpoint-path. "
+            "Optionally specify an input STL file via --input-file."
         )
     )
     parser.add_argument(
@@ -483,6 +484,16 @@ if __name__ == "__main__":
         help=(
             "Path to the DoMINO model checkpoint (.pt file). "
             "Defaults to DoMINO.0.41.pt in the script directory."
+        ),
+    )
+    parser.add_argument(
+        "--input-file",
+        type=str,
+        default=str((Path(__file__).parent / "geometries" / "drivaer_1.stl").absolute()),
+        help=(
+            "Path to the input STL geometry file. "
+            "If not specified, defaults to drivaer_1.stl in the geometries directory. "
+            "If the file does not exist, it will be downloaded automatically."
         ),
     )
     args = parser.parse_args()
@@ -511,13 +522,28 @@ if __name__ == "__main__":
 
     from utilities.download import download
 
-    input_file = Path(__file__).parent / "geometries" / "drivaer_1.stl"
+    ### [Input File Handling]
+    input_file = Path(args.input_file)
 
-    ### [Download Input Geometry]
-    download(
-        url="https://huggingface.co/datasets/neashton/drivaerml/resolve/main/run_1/drivaer_1.stl",
-        filename=input_file,
-    )
+    ### [Input File Download or Validation]
+    default_stl_path = Path(__file__).parent / "geometries" / "drivaer_1.stl"
+
+    if not input_file.exists():
+        # Only download if the input file is the default STL path
+        if input_file.resolve() == default_stl_path.resolve():
+            download(
+                url="https://huggingface.co/datasets/neashton/drivaerml/resolve/main/run_1/drivaer_1.stl",
+                filename=input_file,
+            )
+            if not input_file.exists():
+                raise FileNotFoundError(
+                    f"Failed to download the default STL file: {input_file}"
+                )
+        else:
+            raise FileNotFoundError(
+                f"Input file does not exist: {input_file}. "
+                "Please provide a valid STL file path."
+            )
 
     ### [Read Mesh and Run Inference]
     mesh: pv.PolyData = pv.read(input_file)  # ty: ignore[invalid-assignment]
