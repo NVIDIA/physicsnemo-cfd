@@ -53,6 +53,10 @@ from a Python interface, facilitating scalable deployment of trained models.
 PhysicsNeMo-CFD is a Python package that depends on the [NVIDIA PhysicsNeMo
 framework](https://github.com/NVIDIA/physicsnemo).
 
+PhysicsNeMo-CFD depends on PhysicsNeMo. PhysicsNeMo is a dependency
+of PhysicsNeMo-CFD and the below pip installation command will install
+PhysicsNeMo automatically if not present.
+
 For maximum cross-platform compatibility, we recommend using the PhysicsNeMo
 Docker container. Steps to use [PhysicsNeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/physicsnemo/containers/physicsnemo)
 can be found [in the Getting Started](https://docs.nvidia.com/deeplearning/physicsnemo/getting-started/index.html#physicsnemo-with-docker-image-recommended).
