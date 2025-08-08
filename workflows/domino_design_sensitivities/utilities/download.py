@@ -29,7 +29,7 @@ def download(url: str, filename: Path, chunk_size=1024):
 
     # Check if the file already exists
     if filename.exists():
-        print(f"File already exists: {filename}")
+        print(f"Skipping download, file already exists: {filename}")
         return
 
     else:  # Download the file

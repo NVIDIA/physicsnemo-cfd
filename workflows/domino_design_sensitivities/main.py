@@ -466,22 +466,46 @@ class DoMINOInference:
         }
 
 
+import argparse
+
 if __name__ == "__main__":
+    ### [CLI Argument Parsing]
+    parser = argparse.ArgumentParser(
+        description=(
+            "Distributed DoMINO inference pipeline. "
+            "Specify the model checkpoint path via --model-checkpoint-path."
+        )
+    )
+    parser.add_argument(
+        "--model-checkpoint-path",
+        type=str,
+        default=str((Path(__file__).parent / "DoMINO.0.41.pt").absolute()),
+        help=(
+            "Path to the DoMINO model checkpoint (.pt file). "
+            "Defaults to DoMINO.0.41.pt in the script directory."
+        ),
+    )
+    args = parser.parse_args()
+
+    ### [CUDA Memory Management]
     torch.cuda.set_per_process_memory_fraction(0.9)
 
+    ### [Hydra Config Loading]
     config_path = Path(".") / "conf"
     with hydra.initialize(version_base="1.3", config_path=str(config_path)):
         cfg: DictConfig = hydra.compose(config_name="config")
 
+    ### [Distributed Initialization]
     DistributedManager.initialize()
     dist = DistributedManager()
 
     if dist.world_size > 1:
         torch.distributed.barrier()  # ty: ignore[possibly-unbound-attribute]
 
+    ### [Model Inference Pipeline Setup]
     domino = DoMINOInference(
         cfg=cfg,
-        model_checkpoint_path=(Path(__file__).parent / "DoMINO.0.41.pt").absolute(),
+        model_checkpoint_path=Path(args.model_checkpoint_path),
         dist=dist,
     )
 
@@ -489,25 +513,30 @@ if __name__ == "__main__":
 
     input_file = Path(__file__).parent / "geometries" / "drivaer_1.stl"
 
+    ### [Download Input Geometry]
     download(
         url="https://huggingface.co/datasets/neashton/drivaerml/resolve/main/run_1/drivaer_1.stl",
         filename=input_file,
     )
 
+    ### [Read Mesh and Run Inference]
     mesh: pv.PolyData = pv.read(input_file)  # ty: ignore[invalid-assignment]
     results: dict[str, np.ndarray] = domino(
         mesh=mesh,
         stream_velocity=38.889,  # m/s
         stencil_size=7,
         air_density=1.205,  # kg/m^3
+        verbose=True,
     )
 
+    ### [Attach Results to Mesh]
     for key, value in results.items():
         if len(value) == mesh.n_cells:
             mesh.cell_data[key] = value
         elif len(value) == mesh.n_points:
             mesh.point_data[key] = value
 
+    ### [Postprocess Sensitivities]
     sensitivity_results: dict[str, np.ndarray] = domino.postprocess_point_sensitivities(
         results=results, mesh=mesh
     )
