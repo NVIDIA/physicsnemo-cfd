@@ -485,7 +485,14 @@ if __name__ == "__main__":
         dist=dist,
     )
 
-    input_file = Path(__file__).parent / "geometries" / "drivaer_1_single_solid.stl"
+    from utilities.download import download
+
+    input_file = Path(__file__).parent / "geometries" / "drivaer_1.stl"
+
+    download(
+        url="https://huggingface.co/datasets/neashton/drivaerml/resolve/main/run_1/drivaer_1.stl",
+        filename=input_file,
+    )
 
     mesh: pv.PolyData = pv.read(input_file)  # ty: ignore[invalid-assignment]
     results: dict[str, np.ndarray] = domino(
