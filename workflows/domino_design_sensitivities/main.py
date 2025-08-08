@@ -489,7 +489,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--input-file",
         type=str,
-        default=str((Path(__file__).parent / "geometries" / "drivaer_1.stl").absolute()),
+        default=str(
+            (Path(__file__).parent / "geometries" / "drivaer_1.stl").absolute()
+        ),
         help=(
             "Path to the input STL geometry file. "
             "If not specified, defaults to drivaer_1.stl in the geometries directory. "
