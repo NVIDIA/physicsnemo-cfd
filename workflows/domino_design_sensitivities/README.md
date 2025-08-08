@@ -1,228 +1,151 @@
-# DoMINO Sensitivity Analysis for Aerodynamic Design
+## DoMINO Sensitivity Analysis for Aerodynamic Design
 
-This directory contains a sensitivity analysis pipeline for the DoMINO
-(Decomposable Multi-scale Iterative Neural Operator) model, using an example of
-aerodynamic analysis. The pipeline computes gradient-based sensitivities that
-indicate how geometric modifications to a vehicle or aircraft surface affect
-aerodynamic performance metrics such as drag force. This is intended to serve as
-an example template of how to compute geometry sensitivities for DoMINO
-surrogates for any PDE it is applied to.
+This workflow demonstrates how to compute and visualize geometry sensitivities for external aerodynamics using a pre-trained DoMINO surrogate. It provides:
 
-## Overview
+- **Sensitivity visualization**: surface-normal sensitivity maps highlighting where adding/removing material reduces drag
+- **Postprocessing**: Laplacian smoothing and normal projection for physically meaningful fields
+- **Validation**: finite-difference gradient checking against adjoint/autograd gradients
+- **Batching and multi-GPU**: efficient inference for large meshes
 
-The DoMINO sensitivity analysis pipeline leverages automatic differentiation to
-compute gradients of aerodynamic quantities (e.g., drag force) with respect to
-surface geometry coordinates. This enables:
+### What this computes
+Given a surface mesh and flow conditions, the pipeline predicts surface pressure and wall shear stress and computes gradients of total drag with respect to the mesh coordinates. The returned sensitivity vectors indicate the direction to move each surface element to reduce drag.
 
-- **Sensitivity Visualization**: Generate heat maps showing which parts of the
-  geometry are most critical for aerodynamic performance  
-- **Gradient Validation**: Verify gradient accuracy through finite-difference
-  checking
-- **Design Optimization**: Provide gradient information for gradient-based
-  optimization algorithms
 
-## Key Features
+## Contents
 
-- **Automatic Differentiation**: Uses PyTorch's autograd to compute exact
-  gradients efficiently
-- **Surface Sensitivity Maps**: Generates sensitivity fields that can be
-  visualized on the geometry surface
-- **Gradient Smoothing**: Applies Laplacian smoothing to reduce noise in
-  sensitivity fields
-- **Validation Tools**: Includes finite-difference gradient checking for
-  verification
-- **Batch Processing**: Handles large geometries through efficient batching
-  strategies
-- **Multi-GPU Support**: Compatible with distributed inference for large-scale
-  problems
+- `main.py`: Core inference pipeline with `DoMINOInference` and postprocessing utilities
+- `main.ipynb`: End-to-end walkthrough for running inference, postprocessing, and visualization
+- `gradient_checking.ipynb`: Finite-difference validation of sensitivities via geometry perturbations
+- `design_datapipe.py`: Mesh preprocessing and neighborhood construction for inference
+- `utilities/mesh_postprocessing.py`: Laplacian smoothing implementation
+- `conf/config.yaml`: Hydra configuration (domain bounds, variables, model params)
+- `geometries/`: Sample meshes (`drivaer_1_single_solid.stl`, decimated variant, and generated `.vtk`)
+
 
 ## Prerequisites
 
-Install the required dependencies:
+- Python 3.10+
+- CUDA-capable GPU
+- Packages: in addition to the base packages required by PhysicsNeMo-CFD, you'll need those in `requirements.txt`. These can be installed with:
 
 ```bash
 pip install -r requirements.txt --no-build-isolation
 ```
 
-In addition to these package dependencies, this pipeline also requires:
+You also need a pre-trained DoMINO checkpoint, which, for space reasons, is not included in this repository. Replace `DoMINO.0.41.pt` with your own model (see the [DoMINO training example](https://github.com/NVIDIA/physicsnemo/tree/main/examples/cfd/external_aerodynamics/domino)).
 
-- A pre-trained DoMINO model checkpoint. Refer to the [main DoMINO
-  example](https://github.com/NVIDIA/physicsnemo/tree/main/examples/cfd/external_aerodynamics/domino)
-  for details on how to train your own model checkpoint. Once this is completed,
-  replace references in this directory to `DoMINO.0.41.pt` with the path to your
-  own checkpoint.
 
-- A geometry file to run the sensitivity analysis on. This pipeline uses the
-  `drivaer_1_single_solid.stl` geometry from the [DrivAer
-  dataset](https://drivaer.com/dataset) as the baseline case. This geometry can
-  be obtained by downloading the `run_1` sample from the DrivAerML dataset.
+## Quick start
 
-## Pipeline Components
+Open `main.ipynb` and run all cells. It covers:
+- Config and distributed setup (Hydra + `DistributedManager`)
+- Loading a geometry with PyVista
+- Running `DoMINOInference` to get results and sensitivities
+- Postprocessing to surface-normal and smoothed fields
+- Visualization and warping for intuition
 
-### Core Modules
+## API
 
-- **`main.py`**: Main inference pipeline containing the `DoMINOInference` class
-- **`design_datapipe.py`**: Data preprocessing pipeline (`DesignDatapipe`) for
-  mesh processing
-- **`main_gradient_checking.py`**: Gradient validation script using finite
-  differences
-- **`plot_gradient_checking.py`**: Visualization tools for gradient checking
-  results
-
-### DoMINOInference Class
-
-The `DoMINOInference` class is the main interface for sensitivity analysis:
-
+### DoMINOInference
 ```python
-from main import DoMINOInference
-import pyvista as pv
-
-# Initialize the inference pipeline
-domino = DoMINOInference(
-    cfg=config,
-    model_checkpoint_path="DoMINO.0.41.pt",
-    dist=distributed_manager
-)
-
-# Load geometry
-mesh = pv.read("vehicle.stl")
-
-# Compute sensitivities
-results = domino(
-    mesh=mesh,
-    stream_velocity=38.889,  # m/s
-    stencil_size=7,
-    air_density=1.205        # kg/m³
+results = DoMINOInference(
+    cfg=cfg,  # DictConfig from Hydra; see conf/config.yaml
+    model_checkpoint_path="./DoMINO.0.41.pt",  # or your checkpoint path
+    dist=DistributedManager(),  # optional; single-GPU if omitted
+)(
+    mesh=mesh,                 # pv.PolyData surface mesh
+    stream_velocity=38.889,    # m/s
+    stencil_size=7,            # surface neighborhood size
+    air_density=1.205,         # kg/m^3
+    verbose=True,              # show batch progress
 )
 ```
 
-## Usage Examples
+Returns a `dict[str, np.ndarray]` with shapes referenced to surface cells unless noted:
+- `geometry_coordinates`: (n_points, 3) sampled coordinates used internally
+- `geometry_sensitivity`: (n_faces, 3) raw sensitivity vectors d(-drag)/dX
+- `pred_surf_pressure`: (n_faces,) surface pressure [Pa]
+- `pred_surf_wall_shear_stress`: (n_faces, 3) wall shear [Pa]
+- `aerodynamic_force`: (3,) [Fx, Fy, Fz] [N]
 
-### Basic Sensitivity Analysis
+Notes:
+- The gradient is taken of -drag, so the vectors point in the direction that reduces drag when moving the surface.
+- Batching is handled internally. If you see OOM, reduce neighborhood size or decimate the mesh.
 
+### Postprocessing
 ```python
-import hydra
-import pyvista as pv
-from pathlib import Path
-from main import DoMINOInference
-from physicsnemo.distributed import DistributedManager
-
-# Initialize configuration
-with hydra.initialize(version_base="1.3", config_path="conf"):
-    cfg = hydra.compose(config_name="config")
-
-# Setup distributed computing
-DistributedManager.initialize()
-dist = DistributedManager()
-
-# Create inference pipeline
-domino = DoMINOInference(
-    cfg=cfg,
-    model_checkpoint_path="DoMINO.0.41.pt",
-    dist=dist
-)
-
-# Load geometry
-mesh = pv.read("car.stl")
-
-# Run sensitivity analysis
-results = domino(
-    mesh=mesh,
-    stream_velocity=30.0,    # Inlet velocity [m/s]
-    stencil_size=7,          # Neighbor stencil size
-    air_density=1.205        # Air density [kg/m³]
-)
-
-# Access results
-print(f"Total drag force: {results['aerodynamic_force'][0]:.2f} N")
-sensitivity_shape = results['geometry_sensitivity'].shape
-print(f"Geometry sensitivity shape: {sensitivity_shape}")
-```
-
-### Post-processing and Smoothing
-
-```python
-# Apply post-processing to compute smoothed sensitivities
-sensitivity_results = domino.postprocess_point_sensitivities(
+processed = DoMINOInference.postprocess_point_sensitivities(
     results=results,
-    mesh=mesh,
-    n_laplacian_iters=20  # Number of smoothing iterations
+    mesh=mesh,                  # pv.PolyData with normals
+    n_laplacian_iters=20,
 )
+```
+Adds commonly used sensitivity fields (keys and shapes):
+- `raw_sensitivity_cells`: (n_faces, 3) raw sensitivity vectors d(-drag)/dX
+- `raw_sensitivity_normal_cells`: (n_faces,) projection onto cell normals
+- `smooth_sensitivity_point`: (n_points, 3) smoothed vector field on points
+- `smooth_sensitivity_normal_point`: (n_points,) smoothed scalar normal component on points
+- `smooth_sensitivity_cell`: (n_faces, 3) point-smoothed field transferred to cells
+- `smooth_sensitivity_normal_cell`: (n_faces,) point-smoothed scalar transferred to cells
 
-# Add results to mesh for visualization
-for key, value in results.items():
-    if len(value) == mesh.n_cells:
-        mesh.cell_data[key] = value
-    elif len(value) == mesh.n_points:
-        mesh.point_data[key] = value
+Smoothing uses `utilities/mesh_postprocessing.py` (CSR adjacency + Numba-accelerated Laplacian averaging on the 1-ring). Increase `n_laplacian_iters` for stronger smoothing.
 
-# Add smoothed sensitivities
-for key, value in sensitivity_results.items():
-    mesh[key] = value
 
-# Save results
-mesh.save("results_with_sensitivities.vtk")
+## Configuration
+
+`conf/config.yaml` defines the domain, variables, and model hyperparameters. Important entries:
+- `data.bounding_box` and `data.bounding_box_surface`: min/max corners for volume and surface sampling. Should be consistent with training data bounds.
+- `variables.surface.solution` and `variables.volume.solution`: names and types (scalar/vector) that determine output channels.
+- `model.interp_res`, `model.num_surface_neighbors`, and related geometry extraction parameters control memory/performance.
+
+The notebooks initialize Hydra like this:
+```python
+with hydra.initialize(version_base="1.3", config_path="./conf"):
+    cfg = hydra.compose(config_name="config")
 ```
 
-### Gradient Validation
 
-The pipeline includes finite-difference gradient checking to validate
-sensitivity accuracy:
+## Gradient checking (finite differences)
+See `gradient_checking.ipynb` for a full walk-through. Outline:
 
-```bash
-python main_gradient_checking.py  # Run validation
-python plot_gradient_checking.py  # Visualize results
+1. Run baseline inference on a decimated mesh for speed: `geometries/drivaer_1_single_solid_decimated3.stl`.
+2. Postprocess to obtain raw and smoothed sensitivity fields.
+3. Define `get_drag(epsilon, sensitivities)` that perturbs point coordinates by `epsilon * sensitivities` and re-evaluates drag.
+4. Sweep symmetric `epsilon` values over several orders of magnitude and compute drag deltas for both raw and smoothed fields.
+5. Plot drag change vs. epsilon on symlog axes and compare against the adjoint (autograd) linear prediction.
+
+Tips:
+- This is computationally heavy (many forward evaluations). Use the decimated mesh and consider limiting the epsilon set for quick checks.
+- Smoothed normal sensitivities often produce more stable finite-difference behavior.
+
+
+## Visualization
+The notebooks use PyVista to visualize scalar fields like `smooth_sensitivity_normal_cell`:
+
+```python
+mesh.plot(
+    scalars="smooth_sensitivity_normal_cell",
+    cmap="RdBu_r",
+    jupyter_backend="static",
+    cpos=[-1, -1, 1],
+    clim=(-1, 1),
+)
 ```
 
-The validation compares analytical gradients from automatic differentiation
-against finite-difference approximations across multiple perturbation scales.
+Warping for intuition (purely illustrative):
+```python
+warped = mesh.warp_by_scalar("smooth_sensitivity_normal_point", factor=0.05)
+warped.plot(scalars="smooth_sensitivity_normal_cell", cmap="RdBu_r")
+```
 
-## Output Data Structure
 
-The sensitivity analysis returns a dictionary with the following keys:
+## Notes and guidance
+- Sensitivities are valid for small, smooth deformations. Large warps are for visualization only.
+- Projection to surface normals removes tangential components that should not affect the PDE solution.
+- For multi-GPU, `DistributedManager` is initialized automatically; if a single process is detected, it runs in single-GPU/CPU mode.
+- If you trained your own model, update the checkpoint path and ensure config bounds match your training domain.
 
-<!-- markdownlint-disable -->
-
-| Key | Description | Shape | Units |
-|-----|-------------|-------|-------|
-| `geometry_coordinates` | Surface mesh coordinates | `(n_cells, 3)` | `[m]` |
-| `geometry_sensitivity` | Raw sensitivity vectors | `(n_cells, 3)` | `[N/m]` |
-| `pred_surf_pressure` | Predicted surface pressure | `(n_cells,)` | `[Pa]` |
-| `pred_surf_wall_shear_stress` | Wall shear stress components | `(n_cells, 3)` | `[Pa]` |
-| `aerodynamic_force` | Total aerodynamic force | `(3,)` | `[N]` |
-
-<!-- markdownlint-enable -->
-
-After calling `postprocess_point_sensitivities()`, additional smoothed
-sensitivity fields are available with `_point` and `_cell` suffixes for
-different mesh representations.
-
-## Configuration and Parameters
-
-The pipeline uses Hydra configuration management. Key parameters include:
-
-- **Model settings**: `model.interp_res` controls grid resolution `[128, 64,
-  48]`
-- **Bounding boxes**: `data.bounding_box` and `data.bounding_box_surface` define
-  computational domains
-- **Physics parameters**: `stream_velocity` (inlet velocity), `air_density`, and
-  `stencil_size` (neighbor count)
-- **Smoothing**: `n_laplacian_iters` controls sensitivity smoothing strength
-  (default: 20)
-
-## Limitations
-
-- **Model accuracy dependency**: Sensitivity accuracy depends on the underlying
-  DoMINO model quality
-- **Model smoothness dependency**: If the underlying ML architecture does not
-  produce solutions that are at least $C^1$ continuous, the sensitivity fields
-  will be noisy
-- **STL resolution**: Mesh resolution affects sensitivity field quality and
-  smoothness
 
 ## References
-
-1. [DoMINO: A Decomposable Multi-scale Iterative Neural
-   Operator](https://arxiv.org/abs/2501.13350)
-2. [Automatic Differentiation in Machine Learning: A
-   Survey](https://arxiv.org/abs/1502.05767)
+- DoMINO: A Decomposable Multi-scale Iterative Neural Operator: [arXiv:2501.13350](https://arxiv.org/abs/2501.13350)
+- Automatic Differentiation in Machine Learning: A Survey: [arXiv:1502.05767](https://arxiv.org/abs/1502.05767)
