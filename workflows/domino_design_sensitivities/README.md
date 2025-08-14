@@ -5,7 +5,7 @@ for external aerodynamics using a pre-trained DoMINO surrogate. It provides:
 
 - **Sensitivity visualization**: surface-normal sensitivity maps that highlight
   where adding or removing material reduces drag
-- **Postprocessing**: Laplacian smoothing and normal projection for physically
+- **Post-processing**: Laplacian smoothing and normal projection for physically
   meaningful fields
 - **Validation**: finite-difference gradient checking against adjoint/autograd
   gradients
@@ -20,9 +20,9 @@ move each surface element to reduce drag.
 
 ## Contents
 
-- `main.py`: Core inference pipeline with `DoMINOInference` and postprocessing
+- `main.py`: Core inference pipeline with `DoMINOInference` and post-processing
   utilities
-- `main.ipynb`: End-to-end walkthrough for running inference, postprocessing,
+- `main.ipynb`: End-to-end walkthrough for running inference, post-processing,
   and visualization
 - `gradient_checking.ipynb`: Finite-difference validation via geometry
   perturbations
@@ -30,7 +30,7 @@ move each surface element to reduce drag.
   inference
 - `utilities/mesh_postprocessing.py`: Laplacian smoothing implementation
 - `conf/config.yaml`: Hydra configuration (domain bounds, variables, model
-  params)
+  parameters)
 - `geometries/`: Sample meshes (`drivaer_1_single_solid.stl`, decimated variant,
   and generated `.vtk`)
 
@@ -57,7 +57,7 @@ Open `main.ipynb` and run all cells. It covers:
 - Config and distributed setup (Hydra + `DistributedManager`)
 - Loading a geometry with PyVista
 - Running `DoMINOInference` to get results and sensitivities
-- Postprocessing to surface-normal and smoothed fields
+- Post-processing to surface-normal and smoothed fields
 - Visualization and warping for intuition
 
 ## API
@@ -94,7 +94,7 @@ Notes:
 - Batching is handled internally. If you see OOM, reduce neighborhood size or
   decimate the mesh.
 
-### Postprocessing
+### Post-processing
 
 ```python
 processed = DoMINOInference.postprocess_point_sensitivities(
@@ -116,7 +116,7 @@ Adds commonly used sensitivity fields (keys and shapes):
 - `smooth_sensitivity_normal_cell`: (n_faces,) point-smoothed scalar transferred
   to cells
 
-Smoothing uses `utilities/mesh_postprocessing.py` (CSR adjacency +
+Smoothing uses `utilities/mesh_postprocessing.py` (CSR adjacency and
 Numba-accelerated Laplacian averaging on the 1-ring). Increase
 `n_laplacian_iters` for stronger smoothing.
 
@@ -145,7 +145,7 @@ See `gradient_checking.ipynb` for a full walk-through. Outline:
 
 1. Run baseline inference on a decimated mesh for speed:
    `geometries/drivaer_1_single_solid_decimated3.stl`.
-2. Postprocess to obtain raw and smoothed sensitivity fields.
+2. Post-process to obtain raw and smoothed sensitivity fields.
 3. Define `get_drag(epsilon, sensitivities)` that perturbs point coordinates by
    `epsilon * sensitivities` and re-evaluates drag.
 4. Sweep symmetric `epsilon` values over several orders of magnitude and compute
@@ -218,13 +218,13 @@ Actionable configuration guidance:
   discrete operation. Gradients are valid locally under fixed connectivity, but
   can jump when connectivity changes. Keep `stencil_size` fixed and geometry
   perturbations small for gradient checks and early-stage optimization.
-- **Postprocessing**: The Laplacian smoothing and normal projection are for
+- **Post-processing**: The Laplacian smoothing and normal projection are for
   interpretation. They are not in the gradient path used to compute
   `geometry_sensitivity`. Use them to regularize updates if you couple
   sensitivities to a design loop.
 
 In short: choose smooth activations, avoid hard discontinuities in
-pre/postprocessing, and keep perturbations small so that the piecewise-smooth
+pre-processing/post-processing, and keep perturbations small so that the piecewise-smooth
 assumptions remain valid.
 
 ## References

@@ -29,21 +29,21 @@ more about the full stack.
 The library offers utilities for:
 
 - **NIM Inference**:
-  - An inference recipe calling a pre-trained AI models that were trained using
+  - An inference recipe calling pre-trained AI models that were trained using
 PhysicsNeMo and hosted as NVIDIA Inference Microservices (for example, the
 [DoMINO Automotive Aerodynamics
 NIM](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/domino-automotive-aero))
 from a Python interface, facilitating scalable deployment of trained models.
 - **Benchmarking of ML Model Accuracy**:
   - A benchmark for evaluating and validating the results of trained ML models
-  against traditional CFD results using broad set of built-in engineering
+  against traditional CFD results using a broad set of built-in engineering
   metrics (for example, pointwise errors, integrated quantities, spectral
   metrics, PDE residuals). [Related publication](https://www.arxiv.org/abs/2507.10747)
-  - Utilities to extend and build custom metrics, analyze, and visulaize the
-    results of trained ML model, both mesh-based and point-cloud based models
+  - Utilities to extend and build custom metrics, analyze, and visualize the
+    results of trained ML models, both mesh-based and point-cloud based models
 
 - **Hybrid Initialization**:
-  - An end-to-end recipe illustrating initializing a CFD simulation with a
+  - An end-to-end recipe for initializing a CFD simulation with a
   trained ML model hybridized with potential flow solutions, to accelerate CFD
   convergence (particularly for high-fidelity, unsteady cases). [Related
   publication](https://arxiv.org/abs/2503.15766)
@@ -53,13 +53,12 @@ from a Python interface, facilitating scalable deployment of trained models.
 PhysicsNeMo-CFD is a Python package that depends on the [NVIDIA PhysicsNeMo
 framework](https://github.com/NVIDIA/physicsnemo).
 
-PhysicsNeMo-CFD depends on PhysicsNeMo. PhysicsNeMo is a dependency
-of PhysicsNeMo-CFD and the below pip installation command will install
+PhysicsNeMo-CFD depends on PhysicsNeMo. The pip installation command below will install
 PhysicsNeMo automatically if not present.
 
 For maximum cross-platform compatibility, we recommend using the PhysicsNeMo
-Docker container. Steps to use [PhysicsNeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/physicsnemo/containers/physicsnemo)
-can be found [in the Getting Started](https://docs.nvidia.com/deeplearning/physicsnemo/getting-started/index.html#physicsnemo-with-docker-image-recommended).
+Docker container. Steps to use the [PhysicsNeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/physicsnemo/containers/physicsnemo)
+can be found in the [Getting Started guide](https://docs.nvidia.com/deeplearning/physicsnemo/getting-started/index.html#physicsnemo-with-docker-image-recommended).
 
 You can install PhysicsNeMo-CFD via pip:
 
@@ -69,11 +68,11 @@ cd physicsnemo-cfd
 pip install .
 ```
 
-To get access to GPU accelerated functionalities from this repo when installing
-in a conda or a custom python environment please run below commands.
+To get access to GPU-accelerated functionalities from this repository when installing
+in a conda or custom Python environment, please run the commands below.
 
 If you are using the [PhysicsNeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/physicsnemo/containers/physicsnemo),
-the GPU specific dependencies are pre-installed, hence this additional step is
+the GPU-specific dependencies are pre-installed, so this additional step is
 not required.
 
 ```bash
@@ -89,7 +88,7 @@ file.
 
 ## Getting started
 
-To get started use the DoMINO NIM on a sample as shown below:
+To get started, use the DoMINO NIM on a sample as shown below:
 
 ```python
 from physicsnemo.cfd.inference.domino_nim import call_domino_nim
@@ -120,14 +119,14 @@ output_dict = call_domino_nim(
 
 Refer to the [`workflows` directory](./workflows) for detailed instructions on
 executing individual reference workflows and samples. These are primarily
-packaged as Jupyter notebooks where possible, to provide for inline
+packaged as Jupyter notebooks where possible, to provide inline
 documentation and visualization of expected results.
 
 ## Contributing to PhysicsNeMo
 
-PhysicsNeMo is an open source collaboration and its success is rooted in
-community contribution to further the field of Physics-ML. Thank you for
-contributing to the project so others can build on top of your contribution.
+PhysicsNeMo is an open-source collaboration and its success is rooted in
+community contributions to further the field of Physics-ML. Thank you for
+contributing to the project so others can build on top of your contributions.
 
 For guidance on contributing to PhysicsNeMo, refer to the [contributing
 guidelines](CONTRIBUTING.md).
@@ -139,9 +138,9 @@ If PhysicsNeMo helped your research and you would like to cite it, refer to the
 
 ## Communication
 
-- Github Discussions: Discuss new architectures, implementations, and Physics-ML
+- GitHub Discussions: Discuss new architectures, implementations, and Physics-ML
   research.
-- GitHub Issues: Bug reports, feature requests, and install issues.
+- GitHub Issues: Bug reports, feature requests, and installation issues.
 - PhysicsNeMo Forum: The [PhysicsNeMo
 Forum](https://forums.developer.nvidia.com/t/welcome-to-the-physicsnemo-ml-model-framework-forum/178556)
 hosts an audience of new to moderate-level users and developers for general

@@ -19,13 +19,13 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- Fixed bug in GPU kernel for gradient computation.
+- Fixed a bug in GPU kernel for gradient computation.
 
 ### Security
 
 ### Dependencies
 
-- Improve the dependency handling.
+- Improved the dependency handling.
 - Added `httpx` dependency.
 
 ## [0.0.1] - 2025-06-15

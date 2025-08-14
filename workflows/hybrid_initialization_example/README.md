@@ -46,9 +46,9 @@ superior initial conditions that accelerate subsequent transient convergence.
 
 First, you'll need to launch the DoMINO NIM container that provides ML-based
 flow predictions. There are two options to achieve this; in either case, you
-will need a NVIDIA NGC API key to download the latest model checkpoint files. If
+will need an NVIDIA NGC API key to download the latest model checkpoint files. If
 you don't already have one, you can obtain one
-[here](https://org.ngc.nvidia.com/setup/api-keys) after registering for a NVIDIA
+[here](https://org.ngc.nvidia.com/setup/api-keys) after registering for an NVIDIA
 NGC account.
 
 **Option A - Using the provided script (recommended):**
@@ -59,9 +59,9 @@ cd /path/to/physicsnemo-cfd
 
 # Set your NGC API key
 export NGC_API_KEY="your_ngc_api_key_here"
-# Tip: for a more long-term solution, you can set this in your shell profile.
+# Tip: For a more long-term solution, you can set this in your shell profile.
 
-# Launch DoMINO NIM (Note: this requires an internet connection to download model checkpoints)
+# Launch DoMINO NIM (Note: This requires an internet connection to download model checkpoints)
 ./physicsnemo/cfd/inference/launch_local_domino_nim.sh
 ```
 
@@ -69,7 +69,7 @@ export NGC_API_KEY="your_ngc_api_key_here"
 
 Follow the detailed instructions
 [here](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/domino-automotive-aero).
-This allows more fine-grained control over the container launch process.
+This allows for more fine-grained control over the container launch process.
 
 ### Step 2: Launch the OpenFOAM Container Environment
 
@@ -79,7 +79,7 @@ In a separate shell, attempt to launch the OpenFOAM container:
 # Navigate to the repository root (if not already there)
 cd /path/to/physicsnemo-cfd
 
-# Launch the OpenFOAM + Python container with proper mounting
+# Launch the OpenFOAM and Python container with proper mounting
 ./workflows/hybrid_initialization_example/openfoam_interactive.sh
 ```
 
@@ -109,7 +109,7 @@ the [`container/`](./container/) directory.
 
 Note that this image only contains OpenFOAM and Python, plus the underlying
 dependencies for `physicsnemo-cfd`. It does not contain `physicsnemo-cfd`
-pre-installed, which is intended to reduce the need to re-build the container
+pre-installed, which is intended to reduce the need to rebuild the container
 when `physicsnemo-cfd` is updated. It also does not contain the DoMINO
 Automotive Aero NIM, which is [available
 separately](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/domino-automotive-aero).
@@ -117,7 +117,7 @@ separately](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/domi
 > **Alternative for advanced users:** If you prefer not to use the OpenFOAM
 > container, you can install required dependencies locally instead, and skip
 > container usage. These dependencies are Python 3.10+ and OpenFOAM v2206;
-> ensure that respective binaries are available on `PATH`. If you encounter
+> ensure that the respective binaries are available on `PATH`. If you encounter
 > dependency issues based on this approach, we recommend using the standard
 > container approach instead. Note that the following steps assume that you are
 > inside the container, so syntax may need to be slightly modified if this is
@@ -208,7 +208,7 @@ traditional methods:
 
 The workflow in this folder (without modification) should roughly replicate the
 line labeled "DoMINO + Potential (k-based hybrid)" in the chart above. Results
-will not be identical, due to the chaotic nature of turbulent structures in the
+will not be identical due to the chaotic nature of turbulent structures in the
 vehicle wake, but the general trend should be similar.
 
 For detailed performance analysis and methodology, please refer to our
@@ -234,16 +234,16 @@ The [`run.sh`](run.sh) script begins with a Python script,
 - `vehicle.stl` (140 MB for the baseline DrivAerML ID 4 case), the geometry of
   the vehicle. This is downloaded from a public HuggingFace repository.
 - `predicted_flow.vtu` (38 GB for the baseline DrivAerML ID 4 case), which
-  represents the DoMINO-predicted flow field. This is generated on-the-fly using
+  represents the DoMINO-predicted flow field. This is generated on the fly using
   a call to the DoMINO NIM. If you wish to directly modify the predicted flow
-  field, note the format - this should be a VTK unstructured grid file with (at
+  field, note the format; this should be a VTK unstructured grid file with (at
   least) the following point data fields:
   - `UMeanTrimPred`, the predicted time-averaged velocity field.
   - `pMeanTrimPred`, the predicted time-averaged pressure field.
   - `TKEPred`, the predicted turbulent kinetic energy (k) field.
   - `nutMeanTrimPred`, the predicted turbulent viscosity field.
 
-By modifying these inputs (either directly, or by modifying the
+By modifying these inputs (either directly or by modifying the
 `prepare_domino_assets.py` script), the workflow can be adapted to different
 cases.
 

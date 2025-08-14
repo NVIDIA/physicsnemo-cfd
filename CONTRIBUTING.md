@@ -6,33 +6,33 @@ Welcome to Project PhysicsNeMo! We're excited you're here and want to contribute
 This documentation is intended for individuals and institutions interested in
 contributing to PhysicsNeMo. PhysicsNeMo is an open-source project and, as such,
 its success relies on its community of contributors willing to keep improving it.
-Your contribution will be a valued addition to the code base; we simply ask
+Your contribution will be a valued addition to the codebase; we simply ask
 that you read this page and understand our contribution process, whether you
-are a seasoned open-source contributor or whether you are a first-time
+are a seasoned open-source contributor or a first-time
 contributor.
 
 ### Communicate with Us
 
-We are happy to talk with you about your needs for PhysicsNeMo and your ideas for
-contributing to the project. One way to do this is to create an issue discussing
-your thoughts. It might be that a very similar feature is under development or
-already exists, so an issue is a great starting point. If you are looking for an
-issue to resolve that will help, refer to the
-[issue](https://github.com/NVIDIA/physicsnemo/issues) section.
-If you are considering collaborating with NVIDIA PhysicsNeMo team to enhance PhysicsNeMo,
-fill this [proposal form](https://forms.gle/fYsbZEtgRWJUQ3oQ9) and
-we will get back to you.
+We are happy to talk with you about your needs for PhysicsNeMo and your ideas
+for contributing to the project. One way to do this is to create an issue
+discussing your thoughts. It might be that a very similar feature is under
+development or already exists, so an issue is a great starting point. If you are
+looking for an issue to resolve that will help, refer to the
+[issue](https://github.com/NVIDIA/physicsnemo/issues) section. If you are
+considering collaborating with the NVIDIA PhysicsNeMo team to enhance
+PhysicsNeMo, fill out this [proposal form](https://forms.gle/fYsbZEtgRWJUQ3oQ9)
+and we will get back to you.
 
 ## Contribute to PhysicsNeMo-CFD
 
 ### Pull Requests
 
-Developer workflow for code contributions is as follows:
+The developer workflow for code contributions is as follows:
 
 1. Developers must first [fork](https://help.github.com/en/articles/fork-a-repo)
 the [upstream](https://github.com/NVIDIA/physicsnemo-cfd) PhysicsNeMo-CFD repository.
 
-2. Git clone the forked repository and push changes to the personal fork.
+2. Clone the forked repository and push changes to the personal fork.
 
 3. Once the code changes are staged on the fork and ready for review, a
 [Pull Request](https://help.github.com/en/articles/about-pull-requests) (PR)
@@ -41,12 +41,12 @@ to merge the changes from a branch of the fork into a selected branch of upstrea
 
     - Exercise caution when selecting the source and target branches for the PR.
     - Ensure that you update the [`CHANGELOG.md`](CHANGELOG.md) to reflect your contributions.
-    - Creation of a PR creation kicks off CI and a code review process.
-    - Atleast one PhysicsNeMo engineer will be assigned for the review.
+    - Creating a PR kicks off CI and a code review process.
+    - At least one PhysicsNeMo engineer will be assigned for the review.
 
 4. The PR will be accepted and the corresponding issue closed after adequate
-review and testing has been completed. Note that every PR should correspond to
-an open issue and should be linked on Github.
+review and testing have been completed. Note that every PR should correspond to
+an open issue and should be linked on GitHub.
 
 ### Licensing Information
 
@@ -76,9 +76,9 @@ All source code files should start with this paragraph:
 that the contribution is your original work, or you have rights to submit it
 under the same license, or a compatible license.
 
-  - Any contribution which contains commits that are not Signed-Off will not be accepted.
+  - Any contribution that contains commits that are not signed off will not be accepted.
 
-- To sign off on a commit you simply use the `--signoff` (or `-s`) option when
+- To sign off on a commit, simply use the `--signoff` (or `-s`) option when
 committing your changes:
 
   ```bash
@@ -133,10 +133,10 @@ committing your changes:
 ### Pre-commit
 
 For PhysicsNeMo development, [pre-commit](https://pre-commit.com/) is **required**.
-This will not only help developers pass the CI pipeline, but also accelerate reviews.
+This will not only help developers pass the CI pipeline but also accelerate reviews.
 Contributions that have not used pre-commit will *not be reviewed*.
 
-To install `pre-commit` follow the below steps inside the PhysicsNeMo repository
+To install `pre-commit`, follow the steps below inside the PhysicsNeMo repository
 folder:
 
 ```bash
@@ -145,4 +145,4 @@ pre-commit install
 ```
 
 Once the above commands are executed, the pre-commit hooks will be activated and
-all the commits will be checked for appropriate formatting.
+all commits will be checked for appropriate formatting.
