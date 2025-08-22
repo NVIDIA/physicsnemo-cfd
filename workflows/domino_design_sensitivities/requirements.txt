@@ -3,3 +3,4 @@ hydra-core
 cupy-cuda12x
 numba
 requests
+typer

@@ -14,11 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pyvista as pv
-import numpy as np
-from tqdm import tqdm
-import numba
 from typing import Literal
+
+import numba
+import numpy as np
+import pyvista as pv
+from tqdm import tqdm
 
 
 @numba.njit

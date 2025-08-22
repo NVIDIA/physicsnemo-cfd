@@ -14,8 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import requests
 from pathlib import Path
+
+import requests
 from tqdm import tqdm
 
 

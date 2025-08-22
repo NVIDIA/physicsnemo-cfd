@@ -23,24 +23,25 @@ sampled in the volume around the STL and on the surface of the STL. They are sto
 in a dictionary, which can be written out for visualization.
 """
 
+from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
+
 import hydra
-from omegaconf import DictConfig
-from tqdm import tqdm
-
 import numpy as np
+import pyvista as pv
 import torch
-
+from numpy.typing import NDArray
+from omegaconf import DictConfig
+from physicsnemo.distributed import DistributedManager
 from physicsnemo.models.domino.model import DoMINO
 from physicsnemo.utils.domino.utils import unnormalize
 from torch.nn.parallel import DistributedDataParallel
-from physicsnemo.distributed import DistributedManager
+from tqdm import tqdm
 
-from numpy.typing import NDArray
-import pyvista as pv
 from design_datapipe import DesignDatapipe
-from dataclasses import dataclass
+from utilities.download import download
+from utilities.mesh_postprocessing import laplacian_smoothing
 
 
 @dataclass
@@ -420,8 +421,6 @@ class DoMINOInference:
             mesh.cell_normals,
         )
 
-        from utilities.mesh_postprocessing import laplacian_smoothing
-
         mesh_pointdata = pv.PolyData(mesh.points, mesh.faces)
         mesh_pointdata.cell_data["raw_sensitivity_normal_cells"] = (
             raw_sensitivity_normal_cells
@@ -466,40 +465,23 @@ class DoMINOInference:
         }
 
 
-import argparse
+def main(
+    model_checkpoint_path: Path = (Path(__file__).parent / "DoMINO.0.41.pt").absolute(),
+    input_file: Path = (
+        Path(__file__).parent / "geometries" / "drivaer_1.stl"
+    ).absolute(),
+) -> None:
+    """Run distributed DoMINO inference and export results.
 
-if __name__ == "__main__":
-    ### [CLI Argument Parsing]
-    parser = argparse.ArgumentParser(
-        description=(
-            "Distributed DoMINO inference pipeline. "
-            "Specify the model checkpoint path via --model-checkpoint-path. "
-            "Optionally specify an input STL file via --input-file."
-        )
-    )
-    parser.add_argument(
-        "--model-checkpoint-path",
-        type=str,
-        default=str((Path(__file__).parent / "DoMINO.0.41.pt").absolute()),
-        help=(
-            "Path to the DoMINO model checkpoint (.pt file). "
-            "Defaults to DoMINO.0.41.pt in the script directory."
-        ),
-    )
-    parser.add_argument(
-        "--input-file",
-        type=str,
-        default=str(
-            (Path(__file__).parent / "geometries" / "drivaer_1.stl").absolute()
-        ),
-        help=(
-            "Path to the input STL geometry file. "
-            "If not specified, defaults to drivaer_1.stl in the geometries directory. "
-            "If the file does not exist, it will be downloaded automatically."
-        ),
-    )
-    args = parser.parse_args()
+    This function is designed for Typer's auto-generated CLI. Invoke via:
+    `uv run typer /home/psharpe/GitHub/physicsnemo-cfd/workflows/domino_design_sensitivities/main.py run --help`
 
+    Args:
+        model_checkpoint_path: Path to the DoMINO model checkpoint (.pt).
+            Defaults to `DoMINO.0.41.pt` next to this file.
+        input_file: Path to input STL geometry. If set to the default path and it
+            does not exist, it will be downloaded automatically.
+    """
     ### [CUDA Memory Management]
     torch.cuda.set_per_process_memory_fraction(0.9)
 
@@ -518,14 +500,12 @@ if __name__ == "__main__":
     ### [Model Inference Pipeline Setup]
     domino = DoMINOInference(
         cfg=cfg,
-        model_checkpoint_path=Path(args.model_checkpoint_path),
+        model_checkpoint_path=Path(model_checkpoint_path),
         dist=dist,
     )
 
-    from utilities.download import download
-
     ### [Input File Handling]
-    input_file = Path(args.input_file)
+    input_file = Path(input_file)
 
     ### [Input File Download or Validation]
     default_stl_path = Path(__file__).parent / "geometries" / "drivaer_1.stl"
@@ -572,3 +552,7 @@ if __name__ == "__main__":
     for key, value in sensitivity_results.items():
         mesh[key] = value
     mesh.save(input_file.with_suffix(".vtk"))
+
+
+if __name__ == "__main__":
+    main()
