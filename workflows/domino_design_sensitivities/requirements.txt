@@ -3,3 +3,4 @@ hydra-core
 cupy-cuda12x
 numba
 requests
+"cuml-cu12>=25.2.0"
