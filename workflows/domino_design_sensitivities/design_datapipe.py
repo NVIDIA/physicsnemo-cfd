@@ -94,7 +94,10 @@ class DesignDatapipe(Dataset):
 
         surface_normals = -1.0 * np.array(mesh.cell_normals, dtype=np.float32)
 
-        center_of_mass = calculate_center_of_mass(stl_centers, surface_areas)
+        center_of_mass = calculate_center_of_mass(
+            torch.as_tensor(stl_centers), 
+            torch.as_tensor(surface_areas)
+        ).detach().cpu().numpy()
 
         s_max = np.asarray(bounding_box_surface[1])
         s_min = np.asarray(bounding_box_surface[0])
