@@ -50,7 +50,7 @@ def compute_streamlines(data, field):
         vectors=field,  # The name of the vector field
         source=seed_cloud,
         max_steps=1000,
-        max_time=10,  # Control how long the streamlines are
+        max_length=10,  # Control how long the streamlines are
         integration_direction="both",
         terminal_speed=1e-12,
         surface_streamlines=True,
