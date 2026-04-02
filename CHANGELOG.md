@@ -18,14 +18,19 @@ Versioning](https://semver.org/spec/v2.0.0.html).
   `output.ground_truth_mesh_field_names`, and volume equivalents).
 - `physicsnemo.cfd.bench.metric_registry` for named metrics shared with evaluation.
 - Example YAML under `workflows/evaluation_examples/`.
-- CLI: `python -m physicsnemo.cfd.evaluation.benchmarks` and
-  `python -m physicsnemo.cfd.evaluation.inference`.
+- CLI: `python -m physicsnemo.cfd.evaluation.benchmarks` (canonical evaluation entrypoint) and
+  `python -m physicsnemo.cfd.evaluation.inference` (compatibility wrapper forwarding to benchmarks).
 
 ### Changed
 
 - Benchmark metric registration for evaluation now uses bench-backed built-ins
   under `physicsnemo.cfd.evaluation.metrics.builtin` instead of duplicated
   NumPy-only helpers.
+- Evaluation examples use **`evaluation_config.yaml`** and **`benchmarks.run`** as the primary
+  workflow; `evaluation.inference` forwards to the benchmark engine; the benchmark runner can write
+  **`inference_<model>_<case>.vtp|vtu`** when **`run.save_inference_mesh`** is true.
+- Matrix benchmark settings live in the same **`evaluation_config.yaml`** (commented template); the
+  separate **`benchmark_matrix.yaml`** overlay was removed from the examples folder.
 
 ### Deprecated
 

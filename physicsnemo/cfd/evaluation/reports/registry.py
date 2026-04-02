@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+# Visual plugins: (config, results, output_dir, *, context=None, **per_visual_kwargs) -> None.
+# ``context`` may include ``comparison_meshes_by_run``: list[dict[case_id, pyvista.DataSet]]
+# aligned with ``results`` (see ``run_optional_report_plugins``).
 VisualFn = Callable[..., None]
 
 _REGISTRY: dict[str, VisualFn] = {}

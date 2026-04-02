@@ -1,38 +1,34 @@
 # Evaluation examples (PhysicsNeMo-CFD)
 
-YAML examples and CLIs for **`physicsnemo.cfd.evaluation`**: single-case inference, benchmarking, and optional PNG reports. Install from this repo (`pip install -e .`) or `pip install nvidia-physicsnemo-cfd`, then run commands **from this directory** (or pass absolute paths to `--config`).
+YAML and the **benchmark** CLI drive all evaluation: **metrics**, tabular outputs (JSON/CSV/HTML), optional **PNG visuals**, and optional VTK (`run.save_inference_mesh`, `reports.save_comparison_meshes`). Everything is configured in **[`evaluation_config.yaml`](evaluation_config.yaml)** — `benchmark.mode: single` uses the top-level `model` and `dataset`; **`benchmark.mode: matrix`** uses `benchmark.models` × `benchmark.datasets` (see the commented template at the bottom of that file). Install from this repo (`pip install -e .`) or `pip install nvidia-physicsnemo-cfd`, then run commands **from this directory** (or pass absolute paths to `--config`).
 
 ---
 
-## Commands
-
-**Inference** — one model, one case; writes `inference_<model>_<case>.vtp|vtu` under `run.output_dir`. With `reports.enabled: true` and `reports.visuals`, also writes a comparison mesh and PNGs (needs GT on the case; see [Reports and plots](#reports-and-plots)).
+## Commands (canonical)
 
 ```bash
-python -m physicsnemo.cfd.evaluation.inference.run --config inference_config.yaml
-python -m physicsnemo.cfd.evaluation.inference.run --config inference_config.yaml --case-id run_1
-# shorthand: python -m physicsnemo.cfd.evaluation.inference
-```
-
-**Benchmark** — metrics, JSON/CSV/HTML; **does not** run `reports.visuals` or save comparison VTK.
-
-```bash
-python -m physicsnemo.cfd.evaluation.benchmarks.run --base-config inference_config.yaml --config benchmark_matrix.yaml --case-id run_1
+# One config: metrics + tables + optional visuals (see evaluation_config.yaml)
+python -m physicsnemo.cfd.evaluation.benchmarks.run --config evaluation_config.yaml
+python -m physicsnemo.cfd.evaluation.benchmarks.run --config evaluation_config.yaml --case-id run_1
+# shorthand:
 python -m physicsnemo.cfd.evaluation.benchmarks
 ```
 
-**Merge order:** `--base-config` first, then `--config`, then optional CLI overrides (`run.device=cpu`, or `--run.device=cuda:1`). Inference supports `--base-config` the same way.
+**Matrix:** edit [`evaluation_config.yaml`](evaluation_config.yaml) — set `benchmark.mode: matrix` and fill `benchmark.models` / `benchmark.datasets` (template is commented at the bottom of the file). Then run the same command as above. Incompatible surface/volume pairs are skipped.
 
-**Minimal surface-only example:** `surface_benchmark_minimal.yaml` (edit paths).
+**Optional second config:** `--base-config` then `--config` still works if you prefer splitting shared defaults from an overlay; one file is enough for most workflows.
+
+**Merge order** when using two files: `--base-config` first, then `--config`, then optional CLI overrides (`run.device=cpu`, or `--run.device=cuda:1`).
+
+**Compatibility:** `python -m physicsnemo.cfd.evaluation.inference` forwards to the same benchmark engine (defaults to **one case** = first listed case when `--case-id` is omitted). Prefer the `benchmarks.run` command above.
 
 ---
 
-## Config files in this folder
+## Config file
 
 | File | Use |
 | ---- | --- |
-| [`inference_config.yaml`](inference_config.yaml) | Shared defaults: `run`, `model`, `dataset`, `output`, `metrics`, optional `reports`, `benchmark.mode: single`. Use alone or as `--base-config`. |
-| [`benchmark_matrix.yaml`](benchmark_matrix.yaml) | Overlay: `benchmark.mode: matrix`, `models[]`, `datasets[]` (Cartesian product; incompatible surface/volume pairs are skipped). |
+| [`evaluation_config.yaml`](evaluation_config.yaml) | **Full evaluation config:** `run`, `model`, `dataset`, `output`, `metrics`, optional `reports`, and `benchmark` (`mode: single` or `mode: matrix` with `models` / `datasets`). Matrix example is in comments at the bottom of the file. |
 
 ---
 
@@ -42,10 +38,10 @@ Keys are the same whether they come from one file or base + overlay.
 
 | Section | Contents |
 | ------- | -------- |
-| **run** | `device`, `output_dir`, `seed`, `batch_size`, **`save_inference_mesh`** (default `true`; set `false` to skip writing `inference_<model>_<case>.vtp\|vtu`) |
+| **run** | `device`, `output_dir`, `seed`, `batch_size`, **`save_inference_mesh`** (if `true`, benchmark writes `inference_<model>_<case>.vtp\|vtu` per case) |
 | **model** | `name` (registered wrapper), `checkpoint`, `stats_path`, optional `inference_domain` (`surface` \| `volume`), `kwargs` |
 | **dataset** | `name` (registered adapter), `root`, `split`, `case_ids` (`null` = all), `kwargs` (e.g. `align_ground_truth_to_model`, `inference_domain` for volume) |
-| **output** | `mesh_field_names`, `ground_truth_mesh_field_names` (surface); `volume_mesh_field_names`, `ground_truth_volume_mesh_field_names` (volume) |
+| **output** | `mesh_field_names`, `ground_truth_mesh_field_names` (surface); `volume_mesh_field_names`, `ground_truth_volume_mesh_field_names` (volume); optional **`streamlines_vector_canonical`** (default `velocity`) for `streamlines_comparison` |
 | **metrics** | List of metric names or `{ name: ..., ...kwargs }` — see [Metrics](#metrics) |
 | **reports** | Optional PNG pipeline — see [Reports and plots](#reports-and-plots) |
 | **benchmark** | `mode` (`single` \| `matrix`), `models` / `datasets`, `reproducibility` |
@@ -58,7 +54,7 @@ Keys are the same whether they come from one file or base + overlay.
 
 ## Metrics
 
-Registered names (or dicts with `name` + kwargs). Example list from `inference_config.yaml`:
+Registered names (or dicts with `name` + kwargs). Example list from `evaluation_config.yaml`:
 
 ```yaml
 metrics:
@@ -89,16 +85,27 @@ metrics:
 
 ### What runs where
 
-| CLI | Metrics | `reports.visuals` (PNGs) | Comparison VTK |
-| --- | ------- | -------------------------- | ---------------- |
-| **Inference** | — | Yes, if `reports.enabled` and `visuals` non-empty | Saved if `save_comparison_meshes` **or** visuals enabled |
-| **Benchmark** | Yes | No | Not written by engine |
+The benchmark engine writes **`benchmark_results.json` / `.csv` / `.html`**, then optional **`reports.visuals`** PNGs (when `reports.enabled` and `visuals` is non-empty). Comparison VTK on disk exists only if **`reports.save_comparison_meshes: true`** (otherwise PNGs use in-memory meshes). **`run.save_inference_mesh: true`** adds prediction-only VTK per case.
 
-Built-in **visual** names: `field_comparison_surface` (surface GT vs pred), `plot_fields_volume` (volume scalars), **`line_plot`** (GT vs pred along `plot_coord`, cell-center sample of comparison mesh; kwargs: `canonical_key`, `plot_coord`, `normalize_factor`, `case_ids`, …). Register more: `physicsnemo.cfd.evaluation.reports.register_visual`.
+Built-in **visual** names:
 
-**Outputs:** PNGs under `{run.output_dir}/visuals/`; manifest `report_plugins_manifest.json`; comparison mesh `{run.output_dir}/{comparison_mesh_subdir}/{case_id}_comparison.vtp|vtu`.
+| Name | Role |
+| ---- | ---- |
+| `field_comparison_surface` | Surface GT vs pred (`plot_field_comparisons`) |
+| `plot_fields_volume` | Volume scalars (`plot_fields`) |
+| `line_plot` / `plot_line` | GT vs pred along `plot_coord` on comparison mesh |
+| `design_scatter` | Pred vs true scatter + R²; needs **`pairs`**: `[{name, true_key, pred_key}]` matching `per_case[].metrics` |
+| `design_trend` | Trend vs index; same **`pairs`**, optional **`idx_key`** per pair for x labels |
+| `projections_hexbin` | Hexbin over many meshes; needs **`mesh_paths`**, **`field`**, **`direction`** (see `bench.visualization.plot_projections_hexbin`) |
+| `streamlines_comparison` | Volume streamlines (point comparison mesh); uses **`output.streamlines_vector_canonical`** or **`canonical_key`** |
 
-**Inference writes two meshes:** (1) `inference_<model>_<case>.vtp|vtu` — **predictions only**; (2) `comparison_meshes/<case>_comparison.*` — **GT + pred** (same as `build_comparison_mesh` for metrics/plots).
+Register more: `physicsnemo.cfd.evaluation.reports.register_visual`.
+
+**Runtime context:** `run_optional_report_plugins(..., context={"comparison_meshes_by_run": [{case_id: mesh}, ...]})` aligns with `results` so built-ins can skip `pv.read` for large VTU/VTP.
+
+**Outputs:** PNGs under `{run.output_dir}/visuals/`; manifest `report_plugins_manifest.json`; optional comparison mesh `{run.output_dir}/{comparison_mesh_subdir}/{case_id}_comparison.vtp|vtu`.
+
+**Inference meshes:** (1) `inference_<model>_<case>.vtp|vtu` — **predictions only** (optional via `run.save_inference_mesh`); (2) optional **`comparison_meshes/<case>_comparison.*`** — **GT + pred** when `save_comparison_meshes` is true.
 
 ### `reports` YAML shape
 
@@ -122,8 +129,8 @@ reports:
 
 | Key | Role |
 | --- | ---- |
-| `enabled` | If true, run registered visuals (inference calls this automatically). |
-| `save_comparison_meshes` | Save comparison VTK even with no `visuals` (inference only). |
+| `enabled` | If true, run registered visuals after metrics/tables. |
+| `save_comparison_meshes` | Save comparison VTK to disk. If false, mesh-based visuals still run from memory when the runner built a comparison mesh. |
 | `comparison_mesh_subdir` | Subfolder for `*_comparison.vtp|vtu`. |
 | `visuals` | Ordered list: string names or `{ name: ..., ...kwargs }`. |
 | `plugins` | Legacy manifest hooks (`ReportsConfig`). |
@@ -133,6 +140,22 @@ reports:
 - **`field_comparison_surface`** — Uses `canonical_keys` (default `pressure`) and `output.ground_truth_mesh_field_names` / `mesh_field_names`.
 - **`plot_fields_volume`** — `fields` = VTK array names, or default all `output.volume_mesh_field_names` values.
 - **`line_plot`** — One GT vs pred line per case; **`canonical_key`** picks surface or volume maps; optional **`coord_trim`** / **`field_trim`** (two-element lists), **`flip`**, matplotlib kwargs forwarded to `plot_line` (e.g. `xlabel`, `ylabel`, `true_line_kwargs`).
+- **`design_scatter` / `design_trend`** — Require **`pairs`** in YAML; values must appear under **`per_case[].metrics`** (e.g. from custom metrics or extended metric dicts).
+- **`projections_hexbin`** — **`mesh_paths`**: explicit list of VTK paths (same workflow as [`workflows/bench_example`](../bench_example/) projection outputs).
+- **`streamlines_comparison`** — Volume cases only (`metric_dtype` point); uses GT/pred VTK names from **`output`** for the chosen canonical key.
+
+### Bench example ↔ evaluation mapping
+
+| `workflows/bench_example` / `bench.visualization.utils` | Evaluation visual name |
+| --------------------------------------------------------- | ------------------------ |
+| `plot_field_comparisons` (contours / utils) | `field_comparison_surface` |
+| `plot_fields` | `plot_fields_volume` |
+| `plot_line` | `line_plot` |
+| `plot_design_scatter` | `design_scatter` |
+| `plot_design_trend` | `design_trend` |
+| `plot_projections_hexbin` | `projections_hexbin` (`mesh_paths` in YAML) |
+| `plot_streamlines` | `streamlines_comparison` |
+| `get_visible_point_indices` | (no built-in; used inside bench_example contour scripts only) |
 
 ### Line plots
 
@@ -141,12 +164,12 @@ Built-in **`line_plot`** wraps **`plot_line`**: it loads the comparison mesh, bu
 ### Other plot paths
 
 - **Bench example:** run inference to get VTK, then `generate_surface_benchmarks.py` / `generate_volume_benchmarks.py` with a matching field map.
-- **Programmatic:** `bench.visualization.utils` or `run_optional_report_plugins(config, results, output_dir)` with `per_case[].comparison_mesh_path` if you build results yourself.
+- **Programmatic:** `bench.visualization.utils` or `run_optional_report_plugins(config, results, output_dir, context={...})` with `per_case[].comparison_mesh_path` and/or **`context["comparison_meshes_by_run"]`**.
 
 ### Troubleshooting
 
 - **`case_ids`** in a visual must include the case you run — use `--case-id run_1` if the visual lists `case_ids: ["run_1"]`, or omit `case_ids`.
-- Use an **editable install** or **`PYTHONPATH`** to this repo so inference includes the visualization step (not an old wheel).
+- Use an **editable install** or **`PYTHONPATH`** to this repo so the benchmark run includes the visualization step (not an old wheel).
 - Check **`report_plugins_manifest.json`** → `visual_errors` (headless PyVista often needs **xvfb**).
 
 ---

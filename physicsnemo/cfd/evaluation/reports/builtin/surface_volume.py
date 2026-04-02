@@ -14,6 +14,7 @@ import pyvista as pv
 from physicsnemo.cfd.bench.visualization.utils import plot_field_comparisons, plot_fields
 from physicsnemo.cfd.evaluation.config import Config, OutputConfig
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
+from physicsnemo.cfd.evaluation.reports.context_helpers import get_comparison_mesh_for_case
 from physicsnemo.cfd.evaluation.reports.registry import register_visual
 
 
@@ -22,6 +23,7 @@ def field_comparison_surface(
     results: list[dict[str, Any]],
     output_dir: str,
     *,
+    context: dict[str, Any] | None = None,
     case_ids: list[str] | None = None,
     canonical_keys: list[str] | None = None,
     view: str = "xy",
@@ -34,7 +36,7 @@ def field_comparison_surface(
     keys = canonical_keys or ["pressure"]
     output: OutputConfig = config.output
 
-    for run in results:
+    for run_idx, run in enumerate(results):
         if run.get("skipped"):
             continue
         model = run["model"]
@@ -43,15 +45,14 @@ def field_comparison_surface(
             cid = row["case_id"]
             if case_ids is not None and cid not in case_ids:
                 continue
-            path = row.get("comparison_mesh_path")
             dtype = row.get("metric_dtype") or "cell"
-            if not path:
+            mesh = get_comparison_mesh_for_case(row, cid, run_idx, context)
+            if mesh is None:
                 log_dataset(
                     "benchmark",
-                    f"Skip field_comparison_surface for {cid!r}: no comparison_mesh_path",
+                    f"Skip field_comparison_surface for {cid!r}: no comparison mesh in context or path",
                 )
                 continue
-            mesh = pv.read(path)
             true_fields: list[str] = []
             pred_fields: list[str] = []
             for k in keys:
@@ -79,6 +80,7 @@ def plot_fields_volume(
     results: list[dict[str, Any]],
     output_dir: str,
     *,
+    context: dict[str, Any] | None = None,
     case_ids: list[str] | None = None,
     fields: list[str] | None = None,
     view: str = "xy",
@@ -93,7 +95,7 @@ def plot_fields_volume(
     if field_list is None:
         field_list = list(output.volume_mesh_field_names.values())
 
-    for run in results:
+    for run_idx, run in enumerate(results):
         if run.get("skipped"):
             continue
         model = run["model"]
@@ -102,15 +104,14 @@ def plot_fields_volume(
             cid = row["case_id"]
             if case_ids is not None and cid not in case_ids:
                 continue
-            path = row.get("comparison_mesh_path")
             dtype = row.get("metric_dtype") or "point"
-            if not path:
+            mesh = get_comparison_mesh_for_case(row, cid, run_idx, context)
+            if mesh is None:
                 log_dataset(
                     "benchmark",
-                    f"Skip plot_fields_volume for {cid!r}: no comparison_mesh_path",
+                    f"Skip plot_fields_volume for {cid!r}: no comparison mesh in context or path",
                 )
                 continue
-            mesh = pv.read(path)
             plotter = plot_fields(
                 mesh,
                 field_list,
