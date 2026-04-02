@@ -39,6 +39,9 @@ from a Python interface, facilitating scalable deployment of trained models.
   against traditional CFD results using a broad set of built-in engineering
   metrics (for example, pointwise errors, integrated quantities, spectral
   metrics, PDE residuals). [Related publication](https://www.arxiv.org/abs/2507.10747)
+  - The `physicsnemo.cfd.evaluation` package runs config-driven inference and
+    uses the same `physicsnemo.cfd.bench` metric implementations as the workflow
+    scripts (see `workflows/evaluation_examples/`).
   - Utilities to extend and build custom metrics, analyze, and visualize the
     results of trained ML models, both mesh-based and point-cloud based models
 

@@ -27,7 +27,7 @@ doctest:
 	echo "Not implemented"
 
 pytest: 
-	echo "Not implemented"
+	python -m pytest test/ci_tests/test_evaluation.py -v --tb=short
 
 coverage:
 	echo "Not implemented"

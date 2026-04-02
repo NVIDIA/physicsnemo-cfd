@@ -1,0 +1,89 @@
+"""Load DoMINO scaling factors from training pickles (compatible with domino ``utils.ScalingFactors``)."""
+
+from __future__ import annotations
+
+import os
+import pickle
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict
+
+import numpy as np
+import torch
+from omegaconf import DictConfig
+
+
+@dataclass
+class ScalingFactors:
+    """Mirrors ``examples/cfd/external_aerodynamics/domino/src/utils.ScalingFactors`` for unpickling."""
+
+    mean: Dict[str, np.ndarray]
+    std: Dict[str, np.ndarray]
+    min_val: Dict[str, np.ndarray]
+    max_val: Dict[str, np.ndarray]
+    field_keys: list[str]
+
+    @classmethod
+    def load(cls, filepath: str | Path) -> "ScalingFactors":
+        with open(filepath, "rb") as f:
+            return pickle.load(f)
+
+
+class _ScalingUnpickler(pickle.Unpickler):
+    """Map pickles saved as ``utils.ScalingFactors`` to our local class."""
+
+    def find_class(self, module: str, name: str) -> Any:
+        if module == "utils" and name == "ScalingFactors":
+            return ScalingFactors
+        return super().find_class(module, name)
+
+
+def load_scaling_factors_tensors(
+    cfg: DictConfig,
+    device: torch.device,
+) -> tuple[torch.Tensor | None, torch.Tensor]:
+    """Return ``(vol_factors, surf_factors)`` as in domino ``test.py`` / ``load_scaling_factors``."""
+    pickle_path = os.path.join(cfg.data.scaling_factors)
+    pickle_path = os.path.expanduser(pickle_path)
+    with open(pickle_path, "rb") as f:
+        try:
+            scaling_factors = _ScalingUnpickler(f).load()
+        except Exception:
+            f.seek(0)
+            scaling_factors = pickle.load(f)
+
+    if cfg.model.normalization == "min_max_scaling":
+        vol_factors = np.asarray(
+            [
+                scaling_factors.max_val["volume_fields"],
+                scaling_factors.min_val["volume_fields"],
+            ]
+        )
+        surf_factors = np.asarray(
+            [
+                scaling_factors.max_val["surface_fields"],
+                scaling_factors.min_val["surface_fields"],
+            ]
+        )
+    elif cfg.model.normalization == "mean_std_scaling":
+        vol_factors = np.asarray(
+            [
+                scaling_factors.mean["volume_fields"],
+                scaling_factors.std["volume_fields"],
+            ]
+        )
+        surf_factors = np.asarray(
+            [
+                scaling_factors.mean["surface_fields"],
+                scaling_factors.std["surface_fields"],
+            ]
+        )
+    else:
+        raise ValueError(f"Invalid normalization mode: {cfg.model.normalization}")
+
+    vol_t = torch.from_numpy(vol_factors).to(device=device, dtype=torch.float32)
+    surf_t = torch.from_numpy(surf_factors).to(device=device, dtype=torch.float32)
+
+    if cfg.model.model_type == "surface":
+        vol_t = None
+    return vol_t, surf_t
