@@ -40,10 +40,25 @@ def surface_factors_from_global_stats(
     Stacks pressure (1) and shear_stress (3) using ``mean`` / ``std_dev`` in the JSON
     (same layout as ``surface_fields_normalization.npz`` from training).
     """
-    mp = np.asarray(data["mean"]["pressure"], dtype=np.float64).ravel()
-    mt = np.asarray(data["mean"]["shear_stress"], dtype=np.float64).ravel()
-    sp = np.asarray(data["std_dev"]["pressure"], dtype=np.float64).ravel()
-    st = np.asarray(data["std_dev"]["shear_stress"], dtype=np.float64).ravel()
+    mean_block = data.get("mean") or {}
+    std_block = data.get("std_dev") or {}
+    for k in ("pressure", "shear_stress"):
+        if k not in mean_block or k not in std_block:
+            have_m = sorted(mean_block.keys())
+            have_s = sorted(std_block.keys())
+            raise KeyError(
+                "Surface GeoTransolver/Transolver needs global_stats.json entries "
+                "mean/std_dev for 'pressure' and 'shear_stress'. "
+                f"Missing or incomplete key {k!r}. "
+                f"mean keys: {have_m}, std_dev keys: {have_s}. "
+                "If you only see velocity / pressure_volume / turbulent_viscosity, "
+                "that is a volume stats file—use inference_domain: volume with a volume "
+                "checkpoint, or point stats_path at a surface-trained checkpoint directory."
+            )
+    mp = np.asarray(mean_block["pressure"], dtype=np.float64).ravel()
+    mt = np.asarray(mean_block["shear_stress"], dtype=np.float64).ravel()
+    sp = np.asarray(std_block["pressure"], dtype=np.float64).ravel()
+    st = np.asarray(std_block["shear_stress"], dtype=np.float64).ravel()
     mean = np.concatenate([mp[:1], mt[:3]])
     std = np.concatenate([sp[:1], st[:3]])
     return {

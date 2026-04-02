@@ -1,4 +1,9 @@
-"""Benchmark runner: config → model x dataset loop → metrics → results."""
+"""Benchmark runner: config → model x dataset loop → metrics → results.
+
+Comparison meshes are built in memory for metrics only; the benchmark path does not write
+VTP/VTU files or run visualization plugins (see ``report_plugins.run_optional_report_plugins`` for
+optional post-processing outside this CLI).
+"""
 
 from __future__ import annotations
 
@@ -8,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 from physicsnemo.cfd.evaluation.benchmarks.report import write_report
-from physicsnemo.cfd.evaluation.benchmarks.report_plugins import run_optional_report_plugins
 from physicsnemo.cfd.evaluation.config import Config, ModelConfig, DatasetConfig, OutputConfig
 from physicsnemo.cfd.evaluation.datasets import get_adapter
 from physicsnemo.cfd.evaluation.datasets.gt_alignment import resolve_dataset_kwargs_for_model
@@ -182,7 +186,10 @@ def _run_single(
                 log_dataset(dataset_config.name, f"Metric {mname!r} failed for {cid!r}: {e}")
                 case_metrics[mname] = float("nan")
                 all_metric_values.setdefault(mname, []).append(float("nan"))
-        per_case.append({"case_id": cid, "metrics": case_metrics})
+        row: dict[str, Any] = {"case_id": cid, "metrics": case_metrics}
+        if comparison_mesh is not None and metric_dtype is not None:
+            row["metric_dtype"] = metric_dtype
+        per_case.append(row)
 
     # Aggregate (mean over cases)
     metrics_summary = {}
@@ -290,7 +297,6 @@ def run_benchmark(
             )
 
     write_report(results, output_dir, formats=["json", "csv", "html"])
-    run_optional_report_plugins(config, results, output_dir)
     return results
 
 
@@ -327,6 +333,9 @@ def _config_to_dict(c: Config) -> dict:
         "reports": {
             "enabled": c.reports.enabled,
             "plugins": c.reports.plugins,
+            "save_comparison_meshes": c.reports.save_comparison_meshes,
+            "comparison_mesh_subdir": c.reports.comparison_mesh_subdir,
+            "visuals": c.reports.visuals,
         },
         "benchmark": {
             "mode": c.benchmark.mode,

@@ -72,10 +72,15 @@ class BenchmarkConfig:
 
 @dataclass
 class ReportsConfig:
-    """Optional Phase-B style plugins (plots, streamlines) after scalar metrics."""
+    """Post-scalar outputs: optional comparison mesh export and registered visuals (plots)."""
 
     enabled: bool = False
     plugins: list[dict[str, Any]] = field(default_factory=list)
+    #: When True, write each case comparison mesh to ``comparison_mesh_subdir`` for downstream visualization.
+    save_comparison_meshes: bool = False
+    comparison_mesh_subdir: str = "comparison_meshes"
+    #: Visuals to run (same list style as ``metrics``): strings or ``{name: ..., ...kwargs}``.
+    visuals: list[str] | list[dict[str, Any]] = field(default_factory=list)
 
 
 # Canonical prediction keys used by wrappers; mesh array names are configurable per dataset/convention.
@@ -188,6 +193,11 @@ class Config:
             reports = ReportsConfig(
                 enabled=bool(reports_raw.get("enabled", False)),
                 plugins=list(reports_raw.get("plugins") or []),
+                save_comparison_meshes=bool(reports_raw.get("save_comparison_meshes", False)),
+                comparison_mesh_subdir=str(
+                    reports_raw.get("comparison_mesh_subdir") or "comparison_meshes"
+                ),
+                visuals=list(reports_raw.get("visuals") or []),
             )
         else:
             reports = ReportsConfig()
