@@ -5,6 +5,7 @@ run:
   output_dir: "benchmark_results"
   seed: 42
   batch_size: 1
+  save_inference_mesh: false  # false = skip writing inference_<model>_<case>.vtp|vtu
 
 # Default single-run model (overridden per row in benchmark matrix when using benchmark_matrix.yaml).
 # Smoke tests: model.name surface_baseline or volume_baseline, checkpoint/stats_path "", matching dataset domain.

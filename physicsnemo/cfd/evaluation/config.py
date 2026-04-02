@@ -28,6 +28,8 @@ class RunConfig:
     output_dir: str = "benchmark_results"
     seed: int = 42
     batch_size: int = 1
+    #: If False, inference CLI skips writing ``inference_<model>_<case>.vtp|vtu`` (comparison mesh / visuals unchanged).
+    save_inference_mesh: bool = True
 
 
 @dataclass

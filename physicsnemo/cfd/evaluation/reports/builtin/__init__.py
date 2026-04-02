@@ -4,6 +4,7 @@
 
 """Register built-in visuals."""
 
+from physicsnemo.cfd.evaluation.reports.builtin.line_plot import register_line_plot
 from physicsnemo.cfd.evaluation.reports.builtin.surface_volume import (
     register_plot_fields_volume,
     register_field_comparison_surface,
@@ -13,6 +14,7 @@ from physicsnemo.cfd.evaluation.reports.builtin.surface_volume import (
 def register_all_builtin_visuals() -> None:
     register_field_comparison_surface()
     register_plot_fields_volume()
+    register_line_plot()
 
 
 register_all_builtin_visuals()

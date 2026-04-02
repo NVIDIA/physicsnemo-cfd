@@ -93,35 +93,43 @@ def main() -> None:
 
     out_dir = Path(config.run.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    import pyvista as pv
 
-    out_path = out_dir / f"inference_{config.model.name}_{case_id}{'.vtp' if model_domain == 'surface' else '.vtu'}"
-    log_inference(
-        config.model.name,
-        f"Saving predictions to file ({model_domain}): {out_path}",
-    )
-    log_inference(
-        config.model.name,
-        f"Reading mesh file to attach fields: {case.mesh_path}",
-    )
+    if config.run.save_inference_mesh:
+        import pyvista as pv
 
-    if model_domain == "surface":
-        mesh = pv.read(case.mesh_path)
-        if not isinstance(mesh, pv.PolyData):
-            mesh = mesh.extract_surface()
-        names = config.output.mesh_field_names
+        out_path = out_dir / f"inference_{config.model.name}_{case_id}{'.vtp' if model_domain == 'surface' else '.vtu'}"
+        log_inference(
+            config.model.name,
+            f"Saving predictions to file ({model_domain}): {out_path}",
+        )
+        log_inference(
+            config.model.name,
+            f"Reading mesh file to attach fields: {case.mesh_path}",
+        )
+
+        if model_domain == "surface":
+            mesh = pv.read(case.mesh_path)
+            if not isinstance(mesh, pv.PolyData):
+                mesh = mesh.extract_surface()
+            names = config.output.mesh_field_names
+        else:
+            mesh = pv.read(case.mesh_path)
+            if hasattr(mesh, "cast_to_unstructured_grid"):
+                mesh = mesh.cast_to_unstructured_grid()
+            names = config.output.volume_mesh_field_names
+
+        data_target = mesh.cell_data if wrapper.output_location == "cell" else mesh.point_data
+        for canonical_key, mesh_name in names.items():
+            if canonical_key in predictions:
+                data_target[mesh_name] = predictions[canonical_key]
+        mesh.save(str(out_path))
+        log_inference(config.model.name, f"Wrote mesh with prediction fields: {out_path}")
     else:
-        mesh = pv.read(case.mesh_path)
-        if hasattr(mesh, "cast_to_unstructured_grid"):
-            mesh = mesh.cast_to_unstructured_grid()
-        names = config.output.volume_mesh_field_names
-
-    data_target = mesh.cell_data if wrapper.output_location == "cell" else mesh.point_data
-    for canonical_key, mesh_name in names.items():
-        if canonical_key in predictions:
-            data_target[mesh_name] = predictions[canonical_key]
-    mesh.save(str(out_path))
-    log_inference(config.model.name, f"Wrote mesh with prediction fields: {out_path}")
+        log_inference(
+            config.model.name,
+            f"Skipping inference mesh file (run.save_inference_mesh: false); "
+            f"would be inference_{config.model.name}_{case_id}.vtp|vtu.",
+        )
 
     _maybe_save_comparison_mesh_and_run_visuals(
         config=config,
