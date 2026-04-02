@@ -308,6 +308,7 @@ def _config_to_dict(c: Config) -> dict:
             "output_dir": c.run.output_dir,
             "seed": c.run.seed,
             "batch_size": c.run.batch_size,
+            "save_inference_mesh": c.run.save_inference_mesh,
         },
         "model": {
             "name": c.model.name,

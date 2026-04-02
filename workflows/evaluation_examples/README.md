@@ -42,7 +42,7 @@ Keys are the same whether they come from one file or base + overlay.
 
 | Section | Contents |
 | ------- | -------- |
-| **run** | `device`, `output_dir`, `seed`, `batch_size` |
+| **run** | `device`, `output_dir`, `seed`, `batch_size`, **`save_inference_mesh`** (default `true`; set `false` to skip writing `inference_<model>_<case>.vtp\|vtu`) |
 | **model** | `name` (registered wrapper), `checkpoint`, `stats_path`, optional `inference_domain` (`surface` \| `volume`), `kwargs` |
 | **dataset** | `name` (registered adapter), `root`, `split`, `case_ids` (`null` = all), `kwargs` (e.g. `align_ground_truth_to_model`, `inference_domain` for volume) |
 | **output** | `mesh_field_names`, `ground_truth_mesh_field_names` (surface); `volume_mesh_field_names`, `ground_truth_volume_mesh_field_names` (volume) |
@@ -94,7 +94,7 @@ metrics:
 | **Inference** | — | Yes, if `reports.enabled` and `visuals` non-empty | Saved if `save_comparison_meshes` **or** visuals enabled |
 | **Benchmark** | Yes | No | Not written by engine |
 
-Built-in **visual** names: `field_comparison_surface` (surface GT vs pred), `plot_fields_volume` (volume scalars). Register more: `physicsnemo.cfd.evaluation.reports.register_visual`.
+Built-in **visual** names: `field_comparison_surface` (surface GT vs pred), `plot_fields_volume` (volume scalars), **`line_plot`** (GT vs pred along `plot_coord`, cell-center sample of comparison mesh; kwargs: `canonical_key`, `plot_coord`, `normalize_factor`, `case_ids`, …). Register more: `physicsnemo.cfd.evaluation.reports.register_visual`.
 
 **Outputs:** PNGs under `{run.output_dir}/visuals/`; manifest `report_plugins_manifest.json`; comparison mesh `{run.output_dir}/{comparison_mesh_subdir}/{case_id}_comparison.vtp|vtu`.
 
@@ -113,6 +113,11 @@ reports:
       case_ids: ["run_1"]       # must match the case you run (--case-id)
       canonical_keys: [pressure, shear_stress]
       view: xy
+    - name: line_plot
+      case_ids: ["run_1"]
+      canonical_key: pressure
+      plot_coord: x
+      normalize_factor: 1.0
 ```
 
 | Key | Role |
@@ -127,10 +132,11 @@ reports:
 
 - **`field_comparison_surface`** — Uses `canonical_keys` (default `pressure`) and `output.ground_truth_mesh_field_names` / `mesh_field_names`.
 - **`plot_fields_volume`** — `fields` = VTK array names, or default all `output.volume_mesh_field_names` values.
+- **`line_plot`** — One GT vs pred line per case; **`canonical_key`** picks surface or volume maps; optional **`coord_trim`** / **`field_trim`** (two-element lists), **`flip`**, matplotlib kwargs forwarded to `plot_line` (e.g. `xlabel`, `ylabel`, `true_line_kwargs`).
 
 ### Line plots
 
-There is **no** built-in **`reports.visuals`** entry for **`plot_line`** (needs polyline extracts + `field_true` / `field_pred`). Options: **register** a custom visual that calls `physicsnemo.cfd.bench.visualization.utils.plot_line`, or use [`workflows/bench_example`](../bench_example/README.md) scripts.
+Built-in **`line_plot`** wraps **`plot_line`**: it loads the comparison mesh, builds a **cell-center** point cloud (or uses points if there are no cells), and plots GT vs pred vs sorted **`plot_coord`** (`x` \| `y` \| `z`). Set **`canonical_key`** to a surface key (`pressure`, `shear_stress`) or volume key (`pressure_volume`, …) present in **`output`**. For **centerline-style** plots like [`workflows/bench_example`](../bench_example/README.md), use those scripts or a **custom** `register_visual` that passes a list of polylines to `plot_line`.
 
 ### Other plot paths
 
