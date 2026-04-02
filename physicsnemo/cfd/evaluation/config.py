@@ -128,6 +128,8 @@ class OutputConfig:
     ground_truth_volume_mesh_field_names: dict[str, str] = field(
         default_factory=lambda: dict(DEFAULT_GROUND_TRUTH_VOLUME_MESH_FIELD_NAMES)
     )
+    #: Canonical key for ``streamlines_comparison`` report visual (volume vector field).
+    streamlines_vector_canonical: str = "velocity"
 
 
 @dataclass
@@ -166,6 +168,9 @@ class Config:
             volume_mesh_field_names=vol_fn,
             ground_truth_mesh_field_names=gt_mesh,
             ground_truth_volume_mesh_field_names=gt_vol,
+            streamlines_vector_canonical=str(
+                out.get("streamlines_vector_canonical") or "velocity"
+            ),
         )
         metrics = data.get("metrics", ["l2_pressure"])
         bench = data.get("benchmark") or {}

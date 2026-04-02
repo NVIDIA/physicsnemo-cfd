@@ -1,8 +1,8 @@
 """Benchmark runner: config → model x dataset loop → metrics → results.
 
-Comparison meshes are built in memory for metrics only; the benchmark path does not write
-VTP/VTU files or run visualization plugins (see ``report_plugins.run_optional_report_plugins`` for
-optional post-processing outside this CLI).
+When ``reports.enabled`` and ``reports.visuals`` are set, optionally writes comparison VTK (if
+``reports.save_comparison_meshes``) and runs :func:`report_plugins.run_optional_report_plugins` with
+in-memory meshes in ``context["comparison_meshes_by_run"]`` so PNGs avoid disk reads when possible.
 """
 
 from __future__ import annotations
@@ -13,7 +13,14 @@ from pathlib import Path
 from typing import Any
 
 from physicsnemo.cfd.evaluation.benchmarks.report import write_report
-from physicsnemo.cfd.evaluation.config import Config, ModelConfig, DatasetConfig, OutputConfig
+from physicsnemo.cfd.evaluation.config import (
+    Config,
+    DatasetConfig,
+    ModelConfig,
+    OutputConfig,
+    ReportsConfig,
+    RunConfig,
+)
 from physicsnemo.cfd.evaluation.datasets import get_adapter
 from physicsnemo.cfd.evaluation.datasets.gt_alignment import resolve_dataset_kwargs_for_model
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
@@ -43,6 +50,51 @@ def _effective_inference_domain(model_config: ModelConfig) -> str:
     if dom in ("surface", "volume"):
         return dom
     return get_inference_domain_for_model(model_config.name)
+
+
+def _save_inference_mesh_if_requested(
+    *,
+    run_config: RunConfig,
+    model_config: ModelConfig,
+    output_config: OutputConfig,
+    wrapper: Any,
+    case: Any,
+    case_id: str,
+    predictions: dict[str, Any],
+    output_dir: str,
+    dataset_name: str,
+) -> None:
+    """Write ``inference_<model>_<case>.vtp|vtu`` (predictions only) when ``run.save_inference_mesh``."""
+    if not run_config.save_inference_mesh:
+        return
+    import pyvista as pv
+
+    m_dom = case.inference_domain
+    out_path = Path(output_dir) / f"inference_{model_config.name}_{case_id}{'.vtp' if m_dom == 'surface' else '.vtu'}"
+    log_dataset(
+        dataset_name,
+        f"Writing inference mesh (predictions only) to {out_path}…",
+    )
+    try:
+        if m_dom == "surface":
+            mesh = pv.read(case.mesh_path)
+            if not isinstance(mesh, pv.PolyData):
+                mesh = mesh.extract_surface()
+            names = output_config.mesh_field_names
+        else:
+            mesh = pv.read(case.mesh_path)
+            if hasattr(mesh, "cast_to_unstructured_grid"):
+                mesh = mesh.cast_to_unstructured_grid()
+            names = output_config.volume_mesh_field_names
+
+        data_target = mesh.cell_data if wrapper.output_location == "cell" else mesh.point_data
+        for canonical_key, mesh_name in names.items():
+            if canonical_key in predictions:
+                data_target[mesh_name] = predictions[canonical_key]
+        mesh.save(str(out_path))
+        log_dataset(dataset_name, f"Wrote inference mesh: {out_path}")
+    except Exception as ex:
+        log_dataset(dataset_name, f"Could not write inference mesh to {out_path}: {ex}")
 
 
 def _call_metric(
@@ -79,9 +131,11 @@ def _run_single(
     case_ids: list[str] | None,
     output_config: OutputConfig,
     *,
+    run_config: RunConfig,
+    reports: ReportsConfig | None = None,
     allow_skip_mismatch: bool = False,
-) -> dict[str, Any]:
-    """Run one model on one dataset; return results structure."""
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Run one model on one dataset; return results structure and optional in-memory comparison meshes."""
     adapter_class = get_adapter(dataset_config.name)
     m_dom = _effective_inference_domain(model_config)
     d_dom = adapter_class.inference_domain_from_kwargs(dataset_config.kwargs)
@@ -95,15 +149,18 @@ def _run_single(
                 f"[benchmark] SKIP {model_config.name!r} × {dataset_config.name!r}: {reason}",
                 flush=True,
             )
-            return {
-                "model": model_config.name,
-                "dataset": dataset_config.name,
-                "skipped": True,
-                "skip_reason": reason,
-                "cases": [],
-                "metrics": {},
-                "per_case": [],
-            }
+            return (
+                {
+                    "model": model_config.name,
+                    "dataset": dataset_config.name,
+                    "skipped": True,
+                    "skip_reason": reason,
+                    "cases": [],
+                    "metrics": {},
+                    "per_case": [],
+                },
+                {},
+            )
         raise ValueError(reason)
 
     dkwargs = resolve_dataset_kwargs_for_model(dataset_config.kwargs, model_config.name)
@@ -114,13 +171,16 @@ def _run_single(
     )
     cases = case_ids if case_ids is not None else adapter.list_cases(split=dataset_config.split)
     if not cases:
-        return {
-            "model": model_config.name,
-            "dataset": dataset_config.name,
-            "cases": [],
-            "metrics": {},
-            "per_case": [],
-        }
+        return (
+            {
+                "model": model_config.name,
+                "dataset": dataset_config.name,
+                "cases": [],
+                "metrics": {},
+                "per_case": [],
+            },
+            {},
+        )
 
     wrapper_class = get_model_wrapper(model_config.name)
     wrapper = wrapper_class()
@@ -133,6 +193,7 @@ def _run_single(
 
     per_case = []
     all_metric_values: dict[str, list[float]] = {}
+    mesh_ctx: dict[str, Any] = {}
 
     log_dataset(
         dataset_config.name,
@@ -149,6 +210,18 @@ def _run_single(
         raw = wrapper.predict(model_input)
         predictions = wrapper.decode_outputs(raw, case)
         gt = case.ground_truth or {}
+
+        _save_inference_mesh_if_requested(
+            run_config=run_config,
+            model_config=model_config,
+            output_config=output_config,
+            wrapper=wrapper,
+            case=case,
+            case_id=cid,
+            predictions=predictions,
+            output_dir=output_dir,
+            dataset_name=dataset_config.name,
+        )
 
         comparison_mesh = None
         metric_dtype: str | None = None
@@ -189,6 +262,22 @@ def _run_single(
         row: dict[str, Any] = {"case_id": cid, "metrics": case_metrics}
         if comparison_mesh is not None and metric_dtype is not None:
             row["metric_dtype"] = metric_dtype
+            if reports:
+                if reports.save_comparison_meshes:
+                    sub = Path(output_dir) / reports.comparison_mesh_subdir
+                    sub.mkdir(parents=True, exist_ok=True)
+                    ext = ".vtp" if case.inference_domain == "surface" else ".vtu"
+                    cmp_p = sub / f"{cid}_comparison{ext}"
+                    try:
+                        comparison_mesh.save(str(cmp_p))
+                        row["comparison_mesh_path"] = str(cmp_p.resolve())
+                    except Exception as ex:
+                        log_dataset(
+                            dataset_config.name,
+                            f"Could not save comparison mesh for {cid!r}: {ex}",
+                        )
+                if reports.enabled and reports.visuals:
+                    mesh_ctx[cid] = comparison_mesh
         per_case.append(row)
 
     # Aggregate (mean over cases)
@@ -197,13 +286,16 @@ def _run_single(
         valid = [v for v in values if v == v]  # filter nan
         metrics_summary[mname] = sum(valid) / len(valid) if valid else float("nan")
 
-    return {
-        "model": model_config.name,
-        "dataset": dataset_config.name,
-        "cases": cases,
-        "metrics": metrics_summary,
-        "per_case": per_case,
-    }
+    return (
+        {
+            "model": model_config.name,
+            "dataset": dataset_config.name,
+            "cases": cases,
+            "metrics": metrics_summary,
+            "per_case": per_case,
+        },
+        mesh_ctx,
+    )
 
 
 def _case_ids_for_run(
@@ -241,10 +333,11 @@ def run_benchmark(
             json.dump(dict(os.environ), f, indent=2)
 
     results: list[dict[str, Any]] = []
+    meshes_by_run: list[dict[str, Any]] = []
 
     if config.benchmark.mode == "single":
         case_ids = _case_ids_for_run(config.dataset.case_ids, case_id)
-        res = _run_single(
+        res, mesh_ctx = _run_single(
             config.model,
             config.dataset,
             metric_specs,
@@ -252,15 +345,18 @@ def run_benchmark(
             output_dir,
             case_ids,
             config.output,
+            run_config=config.run,
+            reports=config.reports,
             allow_skip_mismatch=False,
         )
         results.append(res)
+        meshes_by_run.append(mesh_ctx)
     else:
         models = config.benchmark.models or [config.model]
         datasets = config.benchmark.datasets or [config.dataset]
         for m_cfg in models:
             for d_cfg in datasets:
-                res = _run_single(
+                res, mesh_ctx = _run_single(
                     m_cfg,
                     d_cfg,
                     metric_specs,
@@ -268,9 +364,12 @@ def run_benchmark(
                     output_dir,
                     _case_ids_for_run(d_cfg.case_ids, case_id),
                     config.output,
+                    run_config=config.run,
+                    reports=config.reports,
                     allow_skip_mismatch=True,
                 )
                 results.append(res)
+                meshes_by_run.append(mesh_ctx)
 
     if config.benchmark.reproducibility.save_artifacts:
         artifacts = Path(output_dir) / "benchmark_artifacts.json"
@@ -297,6 +396,20 @@ def run_benchmark(
             )
 
     write_report(results, output_dir, formats=["json", "csv", "html"])
+
+    if config.reports.enabled and config.reports.visuals:
+        import physicsnemo.cfd.evaluation.reports  # noqa: F401 — register built-in visuals
+
+        from physicsnemo.cfd.evaluation.benchmarks.report_plugins import run_optional_report_plugins
+
+        log_dataset("benchmark", "Running reports.visuals from benchmark results…")
+        run_optional_report_plugins(
+            config,
+            results,
+            output_dir,
+            context={"comparison_meshes_by_run": meshes_by_run},
+        )
+
     return results
 
 
@@ -329,6 +442,7 @@ def _config_to_dict(c: Config) -> dict:
             "volume_mesh_field_names": c.output.volume_mesh_field_names,
             "ground_truth_mesh_field_names": c.output.ground_truth_mesh_field_names,
             "ground_truth_volume_mesh_field_names": c.output.ground_truth_volume_mesh_field_names,
+            "streamlines_vector_canonical": c.output.streamlines_vector_canonical,
         },
         "metrics": c.metrics,
         "reports": {

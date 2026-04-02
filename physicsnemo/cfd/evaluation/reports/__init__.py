@@ -2,7 +2,12 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Report visuals registry and built-in plot hooks (``physicsnemo.cfd.bench.visualization``)."""
+"""Report visuals registry and built-in plot hooks (``physicsnemo.cfd.bench.visualization``).
+
+Pass optional ``context`` with ``comparison_meshes_by_run`` into
+``physicsnemo.cfd.evaluation.benchmarks.report_plugins.run_optional_report_plugins`` so mesh-based
+built-ins can skip ``pv.read(comparison_mesh_path)``.
+"""
 
 from physicsnemo.cfd.evaluation.reports.registry import (
     get_visual,
