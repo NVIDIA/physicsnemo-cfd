@@ -79,21 +79,21 @@ def test_build_comparison_mesh_surface_zero_l2_when_identical() -> None:
     pred = {"pressure": p.copy(), "shear_stress": wss.copy()}
     output = OutputConfig()
     mesh, dtype = build_comparison_mesh(case, pred, output, mesh_override=mesh0)
-        gtn = output.ground_truth_mesh_field_names["pressure"]
-        prn = output.mesh_field_names["pressure"]
-        d = compute_l2_errors(mesh, [gtn], [prn], dtype=dtype)
-        key = f"{gtn}_l2_error"
-        assert abs(float(d[key])) < 1e-10
+    gtn = output.ground_truth_mesh_field_names["pressure"]
+    prn = output.mesh_field_names["pressure"]
+    d = compute_l2_errors(mesh, [gtn], [prn], dtype=dtype)
+    key = f"{gtn}_l2_error"
+    assert abs(float(d[key])) < 1e-10
 
-        v = l2_pressure(
-            case.ground_truth or {},
-            pred,
-            case=case,
-            comparison_mesh=mesh,
-            metric_dtype=dtype,
-            output=output,
-        )
-        assert abs(v) < 1e-10
+    v = l2_pressure(
+        case.ground_truth or {},
+        pred,
+        case=case,
+        comparison_mesh=mesh,
+        metric_dtype=dtype,
+        output=output,
+    )
+    assert abs(v) < 1e-10
 
 
 def test_legacy_metric_call_without_extended_kwargs() -> None:

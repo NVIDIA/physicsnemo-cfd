@@ -13,8 +13,8 @@ run:
 model:
   name: "geotransolver"
   inference_domain: surface
-  checkpoint: "benchmark_models/geotransolver_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
-  stats_path: "benchmark_models/geotransolver_drivaerml_surface_checkpoint"
+  checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
+  stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_surface_checkpoint/global_stats.json"
   kwargs: {"batch_resolution": 60000, "geometry_sampling": 300000}
 
 dataset:
@@ -53,6 +53,29 @@ metrics:
   # - "l2_pressure_volume"
   # - "l2_turbulent_viscosity"
   # - "l2_velocity"
+
+# Registered visuals (metrics-style list). Inference CLI: when enabled + visuals, builds a GT+pred
+# comparison mesh, saves under comparison_mesh_subdir, runs visuals → PNGs in output_dir/visuals/.
+# Benchmark CLI still does not run visuals (metrics-only).
+reports:
+  enabled: true
+  save_comparison_meshes: false
+  comparison_mesh_subdir: comparison_meshes
+  visuals:
+    # - field_comparison_surface
+    - name: field_comparison_surface
+      case_ids: ["run_1"] # case ids to visualize
+      canonical_keys: [pressure, shear_stress]
+      view: xy
+    - name: my_line_plot
+      case_ids: ["run_1"] # case ids to visualize
+      plot_coord: x
+      field_true: pMean
+      field_pred: pMeanTrimPred
+    # - name: plot_fields_volume
+    #   case_ids: ["run_1"]
+    #   fields: ["pMeanPred", "nutMeanPred", "UMeanPred"]
+    #   view: xy
 
 benchmark:
   mode: "single"
