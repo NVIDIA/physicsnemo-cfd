@@ -1,0 +1,56 @@
+"""Resolve ground-truth mesh location (cell vs point) from dataset kwargs + model name."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from physicsnemo.cfd.evaluation.inference.model_registry import get_output_location_for_model
+
+# Keys used only for resolution; stripped before passing kwargs to dataset adapters.
+_ALIGN_KEYS = frozenset({"align_ground_truth_to_model"})
+
+
+def resolve_dataset_kwargs_for_model(
+    dataset_kwargs: dict[str, Any],
+    model_name: str,
+) -> dict[str, Any]:
+    """Return a copy of ``dataset_kwargs`` with effective ``gt_data_type`` when requested.
+
+    **Precedence**
+
+    - Explicit ``gt_data_type`` / ``gt_prefer`` of ``cell`` or ``point`` always wins.
+    - Otherwise, if ``gt_data_type`` is ``from_model`` / ``model`` (case-insensitive), or
+      ``align_ground_truth_to_model: true``, set ``gt_data_type`` to the registered model's
+      :attr:`~physicsnemo.cfd.evaluation.inference.model_registry.CFDModel.OUTPUT_LOCATION`.
+    - Otherwise leave ``gt_data_type`` unchanged (e.g. ``auto``).
+
+    Alignment keys are removed from the returned dict so adapters only see concrete
+    ``auto`` | ``cell`` | ``point``.
+    """
+    kw = dict(dataset_kwargs)
+    gt_raw = kw.get("gt_data_type", kw.get("gt_prefer", "auto"))
+    align = bool(kw.get("align_ground_truth_to_model", False))
+
+    explicit = {"cell", "point"}
+    if isinstance(gt_raw, str) and gt_raw.lower() in explicit:
+        kw["gt_data_type"] = gt_raw.lower()
+        _pop_align_keys(kw)
+        return kw
+
+    from_model_aliases = {"from_model", "model"}
+    use_model = align or (
+        isinstance(gt_raw, str) and gt_raw.lower() in from_model_aliases
+    )
+    if use_model:
+        loc = get_output_location_for_model(model_name)
+        kw["gt_data_type"] = loc
+        _pop_align_keys(kw)
+        return kw
+
+    _pop_align_keys(kw)
+    return kw
+
+
+def _pop_align_keys(kw: dict[str, Any]) -> None:
+    for k in _ALIGN_KEYS:
+        kw.pop(k, None)

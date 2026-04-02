@@ -1,0 +1,37 @@
+# Matrix benchmark overlay: merge on top of inference_config.yaml (see README).
+# Usage:
+#   python -m physicsnemo.cfd.evaluation.benchmarks.run --base-config inference_config.yaml --config benchmark_matrix.yaml
+
+benchmark:
+  mode: "matrix"
+  models:
+    # - name: "fignet"
+    #   checkpoint: "benchmark_models/fignet_drivaerml_surface_checkpoint/model_00999.pth"
+    #   stats_path: "benchmark_models/fignet_drivaerml_surface_checkpoint/global_stats.json"
+    #   kwargs: {"max_points": 250000, "interpolation_k": 4}
+    # - name: "xmgn"
+    #   checkpoint: "benchmark_models/xmgn_drivaerml_surface_checkpoint/final_model_checkpoint.pth"
+    #   stats_path: "benchmark_models/xmgn_drivaerml_surface_checkpoint/global_stats.json"
+    #   kwargs: {"max_points": 250000, "interpolation_k": 4}
+    - name: "geotransolver"
+      inference_domain: volume
+      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_volume_checkpoint/checkpoint.0.501.pt"
+      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_volume_checkpoint/global_stats.json"
+      kwargs: {"batch_resolution": 60000, "geometry_sampling": 300000}
+    # - name: "transolver"
+    #   checkpoint: "benchmark_models/transolver_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
+    #   stats_path: "benchmark_models/transolver_drivaerml_surface_checkpoint/global_stats.json"
+    #   kwargs: {"batch_resolution": 60000, "geometry_sampling": 300000}
+    # - name: "domino"
+    #   checkpoint: "benchmark_models/domino_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
+    #   stats_path: "benchmark_models/domino_drivaerml_surface_checkpoint/global_stats.json"
+    #   kwargs: {"domino_config": "benchmark_models/domino_drivaerml_surface_checkpoint/config.yaml"}
+  datasets:
+    - name: "drivaerml"
+      root: "/lustre/fsw/coreai_modulus_cae/datasets/drivaer_aws/drivaer_data_finetune"
+      split: null
+      case_ids: ["run_1"]
+      kwargs: {align_ground_truth_to_model: true, inference_domain: volume}
+  reproducibility:
+    log_env: true
+    save_artifacts: true

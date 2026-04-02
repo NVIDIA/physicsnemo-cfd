@@ -11,7 +11,21 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `physicsnemo.cfd.evaluation`: config-driven inference and benchmarking with
+  metrics delegated to `physicsnemo.cfd.bench` (L2, area-weighted L2, forces,
+  continuity/momentum residual L2 chain). Mesh bridge attaches GT and prediction
+  fields using explicit VTK names from config (`output.mesh_field_names`,
+  `output.ground_truth_mesh_field_names`, and volume equivalents).
+- `physicsnemo.cfd.bench.metric_registry` for named metrics shared with evaluation.
+- Example YAML under `workflows/evaluation_examples/`.
+- CLI: `python -m physicsnemo.cfd.evaluation.benchmarks` and
+  `python -m physicsnemo.cfd.evaluation.inference`.
+
 ### Changed
+
+- Benchmark metric registration for evaluation now uses bench-backed built-ins
+  under `physicsnemo.cfd.evaluation.metrics.builtin` instead of duplicated
+  NumPy-only helpers.
 
 ### Deprecated
 

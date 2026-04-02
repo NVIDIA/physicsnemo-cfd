@@ -16,7 +16,7 @@
 
 import numpy as np
 import pyvista as pv
-from physicsnemo.utils.sdf import signed_distance_field
+from physicsnemo.nn.functional import signed_distance_field
 
 
 def compute_l2_errors(data, true_fields, pred_fields, bounds=None, dtype="point"):
