@@ -23,6 +23,9 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`reports.visual_case_ids`**: optional list limiting which cases get an in-memory comparison mesh for
+  PNG visuals (default: all cases). Same list is the default **`case_ids`** for visuals that omit it;
+  per-visual **`case_ids`** still overrides.
 - DoMINO NIM helper `call_domino_nim` and `launch_local_domino_nim.sh` live under
   **`physicsnemo.cfd.evaluation.nims`** (removed top-level **`physicsnemo.cfd.inference`** package).
 - Benchmark metric registration for evaluation now uses bench-backed built-ins

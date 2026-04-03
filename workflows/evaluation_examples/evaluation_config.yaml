@@ -65,15 +65,22 @@ reports:
   enabled: true
   save_comparison_meshes: false
   comparison_mesh_subdir: comparison_meshes
+  # Retain in-memory comparison meshes only for these cases (saves RAM on large sweeps). Also the
+  # default ``case_ids`` for any visual that omits ``case_ids`` (per-visual ``case_ids`` overrides).
+  visual_case_ids: ["run_1", "run_11"]
   visuals:
     - name: field_comparison_surface
-      case_ids: ["run_1"]
       canonical_keys: [pressure, shear_stress]
       view: xy
     # Surface comparison mesh (cell centers); shear_stress line uses |tau_w| vs plot_coord.
     - name: line_plot
-      case_ids: ["run_1", "run_11"]
       canonical_key: pressure
+      plot_coord: x
+      normalize_factor: 1.0
+      true_line_kwargs: { label: Ground truth }
+      pred_line_kwargs: { label: Prediction }
+    - name: line_plot
+      canonical_key: shear_stress
       plot_coord: x
       normalize_factor: 1.0
       true_line_kwargs: { label: Ground truth }
@@ -81,7 +88,6 @@ reports:
     # Top/bottom centerline strips (same y-slice + z-clip as workflows/bench_example generate_surface_benchmarks).
     # Writes two PNGs per case: *_line_centerline_top_* and *_line_centerline_bottom_*.
     - name: line_plot_centerlines
-      case_ids: ["run_1", "run_11"]
       canonical_key: pressure
       plot_coord: x
       normalize_factor: 1.0
@@ -93,7 +99,6 @@ reports:
       pred_line_kwargs: { label: Prediction }
     # streamlines_comparison: volume uses velocity maps; surface (cell) uses canonical_key (e.g. shear_stress).
     - name: streamlines_comparison
-      case_ids: ["run_1", "run_11"]
       canonical_key: shear_stress
       view: xy
     # --- drag_error / lift_error populate drag_error_true|pred (Cd) and lift_error_true|pred (Cl) ---
