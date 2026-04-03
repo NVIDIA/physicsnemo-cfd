@@ -94,7 +94,7 @@ file.
 To get started, use the DoMINO NIM on a sample as shown below:
 
 ```python
-from physicsnemo.cfd.inference.domino_nim import call_domino_nim
+from physicsnemo.cfd.evaluation.nims import call_domino_nim
 import subprocess
 
 filenames = [

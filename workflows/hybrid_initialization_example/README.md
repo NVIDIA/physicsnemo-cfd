@@ -62,7 +62,7 @@ export NGC_API_KEY="your_ngc_api_key_here"
 # Tip: For a more long-term solution, you can set this in your shell profile.
 
 # Launch DoMINO NIM (Note: This requires an internet connection to download model checkpoints)
-./physicsnemo/cfd/inference/launch_local_domino_nim.sh
+./physicsnemo/cfd/evaluation/nims/launch_local_domino_nim.sh
 ```
 
 **Option B - Manual setup:**

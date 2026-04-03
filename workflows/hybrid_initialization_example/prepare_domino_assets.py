@@ -26,7 +26,7 @@ download(
 )
 
 # Performs a DoMINO inference on the vehicle.stl file
-from physicsnemo.cfd.inference.domino_nim import call_domino_nim
+from physicsnemo.cfd.evaluation.nims import call_domino_nim
 
 output_dict = call_domino_nim(
     stl_path=example_dir / "from_domino" / "vehicle.stl",

@@ -23,6 +23,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- DoMINO NIM helper `call_domino_nim` and `launch_local_domino_nim.sh` live under
+  **`physicsnemo.cfd.evaluation.nims`** (removed top-level **`physicsnemo.cfd.inference`** package).
 - Benchmark metric registration for evaluation now uses bench-backed built-ins
   under `physicsnemo.cfd.evaluation.metrics.builtin` instead of duplicated
   NumPy-only helpers.
