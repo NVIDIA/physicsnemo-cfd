@@ -39,6 +39,27 @@ def deep_merge_dict(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, 
 
 
 @dataclass
+class MetricsCacheConfig:
+    """
+    Optional on-disk cache of per-case scalar metrics from benchmark runs.
+
+    When enabled, cases with a matching fingerprint skip reading VTK, running
+    inference, and recomputing metrics. Meshes and report plots are not cached.
+
+    Attributes
+    ----------
+    enabled : bool
+        Whether to read and write metric cache files.
+    path : str
+        Cache root directory. If empty while ``enabled`` is True, defaults to
+        ``<run.output_dir>/.metrics_cache``.
+    """
+
+    enabled: bool = False
+    path: str = ""
+
+
+@dataclass
 class RunConfig:
     device: str = "cuda:0"
     output_dir: str = "benchmark_results"
@@ -46,6 +67,7 @@ class RunConfig:
     batch_size: int = 1
     #: If False, inference CLI skips writing ``inference_<model>_<case>.vtp|vtu`` (comparison mesh / visuals unchanged).
     save_inference_mesh: bool = True
+    metrics_cache: MetricsCacheConfig = field(default_factory=MetricsCacheConfig)
 
 
 @dataclass
@@ -169,7 +191,23 @@ class Config:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Config":
         """Build Config from a nested dict (e.g. from YAML/JSON)."""
-        run = RunConfig(**(data.get("run") or {}))
+        run_raw = dict(data.get("run") or {})
+        mc_raw = run_raw.pop("metrics_cache", None)
+        if mc_raw is None:
+            mc_raw = {}
+        elif not isinstance(mc_raw, dict):
+            raise TypeError("run.metrics_cache must be a mapping if provided")
+        run = RunConfig(
+            device=str(run_raw.get("device", "cuda:0")),
+            output_dir=str(run_raw.get("output_dir", "benchmark_results")),
+            seed=int(run_raw.get("seed", 42)),
+            batch_size=int(run_raw.get("batch_size", 1)),
+            save_inference_mesh=bool(run_raw.get("save_inference_mesh", True)),
+            metrics_cache=MetricsCacheConfig(
+                enabled=bool(mc_raw.get("enabled", False)),
+                path=str(mc_raw.get("path") or ""),
+            ),
+        )
         model = ModelConfig(**(data.get("model") or {}))
         dataset = DatasetConfig(**(data.get("dataset") or {}))
         out = data.get("output") or {}

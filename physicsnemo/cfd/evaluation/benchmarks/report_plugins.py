@@ -2,13 +2,13 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Optional visuals (plots via ``physicsnemo.cfd.bench.visualization``).
+"""
+Optional PNG report visuals using ``physicsnemo.cfd.bench.visualization``.
 
-The **inference** and **benchmark** CLIs call :func:`run_optional_report_plugins` when
-``reports.enabled`` and ``reports.visuals`` are set. Pass optional ``context`` with
-``comparison_meshes_by_run`` (list of ``{case_id: pyvista.DataSet}`` aligned with ``results``) so
-built-in mesh visuals can avoid reading large VTU/VTP from disk. You can also call this from your own
-script when you have ``results`` and want a manifest.
+Benchmark and inference entrypoints call ``run_optional_report_plugins`` when
+``reports.enabled`` and ``reports.visuals`` are set. Optional ``context`` (see
+that function) can supply in-memory comparison meshes so plugins avoid reading
+large VTU/VTP files from disk.
 """
 
 from __future__ import annotations
@@ -27,7 +27,21 @@ def _apply_default_case_ids_to_visuals(
     config: Config,
     specs: list[tuple[str, dict[str, Any]]],
 ) -> list[tuple[str, dict[str, Any]]]:
-    """Inject ``reports.visual_case_ids`` as ``case_ids`` when a visual omits it."""
+    """
+    Use ``reports.visual_case_ids`` as the default ``case_ids`` for each visual spec.
+
+    Parameters
+    ----------
+    config : Config
+        Root configuration (reads ``reports.visual_case_ids``).
+    specs : list of tuple
+        Normalized ``(visual_name, kwargs)`` pairs.
+
+    Returns
+    -------
+    list of tuple
+        Specs with ``case_ids`` filled in when absent and a default list exists.
+    """
     default = config.reports.visual_case_ids
     if default is None:
         return specs
@@ -47,17 +61,32 @@ def run_optional_report_plugins(
     *,
     context: dict[str, Any] | None = None,
 ) -> None:
-    """Run registered visuals when ``config.reports.enabled``; write manifest.
+    """
+    Run registered report visuals and write ``report_plugins_manifest.json``.
 
-    ``context`` is optional runtime state (not serialized to JSON). Supported keys:
+    Parameters
+    ----------
+    config : Config
+        Must have ``reports.enabled`` and a non-empty ``reports.visuals`` list to run plugins.
+    results : list of dict
+        Benchmark results (same structure as ``run_benchmark`` output).
+    output_dir : str
+        Directory for the manifest and plot outputs.
+    context : dict or None, optional
+        Runtime-only data not written to the manifest beyond key names.
 
-    - ``comparison_meshes_by_run``: ``list[dict[str, Any]]`` with the same length as ``results``;
-      each inner dict maps ``case_id`` to an in-memory comparison mesh (PyVista dataset) so visuals
-      can skip ``pv.read(comparison_mesh_path)``. When ``config.reports.visual_case_ids`` is set,
-      only those case IDs are present per run (others may load from ``comparison_mesh_path`` if saved).
+        Supported keys:
 
-    If ``config.reports.visual_case_ids`` is set, visuals that do not specify ``case_ids`` receive
-    that list as their default filter (per-visual ``case_ids`` still overrides).
+        - ``comparison_meshes_by_run``: list of dict, same length as ``results``;
+          each dict maps ``case_id`` to an in-memory PyVista comparison mesh so
+          mesh-based visuals can avoid ``pv.read(comparison_mesh_path)``. If
+          ``reports.visual_case_ids`` is set, only those IDs appear per run;
+          other cases may still load from disk when comparison meshes were saved.
+
+    Notes
+    -----
+    Visuals that omit ``case_ids`` receive ``reports.visual_case_ids`` as the
+    default filter when that list is set; per-visual ``case_ids`` overrides.
     """
     out_dir = Path(output_dir)
     manifest: dict[str, Any] = {
@@ -109,6 +138,7 @@ def run_optional_report_plugins(
 
 
 def _write_manifest(out_dir: Path, manifest: dict[str, Any]) -> None:
+    """Persist plugin run metadata to ``report_plugins_manifest.json``."""
     out = out_dir / "report_plugins_manifest.json"
     log_dataset("benchmark", f"Writing report plugin manifest to {out}…")
     with open(out, "w") as f:

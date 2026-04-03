@@ -14,15 +14,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Benchmark runner: config → model x dataset loop → metrics → results.
+"""
+Benchmark evaluation driver for config-driven model-by-dataset runs.
 
-When ``reports.enabled`` and ``reports.visuals`` are set, optionally writes comparison VTK (if
-``reports.save_comparison_meshes``) and runs :func:`report_plugins.run_optional_report_plugins` with
-in-memory meshes in ``context["comparison_meshes_by_run"]`` so PNGs avoid disk reads when possible.
+Loads registered dataset adapters and model wrappers, evaluates configured
+metrics per case, and aggregates per-metric means. Can write comparison VTK,
+tabular reports (JSON/CSV/HTML), and PNG visuals from the report plugin
+pipeline.
 
-If ``reports.visual_case_ids`` is set, only those case IDs are stored in memory; omit it to retain
-all cases (legacy behavior). Meshes for other cases may still be read from ``comparison_mesh_path``
-when ``save_comparison_meshes`` is true.
+When ``reports.enabled`` and ``reports.visuals`` are set, comparison meshes may
+be written under ``reports.comparison_mesh_subdir`` and/or kept in memory for
+plugins. Use ``reports.visual_case_ids`` to limit which cases retain meshes in
+memory; other cases may still load from ``comparison_mesh_path`` on disk if
+meshes were saved.
+
+When ``run.metrics_cache`` is enabled, a valid cache entry skips per-case VTK
+load and inference for that case. The cache stores scalars only and does not
+replace mesh or visualization workflows.
 """
 
 from __future__ import annotations
@@ -32,6 +40,15 @@ import os
 from pathlib import Path
 from typing import Any
 
+from physicsnemo.cfd.evaluation.benchmarks.metrics_cache import (
+    metrics_cache_file_path,
+    metrics_cache_fingerprint,
+    metrics_from_cache_json,
+    output_config_to_fingerprint_dict,
+    read_metrics_cache,
+    resolve_metrics_cache_root,
+    write_metrics_cache,
+)
 from physicsnemo.cfd.evaluation.benchmarks.report import write_report
 from physicsnemo.cfd.evaluation.config import (
     Config,
@@ -51,7 +68,21 @@ from physicsnemo.cfd.evaluation.metrics.mesh_bridge import build_comparison_mesh
 
 
 def _retain_comparison_mesh_for_visual_context(reports: ReportsConfig | None, case_id: str) -> bool:
-    """Whether to store this case's comparison mesh in ``mesh_ctx`` for report visuals."""
+    """
+    Determine if the comparison mesh for this case should be kept for report visuals.
+
+    Parameters
+    ----------
+    reports : ReportsConfig or None
+        Report configuration (must be enabled with visuals for retention).
+    case_id : str
+        Case identifier.
+
+    Returns
+    -------
+    bool
+        True if ``mesh_ctx`` should hold this case's comparison mesh.
+    """
     if reports is None or not reports.enabled or not reports.visuals:
         return False
     allow = reports.visual_case_ids
@@ -61,7 +92,24 @@ def _retain_comparison_mesh_for_visual_context(reports: ReportsConfig | None, ca
 
 
 def _normalize_metrics_config(metrics: list[str] | list[dict]) -> list[tuple[str, dict]]:
-    """Return list of (metric_name, kwargs)."""
+    """
+    Normalize the ``metrics`` config section to ``(name, kwargs)`` pairs.
+
+    Parameters
+    ----------
+    metrics : list
+        Strings or dicts with a ``"name"`` key.
+
+    Returns
+    -------
+    list of tuple
+        ``(metric_name, kwargs_dict)`` for each entry.
+
+    Raises
+    ------
+    ValueError
+        If an entry is not a string or a dict with ``name``.
+    """
     out = []
     for m in metrics:
         if isinstance(m, str):
@@ -76,6 +124,19 @@ def _normalize_metrics_config(metrics: list[str] | list[dict]) -> list[tuple[str
 
 
 def _effective_inference_domain(model_config: ModelConfig) -> str:
+    """
+    Return ``surface`` or ``volume`` for this model, using registry default if unset.
+
+    Parameters
+    ----------
+    model_config : ModelConfig
+        Model configuration (optional ``inference_domain`` override).
+
+    Returns
+    -------
+    str
+        Either ``"surface"`` or ``"volume"``.
+    """
     dom = model_config.inference_domain
     if dom in ("surface", "volume"):
         return dom
@@ -94,7 +155,33 @@ def _save_inference_mesh_if_requested(
     output_dir: str,
     dataset_name: str,
 ) -> None:
-    """Write ``inference_<model>_<case>.vtp|vtu`` (predictions only) when ``run.save_inference_mesh``."""
+    """
+    Write ``inference_<model>_<case>.vtp`` or ``.vtu`` when requested.
+
+    Predictions are written under VTK names from ``output_config``; ground truth
+    is not required for this file.
+
+    Parameters
+    ----------
+    run_config : RunConfig
+        Must have ``save_inference_mesh`` True to write.
+    model_config : ModelConfig
+        Model name and domain.
+    output_config : OutputConfig
+        Mesh field name maps for surface or volume.
+    wrapper : object
+        Loaded model wrapper (``output_location`` selects point vs cell data).
+    case : object
+        Case with ``mesh_path`` and ``inference_domain``.
+    case_id : str
+        Case identifier for the filename.
+    predictions : dict
+        Decoded prediction arrays by canonical key.
+    output_dir : str
+        Benchmark output directory.
+    dataset_name : str
+        Name used in log messages.
+    """
     if not run_config.save_inference_mesh:
         return
     import pyvista as pv
@@ -138,7 +225,35 @@ def _call_metric(
     output: OutputConfig,
     mkwargs: dict[str, Any],
 ) -> Any:
-    """Call metric with extended kwargs; fall back for legacy (gt, pred, **mkwargs) only."""
+    """
+    Invoke a registered metric, passing extended kwargs when supported.
+
+    Falls back to ``fn(gt, predictions, **mkwargs)`` for legacy signatures.
+
+    Parameters
+    ----------
+    fn : callable
+        Registered metric function.
+    gt : dict
+        Ground-truth fields.
+    predictions : dict
+        Model predictions.
+    case : object
+        Canonical case object from the adapter.
+    comparison_mesh : object or None
+        PyVista mesh with GT and prediction arrays, if built.
+    metric_dtype : str or None
+        Element dtype label for mesh-based metrics.
+    output : OutputConfig
+        Output / field name configuration.
+    mkwargs : dict
+        Per-metric kwargs from config.
+
+    Returns
+    -------
+    float or dict
+        Scalar metric or dict of sub-keys (expanded by the engine).
+    """
     extended = dict(mkwargs)
     extended.update(
         case=case,
@@ -165,7 +280,41 @@ def _run_single(
     reports: ReportsConfig | None = None,
     allow_skip_mismatch: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Run one model on one dataset; return results structure and optional in-memory comparison meshes."""
+    """
+    Run one model on one dataset: load cases, infer, compute metrics, aggregate means.
+
+    Respects ``run.metrics_cache`` for per-case skips. Lazy-loads the model
+    wrapper on the first cache miss.
+
+    Parameters
+    ----------
+    model_config : ModelConfig
+        Model name, checkpoint, and kwargs.
+    dataset_config : DatasetConfig
+        Adapter name, root, split, and case list.
+    metric_names : list of tuple
+        Normalized ``(metric_name, kwargs)`` pairs.
+    device : str
+        Torch device string for inference.
+    output_dir : str
+        Directory for artifacts and optional meshes.
+    case_ids : list of str or None
+        Cases to run; ``None`` uses ``adapter.list_cases``.
+    output_config : OutputConfig
+        VTK field name mappings.
+    run_config : RunConfig
+        Device, inference mesh export, metrics cache, etc.
+    reports : ReportsConfig or None
+        Optional mesh save and visual retention policy.
+    allow_skip_mismatch : bool, optional
+        If True, return a skipped result when surface/volume domains disagree.
+
+    Returns
+    -------
+    tuple of (dict, dict)
+        Result dict with ``model``, ``dataset``, ``cases``, ``metrics``, ``per_case``,
+        and ``mesh_ctx`` mapping case id -> comparison mesh for visuals.
+    """
     adapter_class = get_adapter(dataset_config.name)
     m_dom = _effective_inference_domain(model_config)
     d_dom = adapter_class.inference_domain_from_kwargs(dataset_config.kwargs)
@@ -212,14 +361,33 @@ def _run_single(
             {},
         )
 
-    wrapper_class = get_model_wrapper(model_config.name)
-    wrapper = wrapper_class()
-    wrapper.load(
-        checkpoint_path=model_config.checkpoint,
-        stats_path=model_config.stats_path,
-        device=device,
-        **model_config.merged_kwargs_for_load(),
+    cache_root = resolve_metrics_cache_root(
+        enabled=run_config.metrics_cache.enabled,
+        path=run_config.metrics_cache.path,
+        output_dir=output_dir,
     )
+    fingerprint: str | None = None
+    if cache_root is not None:
+        fingerprint = metrics_cache_fingerprint(
+            model_name=model_config.name,
+            model_checkpoint=model_config.checkpoint,
+            model_stats_path=model_config.stats_path,
+            model_kwargs=dict(model_config.kwargs),
+            model_inference_domain=model_config.inference_domain,
+            dataset_name=dataset_config.name,
+            dataset_root=dataset_config.root,
+            dataset_split=dataset_config.split,
+            dataset_kwargs_resolved=dict(dkwargs),
+            output_dict=output_config_to_fingerprint_dict(output_config),
+            metric_specs=metric_names,
+        )
+        log_dataset(
+            dataset_config.name,
+            f"Metrics cache enabled under {cache_root} (fingerprint {fingerprint[:12]}…)…",
+        )
+
+    wrapper_class = get_model_wrapper(model_config.name)
+    wrapper = None
 
     per_case = []
     all_metric_values: dict[str, list[float]] = {}
@@ -231,6 +399,47 @@ def _run_single(
         f"(model {model_config.name!r})…",
     )
     for cid in cases:
+        cache_file = (
+            metrics_cache_file_path(cache_root, fingerprint, cid)
+            if cache_root is not None and fingerprint is not None
+            else None
+        )
+        if cache_file is not None:
+            blob = read_metrics_cache(cache_file)
+            if (
+                blob is not None
+                and blob.get("fingerprint") == fingerprint
+                and blob.get("model") == model_config.name
+                and blob.get("dataset") == dataset_config.name
+                and blob.get("case_id") == cid
+            ):
+                cached_metrics = metrics_from_cache_json(blob.get("metrics"))
+                if cached_metrics is not None:
+                    for mkey, val in cached_metrics.items():
+                        all_metric_values.setdefault(mkey, []).append(val)
+                    row_cb: dict[str, Any] = {"case_id": cid, "metrics": cached_metrics}
+                    md_b = blob.get("metric_dtype")
+                    if md_b:
+                        row_cb["metric_dtype"] = md_b
+                    cmp_b = blob.get("comparison_mesh_path")
+                    if cmp_b:
+                        row_cb["comparison_mesh_path"] = cmp_b
+                    per_case.append(row_cb)
+                    log_dataset(
+                        dataset_config.name,
+                        f"Metrics cache hit for case {cid!r} (skipped I/O and inference).",
+                    )
+                    continue
+
+        if wrapper is None:
+            wrapper = wrapper_class()
+            wrapper.load(
+                checkpoint_path=model_config.checkpoint,
+                stats_path=model_config.stats_path,
+                device=device,
+                **model_config.merged_kwargs_for_load(),
+            )
+
         log_dataset(
             dataset_config.name,
             f"Reading case {cid!r}…",
@@ -309,6 +518,23 @@ def _run_single(
                 if _retain_comparison_mesh_for_visual_context(reports, cid):
                     mesh_ctx[cid] = comparison_mesh
         per_case.append(row)
+        if cache_file is not None and fingerprint is not None:
+            try:
+                write_metrics_cache(
+                    cache_file,
+                    fingerprint=fingerprint,
+                    model=model_config.name,
+                    dataset=dataset_config.name,
+                    case_id=cid,
+                    case_metrics=case_metrics,
+                    metric_dtype=row.get("metric_dtype"),
+                    comparison_mesh_path=row.get("comparison_mesh_path"),
+                )
+            except OSError as ex:
+                log_dataset(
+                    dataset_config.name,
+                    f"Could not write metrics cache for case {cid!r}: {ex}",
+                )
 
     # Aggregate (mean over cases)
     metrics_summary = {}
@@ -332,7 +558,21 @@ def _case_ids_for_run(
     dataset_case_ids: list[str] | None,
     case_id_override: str | None,
 ) -> list[str] | None:
-    """If ``case_id_override`` is set, run only that case; else use dataset config."""
+    """
+    Resolve which case IDs to evaluate for one benchmark invocation.
+
+    Parameters
+    ----------
+    dataset_case_ids : list of str or None
+        Cases from dataset config (or ``None`` for “all cases” upstream).
+    case_id_override : str or None
+        CLI ``--case-id`` override.
+
+    Returns
+    -------
+    list of str or None
+        A single-element list if override is set; otherwise ``dataset_case_ids``.
+    """
     if case_id_override:
         return [case_id_override]
     return dataset_case_ids
@@ -343,9 +583,23 @@ def run_benchmark(
     *,
     case_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Run benchmark from config (single or matrix mode). Returns list of run results.
+    """
+    Execute the benchmark from a loaded ``Config``.
 
-    If ``case_id`` is set, only that case is evaluated (overrides ``dataset.case_ids``).
+    Writes JSON/CSV/HTML under ``run.output_dir``, optional artifacts, and runs
+    report plugins when configured.
+
+    Parameters
+    ----------
+    config : Config
+        Full evaluation configuration.
+    case_id : str or None, optional
+        If set, only this case is evaluated (overrides dataset case lists).
+
+    Returns
+    -------
+    list of dict
+        One result dict per model×dataset pair (or single pair in ``single`` mode).
     """
     import physicsnemo.cfd.evaluation.datasets.adapters  # noqa: F401
     import physicsnemo.cfd.evaluation.inference.wrappers  # noqa: F401
@@ -444,7 +698,19 @@ def run_benchmark(
 
 
 def _config_to_dict(c: Config) -> dict:
-    """Serializable config for artifacts."""
+    """
+    Convert ``Config`` to a JSON-serializable dict for ``benchmark_artifacts.json``.
+
+    Parameters
+    ----------
+    c : Config
+        Active configuration.
+
+    Returns
+    -------
+    dict
+        Nested mapping suitable for ``json.dump``.
+    """
     return {
         "run": {
             "device": c.run.device,
@@ -452,6 +718,10 @@ def _config_to_dict(c: Config) -> dict:
             "seed": c.run.seed,
             "batch_size": c.run.batch_size,
             "save_inference_mesh": c.run.save_inference_mesh,
+            "metrics_cache": {
+                "enabled": c.run.metrics_cache.enabled,
+                "path": c.run.metrics_cache.path,
+            },
         },
         "model": {
             "name": c.model.name,

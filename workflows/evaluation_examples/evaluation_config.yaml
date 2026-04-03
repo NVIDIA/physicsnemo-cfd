@@ -11,6 +11,10 @@ run:
   seed: 42
   batch_size: 1
   save_inference_mesh: false  # false = skip writing inference_<model>_<case>.vtp|vtu
+  # Optional: cache per-case metric scalars to skip VTK read + inference on repeat runs. Not used for PNG/VTK visuals.
+  metrics_cache:
+    enabled: false
+    path: ""  # empty = <output_dir>/.metrics_cache; or set an absolute directory (delete that folder for a full recompute)
 
 # Default model (template for matrix rows when `benchmark.mode: matrix`; ignored as a pair when using lists).
 # Smoke tests: model.name surface_baseline or volume_baseline, checkpoint/stats_path "", matching dataset domain.

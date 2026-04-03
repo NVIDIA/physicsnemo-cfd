@@ -11,6 +11,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Metrics cache:** optional `run.metrics_cache` (`enabled`, `path`) stores per-case scalar metrics on disk
+  so repeat benchmark runs can skip VTK I/O and inference for unchanged configs; visualization is unchanged.
 - `physicsnemo.cfd.evaluation`: config-driven inference and benchmarking with
   metrics delegated to `physicsnemo.cfd.bench` (L2, area-weighted L2, forces,
   continuity/momentum residual L2 chain). Mesh bridge attaches GT and prediction
