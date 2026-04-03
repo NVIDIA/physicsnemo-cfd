@@ -38,13 +38,15 @@ Keys are the same whether they come from one file or base + overlay.
 
 | Section | Contents |
 | ------- | -------- |
-| **run** | `device`, `output_dir`, `seed`, `batch_size`, **`save_inference_mesh`** (if `true`, benchmark writes `inference_<model>_<case>.vtp\|vtu` per case) |
+| **run** | `device`, `output_dir`, `seed`, `batch_size`, **`save_inference_mesh`** (if `true`, benchmark writes `inference_<model>_<case>.vtp\|vtu` per case), optional **`metrics_cache`** (see below) |
 | **model** | `name` (registered wrapper), `checkpoint`, `stats_path`, optional `inference_domain` (`surface` \| `volume`), `kwargs` |
 | **dataset** | `name` (registered adapter), `root`, `split`, `case_ids` (`null` = all), `kwargs` (e.g. `align_ground_truth_to_model`, `inference_domain` for volume) |
 | **output** | `mesh_field_names`, `ground_truth_mesh_field_names` (surface); `volume_mesh_field_names`, `ground_truth_volume_mesh_field_names` (volume); optional **`streamlines_vector_canonical`** (default `velocity`) for `streamlines_comparison` |
 | **metrics** | List of metric names or `{ name: ..., ...kwargs }` — see [Metrics](#metrics) |
 | **reports** | Optional PNG pipeline — see [Reports and plots](#reports-and-plots) |
 | **benchmark** | `mode` (`single` \| `matrix`), `models` / `datasets`, `reproducibility` |
+
+**Metrics cache (optional):** Under `run.metrics_cache`, set `enabled: true` to store per-case metric scalars under `path` (or under `<output_dir>/.metrics_cache` if `path` is empty). When the fingerprint matches (model checkpoint/stats, dataset root and kwargs, `output` field maps, and `metrics` list), that case skips reading VTK, inference, and metric recomputation. **Plots and meshes are not cached**; cached rows do not populate in-memory comparison meshes for `reports.visuals`. For a clean recompute, delete the cache directory or set `enabled: false`.
 
 **Model notes:** GeoTransolver / Transolver on **volume** need `model.inference_domain: volume` and stats that match volume training (`global_stats.json` with `velocity`, `pressure_volume`, `turbulent_viscosity`, or `volume_fields_normalization.npz`). **Surface** GeoTransolver/Transolver needs surface stats (`pressure` + `shear_stress` in `global_stats.json` or `surface_fields_normalization.npz`). DoMINO uses `domino_config` for volume.
 

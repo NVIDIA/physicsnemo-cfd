@@ -14,7 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""CLI entrypoint for benchmark runs."""
+"""
+Command-line entrypoint for benchmark runs.
+
+Loads YAML/JSON config, applies overrides, and calls ``run_benchmark``.
+"""
 
 import argparse
 
