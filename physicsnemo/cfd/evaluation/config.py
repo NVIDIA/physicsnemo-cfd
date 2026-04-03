@@ -1,3 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Config schema and loader for inference and benchmarking."""
 
 from dataclasses import dataclass, field
@@ -81,6 +97,12 @@ class ReportsConfig:
     #: When True, write each case comparison mesh to ``comparison_mesh_subdir`` for downstream visualization.
     save_comparison_meshes: bool = False
     comparison_mesh_subdir: str = "comparison_meshes"
+    #: Case IDs for which an in-memory comparison mesh is retained for ``reports.visuals`` (saves RAM on large sweeps).
+    #: When ``None``, all cases that build a comparison mesh are kept (legacy behavior). When a non-empty list, only
+    #: those IDs are stored in ``comparison_meshes_by_run``. Also used as default ``case_ids`` for any visual that
+    #: omits ``case_ids`` (per-visual ``case_ids`` still overrides). Empty list ``[]`` retains no meshes in context
+    #: (use ``save_comparison_meshes: true`` if PNGs must load from disk).
+    visual_case_ids: list[str] | None = None
     #: Visuals to run (same list style as ``metrics``): strings or ``{name: ..., ...kwargs}``.
     visuals: list[str] | list[dict[str, Any]] = field(default_factory=list)
 
@@ -197,6 +219,9 @@ class Config:
         )
         reports_raw = data.get("reports") or {}
         if isinstance(reports_raw, dict):
+            vci = reports_raw.get("visual_case_ids")
+            if vci is not None:
+                vci = [str(x) for x in vci]
             reports = ReportsConfig(
                 enabled=bool(reports_raw.get("enabled", False)),
                 plugins=list(reports_raw.get("plugins") or []),
@@ -204,6 +229,7 @@ class Config:
                 comparison_mesh_subdir=str(
                     reports_raw.get("comparison_mesh_subdir") or "comparison_meshes"
                 ),
+                visual_case_ids=vci,
                 visuals=list(reports_raw.get("visuals") or []),
             )
         else:

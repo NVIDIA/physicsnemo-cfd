@@ -132,6 +132,7 @@ reports:
 | `enabled` | If true, run registered visuals after metrics/tables. |
 | `save_comparison_meshes` | Save comparison VTK to disk. If false, mesh-based visuals still run from memory when the runner built a comparison mesh. |
 | `comparison_mesh_subdir` | Subfolder for `*_comparison.vtp|vtu`. |
+| `visual_case_ids` | Optional. If set, only these case IDs are kept in RAM for mesh-backed PNGs; also becomes the default `case_ids` for any visual that omits it (per-visual `case_ids` overrides). Omit for legacy behavior (all cases in memory). |
 | `visuals` | Ordered list: string names or `{ name: ..., ...kwargs }`. |
 | `plugins` | Legacy manifest hooks (`ReportsConfig`). |
 

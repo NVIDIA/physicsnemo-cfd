@@ -23,6 +23,23 @@ from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.reports.registry import get_visual, normalize_visuals_config
 
 
+def _apply_default_case_ids_to_visuals(
+    config: Config,
+    specs: list[tuple[str, dict[str, Any]]],
+) -> list[tuple[str, dict[str, Any]]]:
+    """Inject ``reports.visual_case_ids`` as ``case_ids`` when a visual omits it."""
+    default = config.reports.visual_case_ids
+    if default is None:
+        return specs
+    out: list[tuple[str, dict[str, Any]]] = []
+    for name, kw in specs:
+        kw2 = dict(kw)
+        if "case_ids" not in kw2:
+            kw2["case_ids"] = list(default)
+        out.append((name, kw2))
+    return out
+
+
 def run_optional_report_plugins(
     config: Config,
     results: list[dict[str, Any]],
@@ -36,7 +53,11 @@ def run_optional_report_plugins(
 
     - ``comparison_meshes_by_run``: ``list[dict[str, Any]]`` with the same length as ``results``;
       each inner dict maps ``case_id`` to an in-memory comparison mesh (PyVista dataset) so visuals
-      can skip ``pv.read(comparison_mesh_path)``.
+      can skip ``pv.read(comparison_mesh_path)``. When ``config.reports.visual_case_ids`` is set,
+      only those case IDs are present per run (others may load from ``comparison_mesh_path`` if saved).
+
+    If ``config.reports.visual_case_ids`` is set, visuals that do not specify ``case_ids`` receive
+    that list as their default filter (per-visual ``case_ids`` still overrides).
     """
     out_dir = Path(output_dir)
     manifest: dict[str, Any] = {
@@ -44,6 +65,7 @@ def run_optional_report_plugins(
         "plugins": config.reports.plugins,
         "save_comparison_meshes": config.reports.save_comparison_meshes,
         "comparison_mesh_subdir": config.reports.comparison_mesh_subdir,
+        "visual_case_ids": config.reports.visual_case_ids,
         "context_keys": list(context.keys()) if context else [],
         "visuals_ran": [],
         "visual_errors": [],
@@ -67,6 +89,8 @@ def run_optional_report_plugins(
         manifest["visual_errors"].append({"stage": "normalize", "error": str(e)})
         _write_manifest(out_dir, manifest)
         raise
+
+    specs = _apply_default_case_ids_to_visuals(config, specs)
 
     for name, vkwargs in specs:
         try:

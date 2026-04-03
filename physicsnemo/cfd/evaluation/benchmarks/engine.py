@@ -1,8 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Benchmark runner: config → model x dataset loop → metrics → results.
 
 When ``reports.enabled`` and ``reports.visuals`` are set, optionally writes comparison VTK (if
 ``reports.save_comparison_meshes``) and runs :func:`report_plugins.run_optional_report_plugins` with
 in-memory meshes in ``context["comparison_meshes_by_run"]`` so PNGs avoid disk reads when possible.
+
+If ``reports.visual_case_ids`` is set, only those case IDs are stored in memory; omit it to retain
+all cases (legacy behavior). Meshes for other cases may still be read from ``comparison_mesh_path``
+when ``save_comparison_meshes`` is true.
 """
 
 from __future__ import annotations
@@ -28,6 +48,16 @@ from physicsnemo.cfd.evaluation.inference import get_model_wrapper
 from physicsnemo.cfd.evaluation.inference.model_registry import get_inference_domain_for_model
 from physicsnemo.cfd.evaluation.metrics import get_metric
 from physicsnemo.cfd.evaluation.metrics.mesh_bridge import build_comparison_mesh
+
+
+def _retain_comparison_mesh_for_visual_context(reports: ReportsConfig | None, case_id: str) -> bool:
+    """Whether to store this case's comparison mesh in ``mesh_ctx`` for report visuals."""
+    if reports is None or not reports.enabled or not reports.visuals:
+        return False
+    allow = reports.visual_case_ids
+    if allow is None:
+        return True
+    return case_id in allow
 
 
 def _normalize_metrics_config(metrics: list[str] | list[dict]) -> list[tuple[str, dict]]:
@@ -276,7 +306,7 @@ def _run_single(
                             dataset_config.name,
                             f"Could not save comparison mesh for {cid!r}: {ex}",
                         )
-                if reports.enabled and reports.visuals:
+                if _retain_comparison_mesh_for_visual_context(reports, cid):
                     mesh_ctx[cid] = comparison_mesh
         per_case.append(row)
 
@@ -450,6 +480,7 @@ def _config_to_dict(c: Config) -> dict:
             "plugins": c.reports.plugins,
             "save_comparison_meshes": c.reports.save_comparison_meshes,
             "comparison_mesh_subdir": c.reports.comparison_mesh_subdir,
+            "visual_case_ids": c.reports.visual_case_ids,
             "visuals": c.reports.visuals,
         },
         "benchmark": {
