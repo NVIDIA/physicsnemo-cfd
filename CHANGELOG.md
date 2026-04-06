@@ -14,6 +14,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 - **Hydra workflow** for evaluation examples: `workflows/evaluation_examples/main.py` with
   `conf/config_surface.yaml` (default) and `conf/config_volume.yaml` (`hydra-core` dependency), consistent
   with other workflows (see **Removed** for dropped flat example YAML).
+- **Multi-GPU benchmarks:** `run_benchmark` / Hydra `main.py` can run under `torchrun` with PhysicsNeMo `DistributedManager` — per-rank case sharding, gather/merge on rank 0, and optional `run.distributed` (default true) to disable sharding for debugging.
+- **Tests:** `test/ci_tests/test_distributed_utils.py` covers merge/shard helpers and `_case_ids_for_run`.
 - **Metrics cache:** optional `run.metrics_cache` (`enabled`, `path`) stores per-case scalar metrics on disk
   so repeat benchmark runs can skip VTK I/O and inference for unchanged configs; visualization is unchanged.
 - `physicsnemo.cfd.evaluation`: config-driven inference and benchmarking with
@@ -35,6 +37,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
   per-visual **`case_ids`** still overrides.
 - DoMINO NIM helper `call_domino_nim` and `launch_local_domino_nim.sh` live under
   **`physicsnemo.cfd.evaluation.nims`** (removed top-level **`physicsnemo.cfd.inference`** package).
+- **GeoTransolver** checkpoint load uses ``trusted_torch_load_context`` (trusted checkpoints).
+- Matrix benchmark domain-mismatch skip logs via ``log_dataset`` instead of ``print``.
 - Benchmark metric registration for evaluation now uses postprocessing_tools-backed built-ins
   under `physicsnemo.cfd.evaluation.metrics.builtin` instead of duplicated
   NumPy-only helpers.

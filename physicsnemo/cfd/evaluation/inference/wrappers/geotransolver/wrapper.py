@@ -231,14 +231,12 @@ class GeoTransolverWrapper(CFDModel):
         self._datapipe_user_kw = dp_user
 
         self._model = GeoTransolver(**model_kw)
-        # with trusted_torch_load_context():
         ckpt_args = {
             "path": str(checkpoint_dir),
             "models": self._model,
         }
-
-        loaded_epoch = load_checkpoint(device=dev, **ckpt_args)
-        # load_checkpoint(path=str(checkpoint_dir), models=self._model, device=dev)
+        with trusted_torch_load_context():
+            _ = load_checkpoint(device=dev, **ckpt_args)
         self._model = self._model.to(dev)
         self._model.eval()
         return self
@@ -341,13 +339,6 @@ class GeoTransolverWrapper(CFDModel):
         index_blocks = torch.split(indices, batch_res)
         preds_list = []
         use_full_fx = "geometry" in batch
-        # if "geometry" in batch:
-        #     geo = batch["geometry"]
-        #     g_pts_dim = 1 if geo.ndim >= 3 else 0
-        #     n_geo = int(geo.shape[g_pts_dim])
-        #     if n_geo > 1:
-        #         geo_perm = torch.randperm(n_geo, device=geo.device)
-        #         batch["geometry"] = geo.index_select(g_pts_dim, geo_perm)
 
         with torch.no_grad():
             for index_block in index_blocks:
@@ -373,13 +364,11 @@ class GeoTransolverWrapper(CFDModel):
                     geometry=local_batch.get("geometry"),
                 )
                 preds_list.append(outputs)
-                # import pdb; pdb.set_trace()
             predictions = torch.cat(preds_list, dim=1)
             inverse_indices = torch.empty_like(indices)
             inverse_indices[indices] = torch.arange(N, device=indices.device)
             predictions = predictions[:, inverse_indices]
         predictions = predictions.squeeze(0)
-        # import pdb; pdb.set_trace()
 
         if self._inference_mode == "volume":
             predictions = datapipe.unscale_model_targets(
@@ -396,7 +385,6 @@ class GeoTransolverWrapper(CFDModel):
             stream_velocity=batch.get("stream_velocity"),
             factor_type="surface",
         )
-        # predictions = predictions * batch.get("air_density") * (batch.get("stream_velocity") ** 2)
         return predictions
 
     def decode_outputs(self, raw_output: RawOutput, case: CanonicalCase) -> Predictions:

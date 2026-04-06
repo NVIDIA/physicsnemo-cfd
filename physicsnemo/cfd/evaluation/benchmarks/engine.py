@@ -31,6 +31,13 @@ meshes were saved.
 When ``run.metrics_cache`` is enabled, a valid cache entry skips per-case VTK
 load and inference for that case. The cache stores scalars only and does not
 replace mesh or visualization workflows.
+
+Multi-GPU: launch with ``torchrun`` (or any launcher that sets ``WORLD_SIZE`` /
+``LOCAL_RANK``) so ``physicsnemo.distributed.DistributedManager`` initializes.
+With ``run.distributed`` true (default) and world size > 1, cases are strided
+across ranks (``cases[rank::world_size]``), results are merged on rank 0, then
+broadcast to all ranks; JSON/CSV/HTML, artifacts, and report plugins run on
+rank 0 only. Inference uses ``str(dm.device)`` per rank when ``DistributedManager`` is active.
 """
 
 from __future__ import annotations
@@ -39,6 +46,14 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+
+from physicsnemo.cfd.evaluation.benchmarks.distributed_utils import (
+    effective_device_str,
+    gather_merge_benchmark_outputs,
+    log_distributed_context,
+    shard_tuple,
+    try_get_distributed_manager,
+)
 
 from physicsnemo.cfd.evaluation.benchmarks.metrics_cache import (
     metrics_cache_file_path,
@@ -279,6 +294,7 @@ def _run_single(
     run_config: RunConfig,
     reports: ReportsConfig | None = None,
     allow_skip_mismatch: bool = False,
+    shard: tuple[int, int] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Run one model on one dataset: load cases, infer, compute metrics, aggregate means.
@@ -308,6 +324,8 @@ def _run_single(
         Optional mesh save and visual retention policy.
     allow_skip_mismatch : bool, optional
         If True, return a skipped result when surface/volume domains disagree.
+    shard : tuple of (int, int) or None, optional
+        If set, ``(rank, world_size)`` — keep only ``cases[rank::world_size]`` for distributed runs.
 
     Returns
     -------
@@ -324,9 +342,9 @@ def _run_single(
             f"dataset adapter {dataset_config.name!r} is {d_dom!r}"
         )
         if allow_skip_mismatch:
-            print(
-                f"[benchmark] SKIP {model_config.name!r} × {dataset_config.name!r}: {reason}",
-                flush=True,
+            log_dataset(
+                "benchmark",
+                f"SKIP {model_config.name!r} × {dataset_config.name!r}: {reason}",
             )
             return (
                 {
@@ -349,6 +367,14 @@ def _run_single(
         f"Listing cases under root {dataset_config.root!r} (split={dataset_config.split!r})…",
     )
     cases = case_ids if case_ids is not None else adapter.list_cases(split=dataset_config.split)
+    if shard is not None:
+        rank, world_size = shard
+        if world_size > 1:
+            cases = cases[rank::world_size]
+            log_dataset(
+                dataset_config.name,
+                f"Distributed shard: {len(cases)} case(s) for rank {rank}/{world_size}.",
+            )
     if not cases:
         return (
             {
@@ -556,7 +582,7 @@ def _run_single(
 
 def _case_ids_for_run(
     dataset_case_ids: list[str] | None,
-    case_id_override: str | None,
+    case_id_override: str | list[str] | None,
 ) -> list[str] | None:
     """
     Resolve which case IDs to evaluate for one benchmark invocation.
@@ -565,23 +591,27 @@ def _case_ids_for_run(
     ----------
     dataset_case_ids : list of str or None
         Cases from dataset config (or ``None`` for “all cases” upstream).
-    case_id_override : str or None
-        CLI ``--case-id`` override.
+    case_id_override : str, list of str, or None
+        Hydra ``case_id`` / CLI: one case, a list (same for each dataset in
+        matrix mode), or ``None`` for ``dataset_case_ids``.
 
     Returns
     -------
     list of str or None
-        A single-element list if override is set; otherwise ``dataset_case_ids``.
+        Effective case list for the run.
     """
-    if case_id_override:
-        return [case_id_override]
-    return dataset_case_ids
+    if case_id_override is None:
+        return dataset_case_ids
+    if isinstance(case_id_override, str):
+        return [case_id_override] if case_id_override else dataset_case_ids
+    out = [str(x) for x in case_id_override if x is not None and str(x) != ""]
+    return out if out else dataset_case_ids
 
 
 def run_benchmark(
     config: Config,
     *,
-    case_id: str | None = None,
+    case_id: str | list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Execute the benchmark from a loaded ``Config``.
@@ -593,8 +623,9 @@ def run_benchmark(
     ----------
     config : Config
         Full evaluation configuration.
-    case_id : str or None, optional
-        If set, only this case is evaluated (overrides dataset case lists).
+    case_id : str, list of str, or None, optional
+        One case, a list (reused for every dataset in matrix mode), or ``None``
+        for each dataset's ``case_ids`` (or all adapter cases).
 
     Returns
     -------
@@ -606,11 +637,15 @@ def run_benchmark(
     import physicsnemo.cfd.evaluation.metrics  # noqa: F401 — registers built-in metrics
 
     metric_specs = _normalize_metrics_config(config.metrics)
-    device = config.run.device
+    dm = try_get_distributed_manager()
+    shard = shard_tuple(dm, config.run.distributed)
+    device = effective_device_str(dm, config.run.device)
+    log_distributed_context(dm, shard)
+    is_rank0 = dm is None or int(dm.rank) == 0
     output_dir = config.run.output_dir
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    if config.benchmark.reproducibility.log_env:
+    if is_rank0 and config.benchmark.reproducibility.log_env:
         env_log = Path(output_dir) / "env.json"
         log_dataset("benchmark", f"Writing environment log to {env_log}…")
         with open(env_log, "w") as f:
@@ -632,6 +667,7 @@ def run_benchmark(
             run_config=config.run,
             reports=config.reports,
             allow_skip_mismatch=False,
+            shard=shard,
         )
         results.append(res)
         meshes_by_run.append(mesh_ctx)
@@ -651,11 +687,15 @@ def run_benchmark(
                     run_config=config.run,
                     reports=config.reports,
                     allow_skip_mismatch=True,
+                    shard=shard,
                 )
                 results.append(res)
                 meshes_by_run.append(mesh_ctx)
 
-    if config.benchmark.reproducibility.save_artifacts:
+    if dm is not None and dm.world_size > 1 and config.run.distributed:
+        results, meshes_by_run = gather_merge_benchmark_outputs(dm, results, meshes_by_run)
+
+    if is_rank0 and config.benchmark.reproducibility.save_artifacts:
         artifacts = Path(output_dir) / "benchmark_artifacts.json"
         skipped = [r for r in results if r.get("skipped")]
         log_dataset("benchmark", f"Writing artifacts to {artifacts}…")
@@ -679,9 +719,10 @@ def run_benchmark(
                 indent=2,
             )
 
-    write_report(results, output_dir, formats=["json", "csv", "html"])
+    if is_rank0:
+        write_report(results, output_dir, formats=["json", "csv", "html"])
 
-    if config.reports.enabled and config.reports.visuals:
+    if is_rank0 and config.reports.enabled and config.reports.visuals:
         import physicsnemo.cfd.evaluation.reports  # noqa: F401 — register built-in visuals
 
         from physicsnemo.cfd.evaluation.benchmarks.report_plugins import run_optional_report_plugins
@@ -722,6 +763,7 @@ def _config_to_dict(c: Config) -> dict:
                 "enabled": c.run.metrics_cache.enabled,
                 "path": c.run.metrics_cache.path,
             },
+            "distributed": c.run.distributed,
         },
         "model": {
             "name": c.model.name,

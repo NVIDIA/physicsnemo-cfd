@@ -22,6 +22,15 @@ python main.py case_id=run_1 run.device=cuda:0
 python main.py --config-name=config_volume run.output_dir=my_volume_run
 ```
 
+**Multi-GPU (optional):** install **physicsnemo** so `DistributedManager` is available, then from this directory launch with PyTorch distributed, for example:
+
+```bash
+torchrun --standalone --nproc_per_node=4 main.py
+# or: torchrun --standalone --nproc_per_node=4 main.py --config-name=config_volume
+```
+
+Cases are split across GPUs (`cases[rank::world_size]`). Rank 0 writes `benchmark_results.*` and optional artifacts; all ranks return the merged result list. Set `run.distributed: false` only if debugging (each rank would run the full case list).
+
 **Matrix mode:** edit **`conf/config_surface.yaml`** or **`conf/config_volume.yaml`** — set `benchmark.mode: matrix` and fill `benchmark.models` / `benchmark.datasets`. Incompatible surface/volume pairs are skipped automatically.
 
 ---
@@ -39,15 +48,15 @@ python main.py --config-name=config_volume run.output_dir=my_volume_run
 
 | Section | Contents |
 | ------- | -------- |
-| **run** | `device`, `output_dir`, `seed`, `batch_size`, **`save_inference_mesh`**, optional **`metrics_cache`** (see below) |
+| **run** | `device`, `output_dir`, `seed`, `batch_size`, **`save_inference_mesh`**, **`distributed`** (default true: shard cases under `torchrun`), optional **`metrics_cache`** (see below) |
 | **model** / **benchmark.models** | `name`, `checkpoint`, `stats_path`, `inference_domain` (`surface` \| `volume`), `kwargs` |
-| **dataset** / **benchmark.datasets** | `name`, `root`, `split`, `case_ids` (`null` = all), `kwargs` |
+| **dataset** / **benchmark.datasets** | `name`, `root`, `split`, optional per-dataset `case_ids` (`null` = all), `kwargs` |
 | **output** | `mesh_field_names`, `ground_truth_mesh_field_names`; `volume_mesh_field_names`, `ground_truth_volume_mesh_field_names`; **`streamlines_vector_canonical`** (default `velocity`) |
 | **metrics** | Metric names or `{ name: ..., ...kwargs }` — see [Metrics](#metrics) |
 | **reports** | Optional PNG pipeline — see [Reports and plots](#reports-and-plots) |
 | **benchmark** | `mode` (`single` \| `matrix`), `models` / `datasets`, `reproducibility` |
 
-**`case_id`:** optional top-level key in the Hydra config (`null` = use dataset case list). Override on the CLI: `case_id=run_1`.
+**`case_id`:** optional top-level Hydra key: `null` uses each dataset's `case_ids` (or all adapter cases); a **string** runs one case on every dataset; a **list** runs those cases on every dataset in matrix mode (preferred over repeating `case_ids` on each dataset). CLI examples: `case_id=run_1`, `'case_id=[run_1,run_11]'`.
 
 **Metrics cache (optional):** Under `run.metrics_cache`, `enabled: true` stores per-case scalars under `path` (resolved; default pattern `${run.output_dir}/metrics_cache`). Delete that directory for a full recompute. **Plots and meshes are not cached.**
 
@@ -156,7 +165,7 @@ reports:
 
 ### Troubleshooting
 
-- **`case_ids` in a visual** must cover the cases you evaluate; set global **`case_id=run_1`** or per-visual **`case_ids`** consistently.
+- **`case_ids` in a visual** must cover the cases you evaluate; set top-level **`case_id`** (string or list) or per-visual **`case_ids`** consistently.
 - Headless PNG: **`report_plugins_manifest.json`** → `visual_errors`; often need **xvfb** (see `setup.sh`).
 - Use an **editable install** so the installed package includes your local `evaluation` / `postprocessing_tools` changes.
 

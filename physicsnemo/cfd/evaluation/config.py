@@ -68,6 +68,9 @@ class RunConfig:
     #: If False, inference CLI skips writing ``inference_<model>_<case>.vtp|vtu`` (comparison mesh / visuals unchanged).
     save_inference_mesh: bool = True
     metrics_cache: MetricsCacheConfig = field(default_factory=MetricsCacheConfig)
+    #: When True (default) and launched multi-process (e.g. ``torchrun``), shard cases across ranks via
+    #: ``DistributedManager`` and merge before reports. When False, each rank runs the full case list (debug only).
+    distributed: bool = True
 
 
 @dataclass
@@ -207,6 +210,7 @@ class Config:
                 enabled=bool(mc_raw.get("enabled", False)),
                 path=str(mc_raw.get("path") or ""),
             ),
+            distributed=bool(run_raw.get("distributed", True)),
         )
         model = ModelConfig(**(data.get("model") or {}))
         dataset = DatasetConfig(**(data.get("dataset") or {}))
