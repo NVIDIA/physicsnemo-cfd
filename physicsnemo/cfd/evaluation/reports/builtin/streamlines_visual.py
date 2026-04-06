@@ -9,8 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from physicsnemo.cfd.bench.metrics.streamlines import compute_streamlines
-from physicsnemo.cfd.bench.visualization.utils import plot_streamlines
+from physicsnemo.cfd.postprocessing_tools.metrics.streamlines import compute_streamlines
+from physicsnemo.cfd.postprocessing_tools.visualization.utils import plot_streamlines
 from physicsnemo.cfd.evaluation.config import Config, OutputConfig
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.reports.context_helpers import get_comparison_mesh_for_case

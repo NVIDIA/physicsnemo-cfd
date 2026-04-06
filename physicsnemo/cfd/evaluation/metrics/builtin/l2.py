@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""L2-style metrics delegating to physicsnemo.cfd.bench.metrics.l2_errors."""
+"""L2-style metrics delegating to physicsnemo.cfd.postprocessing_tools.metrics.l2_errors."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from typing import Any
 
 import numpy as np
 
-from physicsnemo.cfd.bench.metric_registry import register_metric
-from physicsnemo.cfd.bench.metrics.l2_errors import (
+from physicsnemo.cfd.postprocessing_tools.metric_registry import register_metric
+from physicsnemo.cfd.postprocessing_tools.metrics.l2_errors import (
     compute_area_weighted_l2_errors,
     compute_l2_errors,
 )

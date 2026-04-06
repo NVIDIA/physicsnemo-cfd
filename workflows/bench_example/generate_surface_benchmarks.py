@@ -27,7 +27,7 @@ import argparse
 import json
 from functools import partial
 
-from physicsnemo.cfd.bench.visualization.utils import (
+from physicsnemo.cfd.postprocessing_tools.visualization.utils import (
     plot_design_scatter,
     plot_design_trend,
     plot_line,

@@ -4,7 +4,7 @@
 
 """Re-export bench metric registry for ``physicsnemo.cfd.evaluation``."""
 
-from physicsnemo.cfd.bench.metric_registry import (  # noqa: F401
+from physicsnemo.cfd.postprocessing_tools.metric_registry import (  # noqa: F401
     get_metric,
     list_metrics,
     register_metric,

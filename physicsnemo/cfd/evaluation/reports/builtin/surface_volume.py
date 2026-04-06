@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Built-in visuals wrapping ``physicsnemo.cfd.bench.visualization.utils``."""
+"""Built-in visuals wrapping ``physicsnemo.cfd.postprocessing_tools.visualization.utils``."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any
 
 import pyvista as pv
 
-from physicsnemo.cfd.bench.visualization.utils import plot_field_comparisons, plot_fields
+from physicsnemo.cfd.postprocessing_tools.visualization.utils import plot_field_comparisons, plot_fields
 from physicsnemo.cfd.evaluation.config import Config, OutputConfig
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.reports.context_helpers import get_comparison_mesh_for_case

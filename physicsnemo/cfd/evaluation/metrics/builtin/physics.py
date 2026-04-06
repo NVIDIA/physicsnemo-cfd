@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Continuity and momentum residual metrics (volume) via physicsnemo.cfd.bench.metrics.physics."""
+"""Continuity and momentum residual metrics (volume) via physicsnemo.cfd.postprocessing_tools.metrics.physics."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from typing import Any
 
 import pyvista as pv
 
-from physicsnemo.cfd.bench.metric_registry import register_metric
-from physicsnemo.cfd.bench.metrics.l2_errors import compute_l2_errors
-from physicsnemo.cfd.bench.metrics.physics import (
+from physicsnemo.cfd.postprocessing_tools.metric_registry import register_metric
+from physicsnemo.cfd.postprocessing_tools.metrics.l2_errors import compute_l2_errors
+from physicsnemo.cfd.postprocessing_tools.metrics.physics import (
     compute_continuity_residuals,
     compute_momentum_residuals,
 )

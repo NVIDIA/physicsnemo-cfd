@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Line plot visual wrapping ``physicsnemo.cfd.bench.visualization.utils.plot_line``."""
+"""Line plot visual wrapping ``physicsnemo.cfd.postprocessing_tools.visualization.utils.plot_line``."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 import pyvista as pv
 
-from physicsnemo.cfd.bench.visualization.utils import plot_line
+from physicsnemo.cfd.postprocessing_tools.visualization.utils import plot_line
 from physicsnemo.cfd.evaluation.config import Config, OutputConfig
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.reports.context_helpers import get_comparison_mesh_for_case

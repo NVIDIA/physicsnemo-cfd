@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Design scatter / trend visuals wrapping ``physicsnemo.cfd.bench.visualization.utils``."""
+"""Design scatter / trend visuals wrapping ``physicsnemo.cfd.postprocessing_tools.visualization.utils``."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 
-from physicsnemo.cfd.bench.visualization.utils import plot_design_scatter, plot_design_trend
+from physicsnemo.cfd.postprocessing_tools.visualization.utils import plot_design_scatter, plot_design_trend
 from physicsnemo.cfd.evaluation.config import Config
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.reports.registry import register_visual

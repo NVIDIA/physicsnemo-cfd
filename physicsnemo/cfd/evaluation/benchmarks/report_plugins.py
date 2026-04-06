@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Optional PNG report visuals using ``physicsnemo.cfd.bench.visualization``.
+Optional PNG report visuals using ``physicsnemo.cfd.postprocessing_tools.visualization``.
 
 Benchmark and inference entrypoints call ``run_optional_report_plugins`` when
 ``reports.enabled`` and ``reports.visuals`` are set. Optional ``context`` (see
