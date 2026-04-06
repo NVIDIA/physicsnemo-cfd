@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Surface benchmark (VTP / cell metrics, field comparison, wall quantities, Cd/Cl).
+# Run: ``python main.py`` (default) or ``python main.py --config-name=config_surface``
+
+defaults:
+  - _self_
+
+hydra:
+  run:
+    dir: ${run.output_dir}
+  output_subdir: hydra
+  job:
+    chdir: false
+
+# Top-level: one id, list (shared by all matrix datasets), or null for per-dataset case_ids / all cases.
+case_id: [run_1, run_11]
+
+run:
+  device: "cuda:1"
+  output_dir: "benchmark_results_surface"
+  seed: 42
+  batch_size: 1
+  save_inference_mesh: false
+  metrics_cache:
+    enabled: true
+    path: ${run.output_dir}/metrics_cache
+
+benchmark:
+  mode: "matrix"
+  models:
+    - name: "geotransolver"
+      inference_domain: surface
+      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
+      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_surface_checkpoint/global_stats.json"
+      kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
+  datasets:
+    - name: "drivaerml"
+      root: "/lustre/fsw/coreai_modulus_cae/datasets/drivaer_aws/drivaer_data_finetune"
+      split: null
+      kwargs: { align_ground_truth_to_model: true, inference_domain: surface }
+  reproducibility:
+    log_env: true
+    save_artifacts: true
+
+output:
+  mesh_field_names:
+    pressure: "pMeanTrimPred"
+    shear_stress: "wallShearStressMeanTrimPred"
+
+metrics:
+  - l2_pressure
+  - l2_shear_stress
+  - l2_pressure_area_weighted
+  - drag_error
+  - lift_error
+
+reports:
+  enabled: false
+  save_comparison_meshes: false
+  comparison_mesh_subdir: comparison_meshes
+  visual_case_ids: [run_1, run_11]
+  visuals:
+    - name: field_comparison_surface
+      canonical_keys: [pressure, shear_stress]
+      view: xy
+    - name: line_plot
+      canonical_key: pressure
+      plot_coord: x
+      normalize_factor: 1.0
+      true_line_kwargs: { label: Ground truth }
+      pred_line_kwargs: { label: Prediction }
+    - name: line_plot
+      canonical_key: shear_stress
+      plot_coord: x
+      normalize_factor: 1.0
+      true_line_kwargs: { label: Ground truth }
+      pred_line_kwargs: { label: Prediction }
+    - name: line_plot_centerlines
+      canonical_key: pressure
+      plot_coord: x
+      normalize_factor: 1.0
+      z_clip: 0.4
+      y_slice_origin: [0, 0, 0]
+      xlabel: "X Coordinate"
+      ylabel: "Pressure"
+      true_line_kwargs: { label: Ground truth }
+      pred_line_kwargs: { label: Prediction }
+    - name: streamlines_comparison
+      canonical_key: shear_stress
+      view: xy
+    - name: design_scatter
+      pairs:
+        - { name: Cd, true_key: drag_error_true, pred_key: drag_error_pred }
+        - { name: Cl, true_key: lift_error_true, pred_key: lift_error_pred }
+    - name: design_trend
+      pairs:
+        - { name: Cd, true_key: drag_error_true, pred_key: drag_error_pred }
+        - { name: Cl, true_key: lift_error_true, pred_key: lift_error_pred }

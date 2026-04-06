@@ -2,8 +2,8 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""CFD benchmarking metrics, geometry, and visualization."""
+"""Post-processing metrics, geometry, interpolation, and visualization utilities."""
 
-from physicsnemo.cfd.bench import metric_registry  # noqa: F401
+from . import metric_registry  # noqa: F401
 
 __all__ = ["metric_registry"]

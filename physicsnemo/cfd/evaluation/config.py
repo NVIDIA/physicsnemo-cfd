@@ -1,3 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Config schema and loader for inference and benchmarking."""
 
 from dataclasses import dataclass, field
@@ -23,11 +39,38 @@ def deep_merge_dict(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, 
 
 
 @dataclass
+class MetricsCacheConfig:
+    """
+    Optional on-disk cache of per-case scalar metrics from benchmark runs.
+
+    When enabled, cases with a matching fingerprint skip reading VTK, running
+    inference, and recomputing metrics. Meshes and report plots are not cached.
+
+    Attributes
+    ----------
+    enabled : bool
+        Whether to read and write metric cache files.
+    path : str
+        Cache root directory. If empty while ``enabled`` is True, defaults to
+        ``<run.output_dir>/.metrics_cache``.
+    """
+
+    enabled: bool = False
+    path: str = ""
+
+
+@dataclass
 class RunConfig:
     device: str = "cuda:0"
     output_dir: str = "benchmark_results"
     seed: int = 42
     batch_size: int = 1
+    #: If False, inference CLI skips writing ``inference_<model>_<case>.vtp|vtu`` (comparison mesh / visuals unchanged).
+    save_inference_mesh: bool = True
+    metrics_cache: MetricsCacheConfig = field(default_factory=MetricsCacheConfig)
+    #: When True (default) and launched multi-process (e.g. ``torchrun``), shard cases across ranks via
+    #: ``DistributedManager`` and merge before reports. When False, each rank runs the full case list (debug only).
+    distributed: bool = True
 
 
 @dataclass
@@ -72,10 +115,21 @@ class BenchmarkConfig:
 
 @dataclass
 class ReportsConfig:
-    """Optional Phase-B style plugins (plots, streamlines) after scalar metrics."""
+    """Post-scalar outputs: optional comparison mesh export and registered visuals (plots)."""
 
     enabled: bool = False
     plugins: list[dict[str, Any]] = field(default_factory=list)
+    #: When True, write each case comparison mesh to ``comparison_mesh_subdir`` for downstream visualization.
+    save_comparison_meshes: bool = False
+    comparison_mesh_subdir: str = "comparison_meshes"
+    #: Case IDs for which an in-memory comparison mesh is retained for ``reports.visuals`` (saves RAM on large sweeps).
+    #: When ``None``, all cases that build a comparison mesh are kept (legacy behavior). When a non-empty list, only
+    #: those IDs are stored in ``comparison_meshes_by_run``. Also used as default ``case_ids`` for any visual that
+    #: omits ``case_ids`` (per-visual ``case_ids`` still overrides). Empty list ``[]`` retains no meshes in context
+    #: (use ``save_comparison_meshes: true`` if PNGs must load from disk).
+    visual_case_ids: list[str] | None = None
+    #: Visuals to run (same list style as ``metrics``): strings or ``{name: ..., ...kwargs}``.
+    visuals: list[str] | list[dict[str, Any]] = field(default_factory=list)
 
 
 # Canonical prediction keys used by wrappers; mesh array names are configurable per dataset/convention.
@@ -121,6 +175,8 @@ class OutputConfig:
     ground_truth_volume_mesh_field_names: dict[str, str] = field(
         default_factory=lambda: dict(DEFAULT_GROUND_TRUTH_VOLUME_MESH_FIELD_NAMES)
     )
+    #: Canonical key for ``streamlines_comparison`` report visual (volume vector field).
+    streamlines_vector_canonical: str = "velocity"
 
 
 @dataclass
@@ -138,7 +194,24 @@ class Config:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Config":
         """Build Config from a nested dict (e.g. from YAML/JSON)."""
-        run = RunConfig(**(data.get("run") or {}))
+        run_raw = dict(data.get("run") or {})
+        mc_raw = run_raw.pop("metrics_cache", None)
+        if mc_raw is None:
+            mc_raw = {}
+        elif not isinstance(mc_raw, dict):
+            raise TypeError("run.metrics_cache must be a mapping if provided")
+        run = RunConfig(
+            device=str(run_raw.get("device", "cuda:0")),
+            output_dir=str(run_raw.get("output_dir", "benchmark_results")),
+            seed=int(run_raw.get("seed", 42)),
+            batch_size=int(run_raw.get("batch_size", 1)),
+            save_inference_mesh=bool(run_raw.get("save_inference_mesh", True)),
+            metrics_cache=MetricsCacheConfig(
+                enabled=bool(mc_raw.get("enabled", False)),
+                path=str(mc_raw.get("path") or ""),
+            ),
+            distributed=bool(run_raw.get("distributed", True)),
+        )
         model = ModelConfig(**(data.get("model") or {}))
         dataset = DatasetConfig(**(data.get("dataset") or {}))
         out = data.get("output") or {}
@@ -159,6 +232,9 @@ class Config:
             volume_mesh_field_names=vol_fn,
             ground_truth_mesh_field_names=gt_mesh,
             ground_truth_volume_mesh_field_names=gt_vol,
+            streamlines_vector_canonical=str(
+                out.get("streamlines_vector_canonical") or "velocity"
+            ),
         )
         metrics = data.get("metrics", ["l2_pressure"])
         bench = data.get("benchmark") or {}
@@ -185,9 +261,18 @@ class Config:
         )
         reports_raw = data.get("reports") or {}
         if isinstance(reports_raw, dict):
+            vci = reports_raw.get("visual_case_ids")
+            if vci is not None:
+                vci = [str(x) for x in vci]
             reports = ReportsConfig(
                 enabled=bool(reports_raw.get("enabled", False)),
                 plugins=list(reports_raw.get("plugins") or []),
+                save_comparison_meshes=bool(reports_raw.get("save_comparison_meshes", False)),
+                comparison_mesh_subdir=str(
+                    reports_raw.get("comparison_mesh_subdir") or "comparison_meshes"
+                ),
+                visual_case_ids=vci,
+                visuals=list(reports_raw.get("visuals") or []),
             )
         else:
             reports = ReportsConfig()

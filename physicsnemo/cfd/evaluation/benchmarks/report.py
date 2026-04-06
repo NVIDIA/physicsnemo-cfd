@@ -1,4 +1,24 @@
-"""Aggregate results and export JSON/CSV/HTML reports."""
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+Aggregate benchmark results and export tabular reports.
+
+Writes ``benchmark_results.{json,csv,html}`` under the run output directory.
+"""
 
 import csv
 import json
@@ -13,12 +33,22 @@ def write_report(
     output_dir: str | Path,
     formats: list[str] | None = None,
 ) -> None:
-    """Write benchmark results to one or more formats.
+    """
+    Write benchmark results in the requested formats.
 
-    Args:
-        results: List of run result dicts (from run_benchmark).
-        output_dir: Directory to write files into.
-        formats: One or more of "json", "csv", "html". Default: all three.
+    Parameters
+    ----------
+    results : list of dict
+        One entry per model×dataset from ``run_benchmark`` (with ``per_case``, ``metrics``, etc.).
+    output_dir : str or Path
+        Directory for output files.
+    formats : list of str or None
+        Subset of ``"json"``, ``"csv"``, ``"html"``. Default is all three.
+
+    Raises
+    ------
+    ValueError
+        If an unknown format name is given.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -40,6 +70,7 @@ def write_report(
 
 
 def _write_json(results: list[dict], output_dir: Path) -> None:
+    """Write ``benchmark_results.json``."""
     path = output_dir / "benchmark_results.json"
     log_dataset("benchmark", f"Writing {path}…")
     with open(path, "w") as f:
@@ -47,6 +78,7 @@ def _write_json(results: list[dict], output_dir: Path) -> None:
 
 
 def _write_csv(results: list[dict], output_dir: Path) -> None:
+    """Write long-form ``benchmark_results.csv`` (per-case and summary rows)."""
     path = output_dir / "benchmark_results.csv"
     log_dataset("benchmark", f"Writing {path}…")
     rows = []
@@ -80,6 +112,7 @@ def _write_csv(results: list[dict], output_dir: Path) -> None:
 
 
 def _write_html(results: list[dict], output_dir: Path) -> None:
+    """Write a simple HTML summary with tables of metrics and per-case values."""
     path = output_dir / "benchmark_results.html"
     log_dataset("benchmark", f"Writing {path}…")
     lines = [

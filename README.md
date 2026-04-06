@@ -40,8 +40,8 @@ from a Python interface, facilitating scalable deployment of trained models.
   metrics (for example, pointwise errors, integrated quantities, spectral
   metrics, PDE residuals). [Related publication](https://www.arxiv.org/abs/2507.10747)
   - The `physicsnemo.cfd.evaluation` package runs config-driven inference and
-    uses the same `physicsnemo.cfd.bench` metric implementations as the workflow
-    scripts (see `workflows/evaluation_examples/`).
+    uses the same `physicsnemo.cfd.postprocessing_tools` metric implementations as the
+    **`workflows/evaluation_examples/`** workflow (run **`python main.py`** there; see that README).
   - Utilities to extend and build custom metrics, analyze, and visualize the
     results of trained ML models, both mesh-based and point-cloud based models
 
@@ -94,7 +94,7 @@ file.
 To get started, use the DoMINO NIM on a sample as shown below:
 
 ```python
-from physicsnemo.cfd.inference.domino_nim import call_domino_nim
+from physicsnemo.cfd.evaluation.nims import call_domino_nim
 import subprocess
 
 filenames = [

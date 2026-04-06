@@ -63,7 +63,7 @@ def build_comparison_mesh(
     *,
     mesh_override: pv.DataSet | None = None,
 ) -> tuple[pv.DataSet, str]:
-    """Load case geometry and attach GT / prediction fields for ``physicsnemo.cfd.bench`` metrics.
+    """Load case geometry and attach GT / prediction fields for ``physicsnemo.cfd.postprocessing_tools`` metrics.
 
     Parameters
     ----------

@@ -20,7 +20,7 @@ the understanding of several metrics and perform the comparisons with more
 flexibility and freedom.
 
 For **on-the-fly** evaluation (config-driven inference plus the same
-`physicsnemo.cfd.bench` metrics as the scripts above), use the
+`physicsnemo.cfd.postprocessing_tools` metrics as the scripts above), use the
 `physicsnemo.cfd.evaluation` package and the example YAML under
 [`workflows/evaluation_examples/`](../evaluation_examples/). The pre-baked
 `.vtp` / `.vtu` workflows in this directory remain the reference for

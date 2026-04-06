@@ -13,6 +13,7 @@ requires-python = ">=3.10"
 license = "Apache-2.0"
 dependencies = [
     "httpx>=0.27.0",
+    "hydra-core>=1.3.0",
     "pyyaml>=6.0",
     "numpy>=1.22.4",
     "pyvista>=0.45.2",

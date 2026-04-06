@@ -2,14 +2,24 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Force coefficient metrics via physicsnemo.cfd.bench.metrics.aero_forces."""
+"""Force coefficient metrics via physicsnemo.cfd.postprocessing_tools.metrics.aero_forces.
+
+Each metric returns a dict that expands in the benchmark engine to:
+
+- ``drag_error`` — relative |Cd_pred − Cd_true| / |Cd_true| (or absolute if |Cd_true| ≈ 0)
+- ``drag_error_true`` / ``drag_error_pred`` — integrated **drag coefficient Cd** (GT vs pred fields)
+- ``lift_error`` — relative |Cl_pred − Cl_true| / |Cl_true|
+- ``lift_error_true`` / ``lift_error_pred`` — integrated **lift coefficient Cl**
+
+Use the ``*_true`` / ``*_pred`` keys with ``design_scatter`` / ``design_trend`` in evaluation config.
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
-from physicsnemo.cfd.bench.metric_registry import register_metric
-from physicsnemo.cfd.bench.metrics.aero_forces import compute_drag_and_lift
+from physicsnemo.cfd.postprocessing_tools.metric_registry import register_metric
+from physicsnemo.cfd.postprocessing_tools.metrics.aero_forces import compute_drag_and_lift
 from physicsnemo.cfd.evaluation.metrics.mesh_bridge import build_comparison_mesh
 
 
@@ -29,16 +39,36 @@ def _resolve_mesh(
 
 
 def _scalar_drag_lift_error(ground_truth: dict, predictions: dict, key: str) -> float:
+    rel, _, _ = _scalar_drag_lift_triplet(ground_truth, predictions, key)
+    return rel
+
+
+def _scalar_drag_lift_triplet(
+    ground_truth: dict, predictions: dict, key: str
+) -> tuple[float, float, float]:
+    """Relative error and (true, pred) scalars for ``key`` (e.g. drag/lift from case metadata)."""
     g = ground_truth.get(key)
     p = predictions.get(key)
     if g is None or p is None:
-        return float("nan")
+        return float("nan"), float("nan"), float("nan")
     gt = float(g)
     pr = float(p)
     denom = abs(gt)
     if denom < 1e-14:
-        return abs(pr - gt)
-    return abs(pr - gt) / denom
+        rel = abs(pr - gt)
+    else:
+        rel = abs(pr - gt) / denom
+    return rel, gt, pr
+
+
+def _rel_and_pair(cd_gt: float, cd_pr: float) -> dict[str, float]:
+    """Relative error (``""`` → scalar metric name) plus Cd or Cl pair (``true`` / ``pred`` sub-keys)."""
+    denom = abs(cd_gt)
+    if denom < 1e-14:
+        rel = float(abs(cd_pr - cd_gt))
+    else:
+        rel = float(abs(cd_pr - cd_gt) / denom)
+    return {"": rel, "true": float(cd_gt), "pred": float(cd_pr)}
 
 
 def drag_error(
@@ -52,13 +82,14 @@ def drag_error(
     coeff: float = 1.0,
     drag_direction: list[float] | None = None,
     **_: object,
-) -> float:
+) -> dict[str, float]:
     mesh, dtype = _resolve_mesh(
         predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
     )
     dd = drag_direction if drag_direction is not None else [1.0, 0.0, 0.0]
     if mesh is None or output is None:
-        return _scalar_drag_lift_error(ground_truth, predictions, "drag")
+        rel, gt, pr = _scalar_drag_lift_triplet(ground_truth, predictions, "drag")
+        return {"": rel, "true": gt, "pred": pr}
     gtp = output.ground_truth_mesh_field_names["pressure"]
     gtw = output.ground_truth_mesh_field_names["shear_stress"]
     prp = output.mesh_field_names["pressure"]
@@ -80,12 +111,10 @@ def drag_error(
             drag_direction=dd,
             dtype=dtype,
         )
-        denom = abs(cd_gt)
-        if denom < 1e-14:
-            return float(abs(cd_pr - cd_gt))
-        return float(abs(cd_pr - cd_gt) / denom)
+        return _rel_and_pair(float(cd_gt), float(cd_pr))
     except Exception:
-        return _scalar_drag_lift_error(ground_truth, predictions, "drag")
+        rel, gt, pr = _scalar_drag_lift_triplet(ground_truth, predictions, "drag")
+        return {"": rel, "true": gt, "pred": pr}
 
 
 def lift_error(
@@ -99,13 +128,14 @@ def lift_error(
     coeff: float = 1.0,
     lift_direction: list[float] | None = None,
     **_: object,
-) -> float:
+) -> dict[str, float]:
     mesh, dtype = _resolve_mesh(
         predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
     )
     ld = lift_direction if lift_direction is not None else [0.0, 0.0, 1.0]
     if mesh is None or output is None:
-        return _scalar_drag_lift_error(ground_truth, predictions, "lift")
+        rel, gt, pr = _scalar_drag_lift_triplet(ground_truth, predictions, "lift")
+        return {"": rel, "true": gt, "pred": pr}
     gtp = output.ground_truth_mesh_field_names["pressure"]
     gtw = output.ground_truth_mesh_field_names["shear_stress"]
     prp = output.mesh_field_names["pressure"]
@@ -129,12 +159,10 @@ def lift_error(
             lift_direction=ld,
             dtype=dtype,
         )
-        denom = abs(cl_gt)
-        if denom < 1e-14:
-            return float(abs(cl_pr - cl_gt))
-        return float(abs(cl_pr - cl_gt) / denom)
+        return _rel_and_pair(float(cl_gt), float(cl_pr))
     except Exception:
-        return _scalar_drag_lift_error(ground_truth, predictions, "lift")
+        rel, gt, pr = _scalar_drag_lift_triplet(ground_truth, predictions, "lift")
+        return {"": rel, "true": gt, "pred": pr}
 
 
 def register_force_metrics() -> None:

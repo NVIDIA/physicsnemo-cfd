@@ -610,6 +610,7 @@ def plot_design_scatter(true_data_dict, pred_data_dict, **kwargs):
         len(true_data_dict.keys()),
         figsize=kwargs.get("figsize", (5 * len(true_data_dict.keys()), 5)),
     )
+    axs = np.atleast_1d(axs)
 
     r_squared_dict = {}
     for i, key in enumerate(true_data_dict.keys()):
@@ -663,6 +664,7 @@ def plot_design_trend(true_data_dict, pred_data_dict, idx_dict, **kwargs):
         len(true_data_dict.keys()),
         figsize=kwargs.get("figsize", (8 * len(true_data_dict.keys()), 6)),
     )
+    axs = np.atleast_1d(axs)
 
     spearman_coeff_dict = {}
     mae_dict = {}
@@ -861,10 +863,9 @@ def plot_line(
         mean_true_fields = mean_true_fields[sorted_indices]
         mean_pred_fields = mean_pred_fields[sorted_indices]
 
-        max_error = np.max(
-            np.abs((mean_true_fields - mean_pred_fields)[sorted_indices])
-        )
-        mae = np.mean(np.abs((mean_true_fields - mean_pred_fields)[sorted_indices]))
+        diff_mean = mean_true_fields - mean_pred_fields
+        max_error = np.max(np.abs(diff_mean))
+        mae = np.mean(np.abs(diff_mean))
 
         if coord_trim[0] is not None and coord_trim[1] is not None:
             mask = (mean_points >= coord_trim[0]) & (mean_points <= coord_trim[1])
@@ -913,7 +914,8 @@ def plot_line(
             f"Mean Abs. Error: {mae:.2e}. Max Abs. Error: {max_error:.2e}",
             **kwargs.get("title_kwargs", {}),
         )
-        ax.set_aspect("equal", adjustable="box")
+        # Scalar vs coordinate: equal aspect collapses the small axis (e.g. x ~ 1 m vs p ~ 1e3 Pa).
+        ax.set_aspect("auto")
 
     else:
         if plot_coord == "x":
@@ -935,12 +937,9 @@ def plot_line(
         true_data = true_data[sorted_indices]
         pred_data = pred_data[sorted_indices]
 
-        max_error = (
-            np.max(np.abs((true_data - pred_data)[sorted_indices])) / normalize_factor
-        )
-        mae = (
-            np.mean(np.abs((true_data - pred_data)[sorted_indices])) / normalize_factor
-        )
+        diff = true_data - pred_data
+        max_error = np.max(np.abs(diff)) / normalize_factor
+        mae = np.mean(np.abs(diff)) / normalize_factor
 
         if coord_trim[0] is not None and coord_trim[1] is not None:
             mask = (pts >= coord_trim[0]) & (pts <= coord_trim[1])
@@ -976,7 +975,7 @@ def plot_line(
             f"Mean Abs. Error: {mae:.2e}. Max Abs. Error: {max_error:.2e}",
             **kwargs.get("title_kwargs", {}),
         )
-        ax.set_aspect("equal", adjustable="box")
+        ax.set_aspect("auto")
 
         if kwargs.get("xlabel", None) is not None:
             ax.set_xlabel(kwargs.get("xlabel"))
