@@ -41,7 +41,7 @@ from a Python interface, facilitating scalable deployment of trained models.
   metrics, PDE residuals). [Related publication](https://www.arxiv.org/abs/2507.10747)
   - The `physicsnemo.cfd.evaluation` package runs config-driven inference and
     uses the same `physicsnemo.cfd.postprocessing_tools` metric implementations as the
-    **`workflows/evaluation_examples/`** workflow (run **`python main.py`** there; see that README).
+    **`workflows/benchmarking_workflow/`** workflow (run **`python main.py`** there; see that README).
   - Utilities to extend and build custom metrics, analyze, and visualize the
     results of trained ML models, both mesh-based and point-cloud based models
 

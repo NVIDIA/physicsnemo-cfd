@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Matrix surface benchmark: every ``benchmark.models`` entry × every ``benchmark.datasets`` entry.
+# Incompatible model/domain pairs are skipped automatically (see engine ``allow_skip_mismatch``).
+#
+# Run:
+#   python main.py --config-name=config_matrix_surface
+#
+# Edit ``ROOT``-style paths and Transolver checkpoint paths for your machine. Uncomment or add
+# more models (registered names: geotransolver, transolver, domino, fignet, xmgn, surface_baseline, …).
+
+defaults:
+  - _self_
+
+hydra:
+  run:
+    dir: ${run.output_dir}
+  output_subdir: hydra
+  job:
+    chdir: false
+
+# null = use each dataset's ``case_ids`` below (or CLI ``case_id=run_1`` / list override).
+case_id: null
+
+run:
+  device: "cuda:0"
+  output_dir: "benchmark_results_matrix_surface"
+  seed: 42
+  batch_size: 1
+  save_inference_mesh: false
+  metrics_cache:
+    enabled: true
+    path: ${run.output_dir}/metrics_cache
+
+benchmark:
+  mode: matrix
+  models:
+    - name: geotransolver
+      inference_domain: surface
+      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
+      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_surface_checkpoint/global_stats.json"
+      kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
+    - name: transolver
+      inference_domain: surface
+      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/transolver_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
+      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/transolver_drivaerml_surface_checkpoint/global_stats.json"
+      kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
+    - name: xmgn
+      inference_domain: surface
+      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/xmgn_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
+      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/xmgn_drivaerml_surface_checkpoint/global_stats.json"
+      kwargs: { "max_points": 250000, "interpolation_k": 4 }
+    - name: fignet
+      inference_domain: surface
+      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/fignet_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
+      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/fignet_drivaerml_surface_checkpoint/global_stats.json"
+      kwargs: { "max_points": 250000, "interpolation_k": 4 }
+    - name: domino
+      inference_domain: surface
+      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
+      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_surface_checkpoint/global_stats.json"
+      kwargs: { "domino_config": "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_surface_checkpoint/config.yaml" }
+    # Uncomment when you have a Transolver surface checkpoint + stats next to it (same layout as training).
+    # - name: surface_baseline_model
+    #   inference_domain: surface
+    #   checkpoint: "/path/to/surface_baseline_model/checkpoint.0.501.pt"
+    #   stats_path: "/path/to/surface_baseline_model/global_stats.json"
+    #   kwargs: { }
+  datasets:
+    # Same adapter twice with different ``case_ids`` illustrates a multi-dataset matrix without a second layout.
+    - name: drivaerml
+      root: "/lustre/fsw/coreai_modulus_cae/datasets/drivaer_aws/drivaer_data_finetune"
+      split: null
+      kwargs: { align_ground_truth_to_model: true, inference_domain: surface }
+  reproducibility:
+    log_env: true
+    save_artifacts: true
+
+output:
+  mesh_field_names:
+    pressure: "pMeanTrimPred"
+    shear_stress: "wallShearStressMeanTrimPred"
+
+metrics:
+  - l2_pressure
+  - l2_shear_stress
+  - l2_pressure_area_weighted
+  - drag_error
+  - lift_error
+
+reports:
+  enabled: false
+  save_comparison_meshes: false
+  comparison_mesh_subdir: comparison_meshes
+  visual_case_ids: [run_1, run_11]
+  visuals: []

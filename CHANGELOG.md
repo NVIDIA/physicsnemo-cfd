@@ -11,9 +11,6 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **Hydra workflow** for evaluation examples: `workflows/evaluation_examples/main.py` with
-  `conf/config_surface.yaml` (default) and `conf/config_volume.yaml` (`hydra-core` dependency), consistent
-  with other workflows (see **Removed** for dropped flat example YAML).
 - **Multi-GPU benchmarks:** `run_benchmark` / Hydra `main.py` can run under `torchrun` with PhysicsNeMo `DistributedManager` — per-rank case sharding, gather/merge on rank 0, and optional `run.distributed` (default true) to disable sharding for debugging.
 - **Tests:** `test/ci_tests/test_distributed_utils.py` covers merge/shard helpers and `_case_ids_for_run`.
 - **Metrics cache:** optional `run.metrics_cache` (`enabled`, `path`) stores per-case scalar metrics on disk
@@ -24,7 +21,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
   fields using explicit VTK names from config (`output.mesh_field_names`,
   `output.ground_truth_mesh_field_names`, and volume equivalents).
 - `physicsnemo.cfd.postprocessing_tools.metric_registry` for named metrics shared with evaluation.
-- Example Hydra configs under `workflows/evaluation_examples/conf/`.
+- Example Hydra configs under `workflows/benchmarking_workflow/conf/`, including matrix templates
+  `config_matrix_surface.yaml` and `config_matrix_volume.yaml` (multiple models × dataset blocks).
 - Library CLIs remain for scripting: `python -m physicsnemo.cfd.evaluation.benchmarks` /
   `python -m physicsnemo.cfd.evaluation.inference` (flat YAML path, no `${...}` interpolation).
 
@@ -42,7 +40,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 - Benchmark metric registration for evaluation now uses postprocessing_tools-backed built-ins
   under `physicsnemo.cfd.evaluation.metrics.builtin` instead of duplicated
   NumPy-only helpers.
-- Evaluation **workflow docs** center on **`workflows/evaluation_examples/main.py`** (Hydra) and
+- Evaluation **workflow docs** center on **`workflows/benchmarking_workflow/main.py`** (Hydra) and
   **`conf/config_surface.yaml`** / **`conf/config_volume.yaml`**; `evaluation.inference` still forwards
   to the benchmark engine; **`inference_<model>_<case>.vtp|vtu`** when **`run.save_inference_mesh`** is true.
 - Matrix benchmark settings are edited in the **`conf/*.yaml`** files; the old **`benchmark_matrix.yaml`**
@@ -52,7 +50,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
-- **`workflows/evaluation_examples/evaluation_config.yaml`** — evaluation examples are driven by Hydra **`conf/config_surface.yaml`** / **`config_volume.yaml`** and **`main.py`**.
+- **`workflows/benchmarking_workflow/evaluation_config.yaml`** — the workflow is driven by Hydra **`conf/config_surface.yaml`** / **`config_volume.yaml`** and **`main.py`**.
 
 ### Fixed
 

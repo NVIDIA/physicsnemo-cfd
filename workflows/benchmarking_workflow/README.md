@@ -1,10 +1,10 @@
-# Evaluation examples (PhysicsNeMo-CFD)
+# Benchmarking and Inference
 
 This workflow runs **metrics**, tabular outputs (JSON/CSV/HTML), optional **PNG visuals**, and optional VTK (`run.save_inference_mesh`, `reports.save_comparison_meshes`) using **[Hydra](https://hydra.cc/)** and **OmegaConf** — the same pattern as **`workflows/domino_design_sensitivities/`**.
 
-Install from this repo (`pip install -e .`) or `pip install nvidia-physicsnemo-cfd`, then use the commands below **from this directory** (`workflows/evaluation_examples/`).
+Install from this repo (`pip install -e .`) or `pip install nvidia-physicsnemo-cfd`, then use the commands below **from this directory** (`workflows/benchmarking_workflow/`).
 
-Configs live under **`conf/`**: **[`config_surface.yaml`](conf/config_surface.yaml)** (default) and **[`config_volume.yaml`](conf/config_volume.yaml)**. OmegaConf resolves **`${run.output_dir}`** (e.g. `run.metrics_cache.path`).
+Configs live under **`conf/`**: **[`config_surface.yaml`](conf/config_surface.yaml)** (default), **[`config_volume.yaml`](conf/config_volume.yaml)**, and matrix examples **[`config_matrix_surface.yaml`](conf/config_matrix_surface.yaml)** / **[`config_matrix_volume.yaml`](conf/config_matrix_volume.yaml)** (several models × several dataset entries). OmegaConf resolves **`${run.output_dir}`** (e.g. `run.metrics_cache.path`).
 
 ---
 
@@ -16,6 +16,10 @@ python main.py
 
 # Volume benchmark (VTU / volume metrics)
 python main.py --config-name=config_volume
+
+# Matrix: multiple models × multiple dataset blocks (see conf/config_matrix_*.yaml)
+python main.py --config-name=config_matrix_surface
+python main.py --config-name=config_matrix_volume
 
 # Hydra overrides (examples)
 python main.py case_id=run_1 run.device=cuda:0
@@ -31,7 +35,7 @@ torchrun --standalone --nproc_per_node=4 main.py
 
 Cases are split across GPUs (`cases[rank::world_size]`). Rank 0 writes `benchmark_results.*` and optional artifacts; all ranks return the merged result list. Set `run.distributed: false` only if debugging (each rank would run the full case list).
 
-**Matrix mode:** edit **`conf/config_surface.yaml`** or **`conf/config_volume.yaml`** — set `benchmark.mode: matrix` and fill `benchmark.models` / `benchmark.datasets`. Incompatible surface/volume pairs are skipped automatically.
+**Matrix mode:** use **[`conf/config_matrix_surface.yaml`](conf/config_matrix_surface.yaml)** or **[`conf/config_matrix_volume.yaml`](conf/config_matrix_volume.yaml)** as templates, or set `benchmark.mode: matrix` in any config and fill **`benchmark.models`** × **`benchmark.datasets`**. The product runs every model on every dataset entry; incompatible surface/volume pairs are skipped automatically. Edit checkpoint paths for your layout; comment out any **`- name:`** model block you do not want to run.
 
 ---
 
@@ -39,8 +43,10 @@ Cases are split across GPUs (`cases[rank::world_size]`). Rank 0 writes `benchmar
 
 | File | Role |
 | ---- | ----- |
-| [`conf/config_surface.yaml`](conf/config_surface.yaml) | Surface: **GeoTransolver** + drivaerml (`inference_domain: surface`), wall L2, Cd/Cl, surface visuals. `run.output_dir`: **`benchmark_results_surface`**. |
-| [`conf/config_volume.yaml`](conf/config_volume.yaml) | Volume: **GeoTransolver** + drivaerml (`inference_domain: volume`), volume L2 + residuals, `plot_fields_volume`, velocity streamlines. `run.output_dir`: **`benchmark_results_volume`**. |
+| [`conf/config_surface.yaml`](conf/config_surface.yaml) | **Surface**, `benchmark.mode: matrix`, **GeoTransolver** × **drivaerml**. Top-level **`case_id: [run_1, run_11]`** (no per-dataset `case_ids`). **`run.device`**: `cuda:1`. **`run.output_dir`**: **`benchmark_results_surface`**. `reports.enabled: false` (visuals listed for copy/paste when enabling reports). |
+| [`conf/config_volume.yaml`](conf/config_volume.yaml) | **Volume**, `benchmark.mode: matrix`, **GeoTransolver** × **drivaerml**. **`case_id: [run_1, run_11]`**. **`run.device`**: `cuda:0`. **`run.output_dir`**: **`benchmark_results_volume`**. |
+| [`conf/config_matrix_surface.yaml`](conf/config_matrix_surface.yaml) | **Matrix surface:** **GeoTransolver, Transolver, XMGN, FigNet, DoMINO** × **one** drivaerml row; **`case_id: null`** (all cases unless overridden). Checkpoints under `.../benchmark_models/<model>_drivaerml_surface_checkpoint/`. DoMINO **`kwargs.domino_config`** points at a YAML next to the checkpoint. **`run.output_dir`**: **`benchmark_results_matrix_surface`**. Optional commented baseline stub at bottom of **`benchmark.models`**. |
+| [`conf/config_matrix_volume.yaml`](conf/config_matrix_volume.yaml) | **Matrix volume:** same five model names in **volume** mode × **one** drivaerml row; **`case_id: null`**. Paths use `.../_drivaerml_volume_checkpoint/`. **`run.output_dir`**: **`benchmark_results_matrix_volume`**. |
 
 ---
 
