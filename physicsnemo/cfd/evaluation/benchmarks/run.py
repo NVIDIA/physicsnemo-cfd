@@ -46,7 +46,7 @@ def main() -> None:
     parser.add_argument(
         "--base-config",
         default=None,
-        help="Optional YAML merged first (e.g. evaluation_config.yaml); --config overlays it.",
+        help="Optional YAML merged first; --config overlays it.",
     )
     parser.add_argument(
         "--case-id",

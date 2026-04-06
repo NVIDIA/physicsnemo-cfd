@@ -12,7 +12,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 import pyvista as pv
 
-from physicsnemo.cfd.bench.visualization.utils import plot_projections_hexbin
+from physicsnemo.cfd.postprocessing_tools.visualization.utils import plot_projections_hexbin
 from physicsnemo.cfd.evaluation.config import Config
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.reports.registry import register_visual

@@ -20,7 +20,7 @@ if importlib.util.find_spec("physicsnemo.utils.sdf") is None:
 import numpy as np
 import pyvista as pv
 
-from physicsnemo.cfd.bench.metrics.l2_errors import compute_l2_errors
+from physicsnemo.cfd.postprocessing_tools.metrics.l2_errors import compute_l2_errors
 from physicsnemo.cfd.evaluation.benchmarks.engine import _call_metric, _normalize_metrics_config
 from physicsnemo.cfd.evaluation.benchmarks.report_plugins import _apply_default_case_ids_to_visuals
 from physicsnemo.cfd.evaluation.benchmarks.engine import _retain_comparison_mesh_for_visual_context

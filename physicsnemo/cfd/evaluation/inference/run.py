@@ -40,8 +40,8 @@ def _first_case_id(config: Config) -> str | None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Compatibility wrapper for the benchmark evaluation engine. Prefer: "
-            "python -m physicsnemo.cfd.evaluation.benchmarks.run --config evaluation_config.yaml"
+            "Compatibility wrapper for the benchmark evaluation engine (flat YAML only). "
+            "For Hydra + OmegaConf, use workflows/evaluation_examples: python main.py"
         ),
     )
     parser.add_argument("--config", required=True, help="Path to YAML/JSON config")
@@ -66,7 +66,7 @@ def main() -> None:
 
     print(
         "[evaluation] physicsnemo.cfd.evaluation.inference forwards to the benchmark engine; "
-        "prefer: python -m physicsnemo.cfd.evaluation.benchmarks.run",
+        "prefer: workflows/evaluation_examples (python main.py) or benchmarks.run with flat YAML",
         file=sys.stderr,
     )
     results = run_benchmark(config, case_id=case_id)

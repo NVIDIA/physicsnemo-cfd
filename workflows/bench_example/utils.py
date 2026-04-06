@@ -22,20 +22,20 @@ import pandas as pd
 import warnings
 import numpy as np
 
-from physicsnemo.cfd.bench.metrics.aero_forces import compute_drag_and_lift
-from physicsnemo.cfd.bench.metrics.l2_errors import (
+from physicsnemo.cfd.postprocessing_tools.metrics.aero_forces import compute_drag_and_lift
+from physicsnemo.cfd.postprocessing_tools.metrics.l2_errors import (
     compute_l2_errors,
     compute_area_weighted_l2_errors,
 )
-from physicsnemo.cfd.bench.metrics.streamlines import compute_streamlines
-from physicsnemo.cfd.bench.interpolation.interpolate_mesh_to_pc import (
+from physicsnemo.cfd.postprocessing_tools.metrics.streamlines import compute_streamlines
+from physicsnemo.cfd.postprocessing_tools.interpolation.interpolate_mesh_to_pc import (
     interpolate_mesh_to_pc,
 )
-from physicsnemo.cfd.bench.metrics.physics import (
+from physicsnemo.cfd.postprocessing_tools.metrics.physics import (
     compute_continuity_residuals,
     compute_momentum_residuals,
 )
-from physicsnemo.cfd.bench.visualization.utils import (
+from physicsnemo.cfd.postprocessing_tools.visualization.utils import (
     get_visible_point_indices,
     plot_field_comparisons,
 )

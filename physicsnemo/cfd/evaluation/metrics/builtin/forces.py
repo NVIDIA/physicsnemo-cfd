@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Force coefficient metrics via physicsnemo.cfd.bench.metrics.aero_forces.
+"""Force coefficient metrics via physicsnemo.cfd.postprocessing_tools.metrics.aero_forces.
 
 Each metric returns a dict that expands in the benchmark engine to:
 
@@ -18,8 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from physicsnemo.cfd.bench.metric_registry import register_metric
-from physicsnemo.cfd.bench.metrics.aero_forces import compute_drag_and_lift
+from physicsnemo.cfd.postprocessing_tools.metric_registry import register_metric
+from physicsnemo.cfd.postprocessing_tools.metrics.aero_forces import compute_drag_and_lift
 from physicsnemo.cfd.evaluation.metrics.mesh_bridge import build_comparison_mesh
 
 
