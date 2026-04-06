@@ -22,6 +22,7 @@ Run from this directory::
     python main.py
     python main.py --config-name=config_volume
     python main.py case_id=run_1 run.device=cuda:0
+    python main.py 'case_id=[run_1,run_11]'
 
 Default Hydra config is ``conf/config_surface.yaml``. Use
 ``--config-name=config_volume`` for the volume benchmark. Same layout as
@@ -60,10 +61,12 @@ def main(cfg: DictConfig) -> None:
     case_id = raw.pop("case_id", None)
     raw.pop("defaults", None)
     raw.pop("hydra", None)
-    if case_id is not None and case_id != "null":
-        case_id = str(case_id)
-    else:
+    if case_id is None or case_id == "null":
         case_id = None
+    elif isinstance(case_id, (list, tuple)):
+        case_id = [str(x) for x in case_id]
+    else:
+        case_id = str(case_id)
     config = Config.from_dict(raw)
     results = run_benchmark(config, case_id=case_id)
     print(f"Completed {len(results)} run(s). Results in {config.run.output_dir}")

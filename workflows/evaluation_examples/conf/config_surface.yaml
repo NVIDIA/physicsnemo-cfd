@@ -27,10 +27,11 @@ hydra:
   job:
     chdir: false
 
-case_id: null
+# Top-level: one id, list (shared by all matrix datasets), or null for per-dataset case_ids / all cases.
+case_id: [run_1, run_11]
 
 run:
-  device: "cuda:0"
+  device: "cuda:1"
   output_dir: "benchmark_results_surface"
   seed: 42
   batch_size: 1
@@ -51,7 +52,6 @@ benchmark:
     - name: "drivaerml"
       root: "/lustre/fsw/coreai_modulus_cae/datasets/drivaer_aws/drivaer_data_finetune"
       split: null
-      case_ids: [run_1, run_11]
       kwargs: { align_ground_truth_to_model: true, inference_domain: surface }
   reproducibility:
     log_env: true
