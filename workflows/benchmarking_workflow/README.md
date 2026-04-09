@@ -1,8 +1,8 @@
-# Benchmarking and Inference
+# Model evaluation and benchmarking
 
-This workflow runs **metrics**, tabular outputs (JSON/CSV/HTML), optional **PNG visuals**, and optional VTK (`run.save_inference_mesh`, `reports.save_comparison_meshes`) using **[Hydra](https://hydra.cc/)** and **OmegaConf** — the same pattern as **`workflows/domino_design_sensitivities/`**.
+This is an opinionated workflow to help you get started with evaluating and benchmarking pretrained models.  It stitches together the model inference, calcuating built-in metrics and generating artifacts for analysis and visualization. We use a configuration based approach to allow you to extend this workflow to add your datasets, models, custom metrics etc.
 
-Install from this repo (`pip install -e .`) or `pip install nvidia-physicsnemo-cfd`, then use the commands below **from this directory** (`workflows/benchmarking_workflow/`).
+# Running OOB Benchmark 
 
 Configs live under **`conf/`**: **[`config_surface.yaml`](conf/config_surface.yaml)** (default), **[`config_volume.yaml`](conf/config_volume.yaml)**, and matrix examples **[`config_matrix_surface.yaml`](conf/config_matrix_surface.yaml)** / **[`config_matrix_volume.yaml`](conf/config_matrix_volume.yaml)** (several models × several dataset entries). OmegaConf resolves **`${run.output_dir}`** (e.g. `run.metrics_cache.path`).
 
