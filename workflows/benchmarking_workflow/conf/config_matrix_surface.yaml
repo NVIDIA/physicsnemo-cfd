@@ -99,8 +99,8 @@ metrics:
   - l2_pressure
   - l2_shear_stress
   - l2_pressure_area_weighted
-  - drag_error
-  - lift_error
+  - drag
+  - lift
 
 reports:
   enabled: false

@@ -52,7 +52,7 @@ class DrivAerMLAdapter(DatasetAdapter):
     - ``pressure_field_names``, ``shear_field_names``: surface GT array name overrides.
     - ``turbulent_viscosity_field_names``, ``velocity_field_names``,
       ``volume_pressure_field_names``: volume GT VTK array name tuples (defaults in
-      ``vtk_ground_truth``). Volume pressure is exposed in GT as ``pressure_volume``.
+      ``vtk_ground_truth``). Volume pressure is exposed in GT as ``pressure``.
     - ``boundary_vtp_filename``: if set, every run uses this exact VTP name (legacy e.g. ``boundary_1.vtp``).
     - ``boundary_vtp_template``: custom surface filename pattern.
     - ``volume_vtu_filename``: if set, every run uses this exact VTU name inside the run dir.

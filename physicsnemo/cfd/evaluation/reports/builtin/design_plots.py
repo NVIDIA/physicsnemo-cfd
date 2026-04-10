@@ -26,20 +26,20 @@ def _design_skip_hint(per_case: list[dict[str, Any]], pairs: list[dict[str, Any]
     for p in pairs:
         tk = str(p.get("true_key", ""))
         pk = str(p.get("pred_key", ""))
-        if tk == "drag_error_true" and pk == "drag_error_pred":
+        if tk == "drag_true" and pk == "drag_pred":
             if "drag_error" in m and tk not in m:
                 parts.append(
-                    "metrics only have scalar drag_error (missing drag_error_true / drag_error_pred). "
-                    "Re-run the benchmark after updating drag_error to return Cd true/pred dict entries, "
-                    "and ensure `python` imports that code (e.g. `pip install -e .` from the repo root)."
+                    "metrics have drag_error but missing drag_true / drag_pred. "
+                    "Ensure the 'drag' metric is listed in config and returns a dict with "
+                    "error/true/pred sub-keys (pip install -e . from the repo root)."
                 )
             elif tk in m and pk in m and (m[tk] != m[tk] or m[pk] != m[pk]):
                 parts.append(f"{tk!r} or {pk!r} is NaN (finite values required).")
-        if tk == "lift_error_true" and pk == "lift_error_pred":
+        if tk == "lift_true" and pk == "lift_pred":
             if "lift_error" in m and tk not in m:
                 parts.append(
-                    "metrics only have scalar lift_error (missing lift_error_true / lift_error_pred); "
-                    "re-run with updated lift_error metric."
+                    "metrics have lift_error but missing lift_true / lift_pred; "
+                    "ensure the 'lift' metric is listed in config."
                 )
             elif tk in m and pk in m and (m[tk] != m[tk] or m[pk] != m[pk]):
                 parts.append(f"{tk!r} or {pk!r} is NaN (finite values required).")

@@ -93,24 +93,26 @@ def _interpolate(
     return field_interp
 
 
-def interpolate_mesh_to_pc(pc, mesh, fields_to_interpolate, mesh_dtype="cell"):
-    """Interpolate mesh results on a point cloud using inverse weighted kNN
+def interpolate_mesh_to_pc(pc, mesh, fields_to_interpolate, mesh_dtype="cell", device="cpu"):
+    """Interpolate mesh results on a point cloud using inverse weighted kNN.
 
     Parameters
     ----------
     pc :
-        Point Cloud to interpolate values on (PyVista Dataset)
+        Point Cloud to interpolate values on (PyVista Dataset).
     mesh :
-        Mesh for the source values (PyVista Dataset)
+        Mesh for the source values (PyVista Dataset).
     fields_to_interpolate :
-        List of fields (str) to interpolate (must be present in the mesh dataset)
+        List of fields (str) to interpolate (must be present in the mesh dataset).
     mesh_dtype :
-        Whether the mesh fields are of point or cell type. Default cell.
+        Whether the mesh fields are of point or cell type. Default ``"cell"``.
+    device :
+        ``"cpu"`` for scipy cKDTree or ``"gpu"`` for cuML/CuPy accelerated kNN.
 
     Returns
     -------
-    _type_
-        Point cloud with interpolated values
+    pv.DataSet
+        Point cloud with interpolated values.
     """
     k = 5
 
@@ -120,19 +122,17 @@ def interpolate_mesh_to_pc(pc, mesh, fields_to_interpolate, mesh_dtype="cell"):
         cell_centers = mesh.cell_centers()
         source_points = cell_centers.points
 
-    nbrs_surface = _create_nbrs_surface(source_points, n_neighbors=k)
+    nbrs_surface = _create_nbrs_surface(source_points, n_neighbors=k, device=device)
 
     if mesh_dtype == "point":
-        # TODO: Possible to vectorize
         for field in fields_to_interpolate:
             pc.point_data[field] = _interpolate(
-                nbrs_surface, pc.points, mesh.point_data[field], n_neighbors=k
+                nbrs_surface, pc.points, mesh.point_data[field], device=device, n_neighbors=k
             )
     elif mesh_dtype == "cell":
-        # TODO: Possible to vectorize
         for field in fields_to_interpolate:
             pc.point_data[field] = _interpolate(
-                nbrs_surface, pc.points, mesh.cell_data[field], n_neighbors=k
+                nbrs_surface, pc.points, mesh.cell_data[field], device=device, n_neighbors=k
             )
 
     return pc

@@ -66,7 +66,7 @@ Cases are split across GPUs (`cases[rank::world_size]`). Rank 0 writes `benchmar
 
 **Metrics cache (optional):** Under `run.metrics_cache`, `enabled: true` stores per-case scalars under `path` (resolved; default pattern `${run.output_dir}/metrics_cache`). Delete that directory for a full recompute. **Plots and meshes are not cached.**
 
-**Model notes:** GeoTransolver / Transolver **volume** needs matching stats (`global_stats.json` with `velocity`, `pressure_volume`, `turbulent_viscosity`, or `volume_fields_normalization.npz`). **Surface** needs surface stats. DoMINO uses `domino_config` for volume.
+**Model notes:** GeoTransolver / Transolver **volume** needs matching stats (`global_stats.json` with `velocity`, `pressure`, `turbulent_viscosity`, or `volume_fields_normalization.npz`). **Surface** needs surface stats. DoMINO uses `domino_config` for volume.
 
 **Custom code:** [Custom models](#custom-models-adding-a-new-wrapper) · [Custom datasets](#custom-datasets-adding-a-new-adapter) · [Baseline stubs](#baseline-model-stubs-surface_baseline-volume_baseline)
 
@@ -88,12 +88,12 @@ metrics:
   - l2_pressure
   - l2_shear_stress
   - l2_pressure_area_weighted
-  - drag_error
-  - lift_error
+  - drag
+  - lift
 
 # Volume-oriented (see config_volume.yaml)
 metrics:
-  - l2_pressure_volume
+  - l2_pressure
   - l2_turbulent_viscosity
   - l2_velocity
   - continuity_residual_l2
@@ -104,9 +104,9 @@ metrics:
 | ---- | ------- |
 | `l2_pressure`, `l2_shear_stress` | Surface L2 |
 | `l2_pressure_area_weighted` | Area-weighted L2 pressure (`area_wt_l2_pressure`) |
-| `l2_pressure_volume` | Volume pressure (`pressure_volume`) |
+| `l2_pressure` (volume) | Volume pressure (domain-scoped, same name as surface) |
 | `l2_velocity`, `l2_turbulent_viscosity` | Volume / surface depending on case |
-| `drag_error`, `lift_error` | Coefficient errors |
+| `drag`, `lift` | Drag / lift coefficient errors (expands to `drag_error`, `drag_true`, `drag_pred`, etc.) |
 | `continuity_residual_l2`, `momentum_residual_l2` | Volume residuals |
 
 ---
@@ -167,7 +167,7 @@ reports:
 
 ### Line plots
 
-**`line_plot`** uses **`canonical_key`** (surface: `pressure`, `shear_stress`; volume: `pressure_volume`, …) and **`plot_coord`**. Centerline-style strip plots: see [`workflows/bench_example`](../bench_example/README.md) or a custom `register_visual`.
+**`line_plot`** uses **`canonical_key`** (surface: `pressure`, `shear_stress`; volume: `pressure`, `velocity`, …) and **`plot_coord`**. Centerline-style strip plots: see [`workflows/bench_example`](../bench_example/README.md) or a custom `register_visual`.
 
 ### Troubleshooting
 
@@ -212,7 +212,7 @@ dataset:
 ## Canonical types (`physicsnemo.cfd.evaluation.datasets.schema`)
 
 - **`CanonicalCase`** — `case_id`, `mesh_path`, `mesh_type`, `ground_truth`, `metadata`, `inference_domain`.
-- **Predictions** — surface: `pressure`, `shear_stress`; volume: `pressure_volume`, `turbulent_viscosity`, `velocity`.
+- **Predictions** — surface: `pressure`, `shear_stress`; volume: `pressure`, `turbulent_viscosity`, `velocity`.
 
 ---
 

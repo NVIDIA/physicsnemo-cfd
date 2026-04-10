@@ -640,7 +640,7 @@ def domino_volume_predictions_to_canonical(
             if "nut" in nl or "turbulent" in nl or "viscosity" in nl:
                 canonical_kw["turbulent_viscosity"] = chunk
             elif "pmean" in nl or nl.startswith("p_") or nl == "p":
-                canonical_kw["pressure_volume"] = chunk
+                canonical_kw["pressure"] = chunk
             else:
                 extra[name] = chunk
 

@@ -139,7 +139,7 @@ DEFAULT_MESH_FIELD_NAMES: dict[str, str] = {
 }
 
 DEFAULT_VOLUME_MESH_FIELD_NAMES: dict[str, str] = {
-    "pressure_volume": "pMeanPred",
+    "pressure": "pMeanPred",
     "turbulent_viscosity": "nutMeanPred",
     "velocity": "UMeanPred",
 }
@@ -150,7 +150,7 @@ DEFAULT_GROUND_TRUTH_MESH_FIELD_NAMES: dict[str, str] = {
 }
 
 DEFAULT_GROUND_TRUTH_VOLUME_MESH_FIELD_NAMES: dict[str, str] = {
-    "pressure_volume": "pMean",
+    "pressure": "pMean",
     "turbulent_viscosity": "nutMean",
     "velocity": "UMean",
 }

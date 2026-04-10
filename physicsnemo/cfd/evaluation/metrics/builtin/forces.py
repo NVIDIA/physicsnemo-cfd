@@ -7,9 +7,9 @@
 Each metric returns a dict that expands in the benchmark engine to:
 
 - ``drag_error`` — relative |Cd_pred − Cd_true| / |Cd_true| (or absolute if |Cd_true| ≈ 0)
-- ``drag_error_true`` / ``drag_error_pred`` — integrated **drag coefficient Cd** (GT vs pred fields)
+- ``drag_true`` / ``drag_pred`` — integrated **drag coefficient Cd** (GT vs pred fields)
 - ``lift_error`` — relative |Cl_pred − Cl_true| / |Cl_true|
-- ``lift_error_true`` / ``lift_error_pred`` — integrated **lift coefficient Cl**
+- ``lift_true`` / ``lift_pred`` — integrated **lift coefficient Cl**
 
 Use the ``*_true`` / ``*_pred`` keys with ``design_scatter`` / ``design_trend`` in evaluation config.
 """
@@ -62,13 +62,13 @@ def _scalar_drag_lift_triplet(
 
 
 def _rel_and_pair(cd_gt: float, cd_pr: float) -> dict[str, float]:
-    """Relative error (``""`` → scalar metric name) plus Cd or Cl pair (``true`` / ``pred`` sub-keys)."""
+    """Relative error (``"error"`` sub-key) plus Cd or Cl pair (``true`` / ``pred`` sub-keys)."""
     denom = abs(cd_gt)
     if denom < 1e-14:
         rel = float(abs(cd_pr - cd_gt))
     else:
         rel = float(abs(cd_pr - cd_gt) / denom)
-    return {"": rel, "true": float(cd_gt), "pred": float(cd_pr)}
+    return {"error": rel, "true": float(cd_gt), "pred": float(cd_pr)}
 
 
 def drag_error(
@@ -89,7 +89,7 @@ def drag_error(
     dd = drag_direction if drag_direction is not None else [1.0, 0.0, 0.0]
     if mesh is None or output is None:
         rel, gt, pr = _scalar_drag_lift_triplet(ground_truth, predictions, "drag")
-        return {"": rel, "true": gt, "pred": pr}
+        return {"error": rel, "true": gt, "pred": pr}
     gtp = output.ground_truth_mesh_field_names["pressure"]
     gtw = output.ground_truth_mesh_field_names["shear_stress"]
     prp = output.mesh_field_names["pressure"]
@@ -114,7 +114,7 @@ def drag_error(
         return _rel_and_pair(float(cd_gt), float(cd_pr))
     except Exception:
         rel, gt, pr = _scalar_drag_lift_triplet(ground_truth, predictions, "drag")
-        return {"": rel, "true": gt, "pred": pr}
+        return {"error": rel, "true": gt, "pred": pr}
 
 
 def lift_error(
@@ -135,7 +135,7 @@ def lift_error(
     ld = lift_direction if lift_direction is not None else [0.0, 0.0, 1.0]
     if mesh is None or output is None:
         rel, gt, pr = _scalar_drag_lift_triplet(ground_truth, predictions, "lift")
-        return {"": rel, "true": gt, "pred": pr}
+        return {"error": rel, "true": gt, "pred": pr}
     gtp = output.ground_truth_mesh_field_names["pressure"]
     gtw = output.ground_truth_mesh_field_names["shear_stress"]
     prp = output.mesh_field_names["pressure"]
@@ -162,9 +162,9 @@ def lift_error(
         return _rel_and_pair(float(cl_gt), float(cl_pr))
     except Exception:
         rel, gt, pr = _scalar_drag_lift_triplet(ground_truth, predictions, "lift")
-        return {"": rel, "true": gt, "pred": pr}
+        return {"error": rel, "true": gt, "pred": pr}
 
 
 def register_force_metrics() -> None:
-    register_metric("drag_error", drag_error)
-    register_metric("lift_error", lift_error)
+    register_metric("drag", drag_error, domain="surface")
+    register_metric("lift", lift_error, domain="surface")

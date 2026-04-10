@@ -38,7 +38,7 @@ class CanonicalCase:
     case_id: str
     mesh_path: str
     mesh_type: str  # "point" | "cell" — interpretation of field locations
-    ground_truth: dict[str, Any] | None = None  # surface: pressure, shear_stress; volume: pressure_volume, …
+    ground_truth: dict[str, Any] | None = None  # surface: pressure, shear_stress; volume: pressure, velocity, …
     metadata: dict[str, Any] = field(default_factory=dict)
     inference_domain: InferenceDomain = "surface"
 
@@ -66,7 +66,6 @@ def predictions_dict(pressure: np.ndarray, shear_stress: np.ndarray) -> dict[str
 def build_predictions_dict(
     *,
     pressure: np.ndarray | None = None,
-    pressure_volume: np.ndarray | None = None,
     shear_stress: np.ndarray | None = None,
     velocity: np.ndarray | None = None,
     turbulent_viscosity: np.ndarray | None = None,
@@ -74,14 +73,13 @@ def build_predictions_dict(
 ) -> dict[str, np.ndarray]:
     """Build predictions dict from optional canonical fields (omit None / missing).
 
-    Use ``pressure`` for surface models; ``pressure_volume`` for volume-domain pressure
-    (distinct canonical key so surface and volume fields are not conflated).
+    Both surface and volume models use ``pressure`` as the canonical key for
+    pressure predictions.  The domain (surface vs volume) is determined by the
+    case's ``inference_domain``, not the dict key.
     """
     out: dict[str, np.ndarray] = {}
     if pressure is not None:
         out["pressure"] = np.asarray(pressure, dtype=np.float32)
-    if pressure_volume is not None:
-        out["pressure_volume"] = np.asarray(pressure_volume, dtype=np.float32)
     if shear_stress is not None:
         out["shear_stress"] = np.asarray(shear_stress, dtype=np.float32)
     if velocity is not None:

@@ -59,19 +59,17 @@ benchmark:
 
 output:
   volume_mesh_field_names:
-    pressure_volume: "pMeanTrimPred"
+    pressure: "pMeanTrimPred"
     turbulent_viscosity: "nutMeanTrimPred"
     velocity: "UMeanTrimPred"
   streamlines_vector_canonical: velocity
 
 metrics:
-  - l2_pressure_volume
+  - l2_pressure
   - l2_turbulent_viscosity
   - l2_velocity
   - continuity_residual_l2
   - momentum_residual_l2
-  - drag_error
-  - lift_error
 
 reports:
   enabled: false
@@ -83,7 +81,7 @@ reports:
     - name: plot_fields_volume
       view: xy
     - name: line_plot
-      canonical_key: pressure_volume
+      canonical_key: pressure
       plot_coord: x
       normalize_factor: 1.0
       true_line_kwargs: { label: Ground truth }
@@ -91,3 +89,7 @@ reports:
     # Volume point mesh: uses ``output.streamlines_vector_canonical`` (velocity) when omitted.
     - name: streamlines_comparison
       view: xy
+    - name: aggregate_volume_errors
+      bounds: [-3.5, 8.5, -2.25, 2.25, -0.32, 3.00]
+      voxel_size: 0.03
+      canonical_keys: ["pressure", "velocity", "turbulent_viscosity"]

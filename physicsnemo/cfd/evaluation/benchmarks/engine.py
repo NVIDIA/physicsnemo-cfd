@@ -501,7 +501,7 @@ def _run_single(
         case_metrics: dict[str, float] = {}
         for mname, mkwargs in metric_names:
             try:
-                fn = get_metric(mname)
+                fn = get_metric(mname, domain=m_dom)
                 out = _call_metric(
                     fn,
                     gt,

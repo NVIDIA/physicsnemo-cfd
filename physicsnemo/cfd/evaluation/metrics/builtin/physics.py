@@ -88,8 +88,8 @@ def momentum_residual_l2(
         return {"Momentum_x_l2_error": float("nan")}
     uv = true_velocity_field or output.ground_truth_volume_mesh_field_names["velocity"]
     pv = predicted_velocity_field or output.volume_mesh_field_names["velocity"]
-    tp = true_pressure_field or output.ground_truth_volume_mesh_field_names["pressure_volume"]
-    pp = predicted_pressure_field or output.volume_mesh_field_names["pressure_volume"]
+    tp = true_pressure_field or output.ground_truth_volume_mesh_field_names["pressure"]
+    pp = predicted_pressure_field or output.volume_mesh_field_names["pressure"]
     tn = true_nu_field or output.ground_truth_volume_mesh_field_names["turbulent_viscosity"]
     pn = predicted_nu_field or output.volume_mesh_field_names["turbulent_viscosity"]
     try:
@@ -112,5 +112,5 @@ def momentum_residual_l2(
 
 
 def register_physics_metrics() -> None:
-    register_metric("continuity_residual_l2", continuity_residual_l2)
-    register_metric("momentum_residual_l2", momentum_residual_l2)
+    register_metric("continuity_residual_l2", continuity_residual_l2, domain="volume")
+    register_metric("momentum_residual_l2", momentum_residual_l2, domain="volume")

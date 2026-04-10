@@ -79,7 +79,11 @@ def _l2_shear_numpy(
     return float(np.linalg.norm(pred - gt) / denom)
 
 
-def l2_pressure(
+# ---------------------------------------------------------------------------
+# Surface pressure L2
+# ---------------------------------------------------------------------------
+
+def l2_pressure_surface(
     ground_truth: dict,
     predictions: dict,
     *,
@@ -105,55 +109,9 @@ def l2_pressure(
         return float("nan")
 
 
-def l2_shear_stress(
-    ground_truth: dict,
-    predictions: dict,
-    *,
-    case: Any = None,
-    comparison_mesh: Any = None,
-    metric_dtype: str | None = None,
-    output: Any = None,
-    mask: np.ndarray | None = None,
-    **_: object,
-) -> dict[str, float]:
-    mesh, dtype = _resolve_mesh(
-        predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
-    )
-    if mesh is None or output is None:
-        v = _l2_shear_numpy(ground_truth, predictions, mask=mask)
-        return {"magnitude": v}
-    gtn = output.ground_truth_mesh_field_names["shear_stress"]
-    prn = output.mesh_field_names["shear_stress"]
-    try:
-        return compute_l2_errors(mesh, [gtn], [prn], dtype=dtype)
-    except Exception:
-        return {"magnitude": float("nan")}
-
-
-def l2_pressure_area_weighted(
-    ground_truth: dict,
-    predictions: dict,
-    *,
-    case: Any = None,
-    comparison_mesh: Any = None,
-    metric_dtype: str | None = None,
-    output: Any = None,
-    **_: object,
-) -> float:
-    mesh, dtype = _resolve_mesh(
-        predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
-    )
-    if mesh is None or output is None:
-        return float("nan")
-    gtn = output.ground_truth_mesh_field_names["pressure"]
-    prn = output.mesh_field_names["pressure"]
-    try:
-        d = compute_area_weighted_l2_errors(mesh, [gtn], [prn], dtype=dtype)
-        key = f"{gtn}_area_wt_l2_error"
-        return float(d[key]) if key in d else float("nan")
-    except Exception:
-        return float("nan")
-
+# ---------------------------------------------------------------------------
+# Volume pressure L2
+# ---------------------------------------------------------------------------
 
 def l2_pressure_volume(
     ground_truth: dict,
@@ -163,7 +121,7 @@ def l2_pressure_volume(
     comparison_mesh: Any = None,
     metric_dtype: str | None = None,
     output: Any = None,
-    gt_key: str = "pressure_volume",
+    gt_key: str = "pressure",
     pred_key: str | None = None,
     mask: np.ndarray | None = None,
     **_: object,
@@ -194,6 +152,68 @@ def l2_pressure_volume(
     except Exception:
         return float("nan")
 
+
+# ---------------------------------------------------------------------------
+# Shear stress L2 (surface)
+# ---------------------------------------------------------------------------
+
+def l2_shear_stress(
+    ground_truth: dict,
+    predictions: dict,
+    *,
+    case: Any = None,
+    comparison_mesh: Any = None,
+    metric_dtype: str | None = None,
+    output: Any = None,
+    mask: np.ndarray | None = None,
+    **_: object,
+) -> dict[str, float]:
+    mesh, dtype = _resolve_mesh(
+        predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
+    )
+    if mesh is None or output is None:
+        v = _l2_shear_numpy(ground_truth, predictions, mask=mask)
+        return {"magnitude": v}
+    gtn = output.ground_truth_mesh_field_names["shear_stress"]
+    prn = output.mesh_field_names["shear_stress"]
+    try:
+        return compute_l2_errors(mesh, [gtn], [prn], dtype=dtype)
+    except Exception:
+        return {"magnitude": float("nan")}
+
+
+# ---------------------------------------------------------------------------
+# Area-weighted L2 pressure (surface)
+# ---------------------------------------------------------------------------
+
+def l2_pressure_area_weighted(
+    ground_truth: dict,
+    predictions: dict,
+    *,
+    case: Any = None,
+    comparison_mesh: Any = None,
+    metric_dtype: str | None = None,
+    output: Any = None,
+    **_: object,
+) -> float:
+    mesh, dtype = _resolve_mesh(
+        predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
+    )
+    if mesh is None or output is None:
+        return float("nan")
+    gtn = output.ground_truth_mesh_field_names["pressure"]
+    prn = output.mesh_field_names["pressure"]
+    try:
+        d = compute_area_weighted_l2_errors(mesh, [gtn], [prn], dtype=dtype)
+        key = f"{gtn}_area_wt_l2_error"
+        return float(d[key]) if key in d else float("nan")
+    except Exception:
+        return float("nan")
+
+
+# ---------------------------------------------------------------------------
+# Velocity L2 (volume)
+# ---------------------------------------------------------------------------
 
 def l2_velocity(
     ground_truth: dict,
@@ -228,6 +248,10 @@ def l2_velocity(
     except Exception:
         return {"magnitude": float("nan")}
 
+
+# ---------------------------------------------------------------------------
+# Turbulent viscosity L2 (volume)
+# ---------------------------------------------------------------------------
 
 def l2_turbulent_viscosity(
     ground_truth: dict,
@@ -269,14 +293,18 @@ def l2_turbulent_viscosity(
         return float("nan")
 
 
+# ---------------------------------------------------------------------------
+# Registration
+# ---------------------------------------------------------------------------
+
 def register_l2_metrics() -> None:
-    for name, fn in [
-        ("l2_pressure", l2_pressure),
-        ("l2_shear_stress", l2_shear_stress),
-        ("l2_pressure_area_weighted", l2_pressure_area_weighted),
-        ("area_wt_l2_pressure", l2_pressure_area_weighted),
-        ("l2_pressure_volume", l2_pressure_volume),
-        ("l2_velocity", l2_velocity),
-        ("l2_turbulent_viscosity", l2_turbulent_viscosity),
-    ]:
-        register_metric(name, fn)
+    # Surface metrics
+    register_metric("l2_pressure", l2_pressure_surface, domain="surface")
+    register_metric("l2_shear_stress", l2_shear_stress, domain="surface")
+    register_metric("l2_pressure_area_weighted", l2_pressure_area_weighted, domain="surface")
+    register_metric("area_wt_l2_pressure", l2_pressure_area_weighted, domain="surface")
+
+    # Volume metrics
+    register_metric("l2_pressure", l2_pressure_volume, domain="volume")
+    register_metric("l2_velocity", l2_velocity, domain="volume")
+    register_metric("l2_turbulent_viscosity", l2_turbulent_viscosity, domain="volume")

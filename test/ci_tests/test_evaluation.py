@@ -36,10 +36,10 @@ def test_normalize_metrics_config_strings_and_dicts() -> None:
     specs = _normalize_metrics_config(
         [
             "l2_pressure",
-            {"name": "drag_error", "coeff": 1.5},
+            {"name": "drag", "coeff": 1.5},
         ]
     )
-    assert specs == [("l2_pressure", {}), ("drag_error", {"coeff": 1.5})]
+    assert specs == [("l2_pressure", {}), ("drag", {"coeff": 1.5})]
 
 
 def test_reports_visual_case_ids_and_mesh_retention() -> None:
@@ -91,7 +91,7 @@ def test_config_from_dict_merges_output_and_reports() -> None:
 def test_list_metrics_includes_core_builtin() -> None:
     names = list_metrics()
     assert "l2_pressure" in names
-    assert "drag_error" in names
+    assert "drag" in names
 
 
 def test_build_comparison_mesh_surface_zero_l2_when_identical() -> None:

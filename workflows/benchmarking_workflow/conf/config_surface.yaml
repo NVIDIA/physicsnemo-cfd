@@ -66,8 +66,8 @@ metrics:
   - l2_pressure
   - l2_shear_stress
   - l2_pressure_area_weighted
-  - drag_error
-  - lift_error
+  - drag
+  - lift
 
 reports:
   enabled: false
@@ -105,9 +105,9 @@ reports:
       view: xy
     - name: design_scatter
       pairs:
-        - { name: Cd, true_key: drag_error_true, pred_key: drag_error_pred }
-        - { name: Cl, true_key: lift_error_true, pred_key: lift_error_pred }
+        - { name: Cd, true_key: drag_true, pred_key: drag_pred }
+        - { name: Cl, true_key: lift_true, pred_key: lift_pred }
     - name: design_trend
       pairs:
-        - { name: Cd, true_key: drag_error_true, pred_key: drag_error_pred }
-        - { name: Cl, true_key: lift_error_true, pred_key: lift_error_pred }
+        - { name: Cd, true_key: drag_true, pred_key: drag_pred }
+        - { name: Cl, true_key: lift_true, pred_key: lift_pred }

@@ -208,7 +208,7 @@ class GeoTransolverWrapper(CFDModel):
             if self._volume_factors is None:
                 raise FileNotFoundError(
                     "Volume inference requires ``global_stats.json`` (with velocity, "
-                    "pressure_volume, turbulent_viscosity) or ``volume_fields_normalization.npz`` "
+                    "pressure, turbulent_viscosity) or ``volume_fields_normalization.npz`` "
                     f"next to stats/checkpoint (looked under {stats_path!r})."
                 )
             self._surface_factors = None
@@ -401,11 +401,11 @@ class GeoTransolverWrapper(CFDModel):
             rho = float(self._air_density)
             dynamic_pressure = rho * (u**2)
             velocity = (pred[:, 0:3] * u).cpu().numpy().astype(np.float32)
-            pressure_volume = (pred[:, 3] * dynamic_pressure).cpu().numpy().astype(np.float32)
+            pressure = (pred[:, 3] * dynamic_pressure).cpu().numpy().astype(np.float32)
             turbulent_viscosity = (pred[:, 4] * dynamic_pressure).cpu().numpy().astype(np.float32)
             return build_predictions_dict(
                 velocity=velocity,
-                pressure_volume=pressure_volume,
+                pressure=pressure,
                 turbulent_viscosity=turbulent_viscosity,
             )
 

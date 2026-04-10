@@ -39,7 +39,7 @@ from physicsnemo.cfd.evaluation.inference.progress import log_inference
 
 
 class VolumeBaselineWrapper(CFDModel):
-    """No trained weights: zeros for ``pressure_volume`` and ``turbulent_viscosity`` on the volume mesh."""
+    """No trained weights: zeros for ``pressure`` and ``turbulent_viscosity`` on the volume mesh."""
 
     INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "volume"
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
@@ -82,6 +82,6 @@ class VolumeBaselineWrapper(CFDModel):
             mesh = mesh.cast_to_unstructured_grid()
         n = mesh.n_cells if self.output_location == "cell" else mesh.n_points
         return build_predictions_dict(
-            pressure_volume=np.zeros((n,), dtype=np.float32),
+            pressure=np.zeros((n,), dtype=np.float32),
             turbulent_viscosity=np.zeros((n,), dtype=np.float32),
         )

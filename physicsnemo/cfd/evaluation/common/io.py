@@ -67,7 +67,7 @@ def surface_factors_from_global_stats(
                 "mean/std_dev for 'pressure' and 'shear_stress'. "
                 f"Missing or incomplete key {k!r}. "
                 f"mean keys: {have_m}, std_dev keys: {have_s}. "
-                "If you only see velocity / pressure_volume / turbulent_viscosity, "
+                "If you only see velocity / pressure / turbulent_viscosity, "
                 "that is a volume stats file—use inference_domain: volume with a volume "
                 "checkpoint, or point stats_path at a surface-trained checkpoint directory."
             )
@@ -90,18 +90,18 @@ def volume_factors_from_global_stats(
     """Build ``mean`` / ``std`` vectors for volume ``TransolverDataPipe`` from ``global_stats.json``.
 
     Channel order matches training / ``volume_fields_normalization.npz``:
-    **velocity (3)**, **pressure_volume** (1), **turbulent_viscosity** (1).
+    **velocity (3)**, **pressure** (1), **turbulent_viscosity** (1).
 
-    Uses keys ``velocity``, ``pressure_volume`` (or legacy ``pressure`` for volume pressure),
-    and ``turbulent_viscosity`` under ``mean`` / ``std_dev``.
+    Uses keys ``velocity``, ``pressure`` (or legacy ``pressure_volume`` for backward
+    compatibility), and ``turbulent_viscosity`` under ``mean`` / ``std_dev``.
     """
     mean_block = data["mean"]
     std_block = data["std_dev"]
-    pkey = "pressure_volume" if "pressure_volume" in mean_block else "pressure"
+    pkey = "pressure" if "pressure" in mean_block else "pressure_volume"
     if pkey not in mean_block:
         raise KeyError(
             "global_stats.json must include mean/std for volume pressure as "
-            "'pressure_volume' or 'pressure'"
+            "'pressure' (or legacy 'pressure_volume')"
         )
     for key in ("velocity", "turbulent_viscosity"):
         if key not in mean_block:

@@ -52,7 +52,7 @@ DEFAULT_VOLUME_VELOCITY_NAMES = (
     "velocity",
     "Velocity",
 )
-# Volume pressure uses a distinct canonical key ``pressure_volume`` (surface uses ``pressure``).
+# Volume pressure uses the same canonical key ``pressure`` as surface (domain disambiguates).
 DEFAULT_VOLUME_PRESSURE_NAMES = DEFAULT_PRESSURE_NAMES
 
 
@@ -256,7 +256,7 @@ def _extract_volume_at_location(
     if pk is not None:
         p = _pressure_to_1d(np.asarray(data[pk]))
         if p.size == n:
-            out["pressure_volume"] = p.astype(np.float32)
+            out["pressure"] = p.astype(np.float32)
     nk = _find_array(data, turbulent_viscosity_names)
     if nk is not None:
         nut = _scalar_field_to_1d(np.asarray(data[nk]), n)
@@ -279,8 +279,8 @@ def extract_volume_fields_from_mesh(
 ) -> tuple[dict[str, np.ndarray] | None, Literal["cell", "point"] | None]:
     """Read reference fields from volume ``cell_data`` / ``point_data``.
 
-    Scalar pressure is stored under the canonical key ``pressure_volume`` (not ``pressure``,
-    which is reserved for surface boundary pressure in this codebase).
+    Scalar pressure is stored under the canonical key ``pressure`` (same as surface;
+    the inference domain disambiguates surface vs volume).
 
     Uses defaults when a name tuple is ``None``. Pass ``()`` to skip reading that field group.
     """

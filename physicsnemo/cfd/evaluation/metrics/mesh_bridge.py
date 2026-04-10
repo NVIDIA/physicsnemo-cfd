@@ -96,7 +96,7 @@ def build_comparison_mesh(
         gt_map = output.ground_truth_volume_mesh_field_names
         pred_map = output.volume_mesh_field_names
         pairs = (
-            ("pressure_volume", "pressure_volume"),
+            ("pressure", "pressure"),
             ("velocity", "velocity"),
             ("turbulent_viscosity", "turbulent_viscosity"),
         )

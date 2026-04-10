@@ -88,19 +88,19 @@ benchmark:
 
 output:
   volume_mesh_field_names:
-    pressure_volume: "pMeanTrimPred"
+    pressure: "pMeanTrimPred"
     turbulent_viscosity: "nutMeanTrimPred"
     velocity: "UMeanTrimPred"
   streamlines_vector_canonical: velocity
 
 metrics:
-  - l2_pressure_volume
+  - l2_pressure
   - l2_turbulent_viscosity
   - l2_velocity
   - continuity_residual_l2
   - momentum_residual_l2
-  - drag_error
-  - lift_error
+  - drag
+  - lift
 
 reports:
   enabled: false

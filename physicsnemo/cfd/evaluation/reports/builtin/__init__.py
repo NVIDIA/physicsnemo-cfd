@@ -12,6 +12,7 @@ from physicsnemo.cfd.evaluation.reports.builtin.surface_volume import (
     register_plot_fields_volume,
     register_field_comparison_surface,
 )
+from physicsnemo.cfd.evaluation.reports.builtin.aggregate_volume import register_aggregate_volume
 
 
 def register_all_builtin_visuals() -> None:
@@ -21,6 +22,7 @@ def register_all_builtin_visuals() -> None:
     register_design_visuals()
     register_projections_hexbin()
     register_streamlines_visual()
+    register_aggregate_volume()
 
 
 register_all_builtin_visuals()
