@@ -2,9 +2,9 @@
 
 This is an opinionated workflow to help you get started with evaluating and benchmarking pretrained models.  It stitches together the model inference, calcuating built-in metrics and generating artifacts for analysis and visualization. We use a configuration based approach to allow you to extend this workflow to add your datasets, models, custom metrics etc.
 
-# Running OOB Benchmark 
+# Running OOB  
 
-Configs live under **`conf/`**: **[`config_surface.yaml`](conf/config_surface.yaml)** (default), **[`config_volume.yaml`](conf/config_volume.yaml)**, and matrix examples **[`config_matrix_surface.yaml`](conf/config_matrix_surface.yaml)** / **[`config_matrix_volume.yaml`](conf/config_matrix_volume.yaml)** (several models × several dataset entries). OmegaConf resolves **`${run.output_dir}`** (e.g. `run.metrics_cache.path`).
+We have configs under **`conf/`** for surface, volume evaluations for a model and a matrix run for comparing multiple models: **[`config_surface.yaml`](conf/config_surface.yaml)** (default), **[`config_volume.yaml`](conf/config_volume.yaml)**, and matrix examples **[`config_matrix_surface.yaml`](conf/config_matrix_surface.yaml)** / **[`config_matrix_volume.yaml`](conf/config_matrix_volume.yaml)** (several models × several dataset entries). OmegaConf resolves **`${run.output_dir}`** (e.g. `run.metrics_cache.path`).
 
 ---
 
