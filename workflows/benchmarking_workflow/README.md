@@ -2,7 +2,7 @@
 
 This is an opinionated workflow to help you get started with evaluating and benchmarking pretrained models.  It stitches together the model inference, calcuating built-in metrics and generating artifacts for analysis and visualization. We use a configuration based approach to allow you to extend this workflow to add your datasets, models, custom metrics etc.
 
-# Running OOB  
+## Running OOB  
 We use configuration files to setup the model evaluation pipeline. These configs are under **`conf/`** for surface, volume evaluations for a model and a matrix run for comparing multiple models: **[`config_surface.yaml`](conf/config_surface.yaml)** (default), **[`config_volume.yaml`](conf/config_volume.yaml)**, and matrix examples **[`config_matrix_surface.yaml`](conf/config_matrix_surface.yaml)** / **[`config_matrix_volume.yaml`](conf/config_matrix_volume.yaml)** (several models × several dataset entries). 
 
 As a first step, you can this benchmarking example (link) to do an out of the box run.
@@ -34,22 +34,27 @@ Cases are split across GPUs (`cases[rank::world_size]`). Rank 0 writes `benchmar
 
 **Matrix mode:** use **[`conf/config_matrix_surface.yaml`](conf/config_matrix_surface.yaml)** or **[`conf/config_matrix_volume.yaml`](conf/config_matrix_volume.yaml)** as templates, or set `benchmark.mode: matrix` in any config and fill **`benchmark.models`** × **`benchmark.datasets`**. The product runs every model on every dataset entry; incompatible surface/volume pairs are skipped automatically. Edit checkpoint paths for your layout; comment out any **`- name:`** model block you do not want to run.
 
-# How to Extend (Add Your Own Data/Models)
+## How to Extend (Add Your Own Data/Models)
 To extend this workflow for your own custom evaluation or benchmarking, you will likely want to customize three things:
 
-## Custom models (adding a new wrapper)
+### Custom models (adding a new wrapper)
 
 1. Subclass **`CFDModel`** (`physicsnemo.cfd.evaluation.inference.model_registry`) under `physicsnemo/cfd/evaluation/inference/wrappers/`.
 2. Implement `INFERENCE_DOMAIN`, `OUTPUT_LOCATION`, `load`, `prepare_inputs`, `predict`, `decode_outputs`.
 3. **`register_model("my_model", MyWrapper)`** in `wrappers/__init__.py`.
 
-## Custom datasets (adding a new adapter)
+### Custom datasets (adding a new adapter)
 
 1. Subclass **`DatasetAdapter`** under `physicsnemo/cfd/evaluation/datasets/adapters/`.
 2. Implement `list_cases`, `load_case` → **`CanonicalCase`**.
 3. **`register_adapter("my_dataset", MyAdapter)`** in `adapters/__init__.py`.
 
-## Canonical types (`physicsnemo.cfd.evaluation.datasets.schema`)
+### Custom Metrics (adding a new metric)
+
+
+### Canonical types 
+
+The schema is defined in `physicsnemo.cfd.evaluation.datasets.schema`
 
 - **`CanonicalCase`** — `case_id`, `mesh_path`, `mesh_type`, `ground_truth`, `metadata`, `inference_domain`.
 - **Predictions** — surface: `pressure`, `shear_stress`; volume: `pressure`, `turbulent_viscosity`, `velocity`.
