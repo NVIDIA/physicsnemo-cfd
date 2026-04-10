@@ -16,6 +16,7 @@
 
 import numpy as np
 import pyvista as pv
+import torch
 from physicsnemo.nn.functional import signed_distance_field
 
 
@@ -229,12 +230,15 @@ def compute_error_vs_sdf(
         - "bin_edges": List of SDF bin edges
         - "mean_errors": List of mean errors for each SDF bin
     """
-    stl_vertices = stl_mesh.points
-    stl_indices = np.arange(0, stl_mesh.points.shape[0])
+    stl_vertices = torch.tensor(np.asarray(stl_mesh.points), dtype=torch.float32)
+    stl_faces = np.array(stl_mesh.faces).reshape(-1, 4)[:, 1:]
+    stl_indices = torch.tensor(stl_faces.flatten(), dtype=torch.int32)
+    query_points = torch.tensor(np.asarray(data.points), dtype=torch.float32)
 
-    sdf_field = signed_distance_field(
-        stl_vertices, stl_indices, data.points, use_sign_winding_number=True
+    sdf_field, _ = signed_distance_field(
+        stl_vertices, stl_indices, query_points, use_sign_winding_number=True
     )
+    sdf_field = sdf_field.numpy()
 
     true_fields_list = true_fields
     pred_fields_list = pred_fields
