@@ -214,6 +214,18 @@ dataset:
 
 ---
 
+## DrivAerML train/validation split
+
+The [`drivaer_ml_files/`](drivaer_ml_files/) directory contains a reproducible 90/10 train/validation split for the DrivAerML dataset (484 of 500 usable geometries). Validation samples are selected by sorting by drag coefficient, then taking 10% from low-drag, 10% from high-drag, and 80% randomly from the middle — mixing in-distribution and out-of-distribution cases.
+
+| File | Contents |
+| ---- | -------- |
+| [`train.csv`](drivaer_ml_files/train.csv) | `run_idx, drag` for training samples |
+| [`validation.csv`](drivaer_ml_files/validation.csv) | `run_idx, drag` for validation samples |
+| [`README.md`](drivaer_ml_files/README.md) | Split strategy details and reference to DrivAerML paper |
+
+---
+
 ## Package layout (repo root)
 
 | Path | Role |
