@@ -1,5 +1,7 @@
 # Benchmarking AI surrogates for External Aerodynamics
 
+> **DEPRECATED:** This workflow is superseded by [`benchmarking_workflow`](../benchmarking_workflow/README.md), which provides Hydra configuration, model wrapper integration, distributed multi-GPU support, and more. Please use `benchmarking_workflow` for new work. This directory will be removed in a future release.
+
 The benchmarking workflow is designed for evaluating and validating AI models
 for external aerodynamics. Predicting accurate aerodynamic characteristics of a
 vehicle (e.g., a car or aircraft) requires analysis of both surface and volume fields.
