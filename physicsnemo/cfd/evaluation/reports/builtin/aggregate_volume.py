@@ -57,10 +57,8 @@ def _resolve_volume_field_pairs(
 
 
 def _interpolation_device(run_device: str) -> str:
-    """Map ``config.run.device`` (e.g. ``"cuda:0"``) to the ``"cpu"``/``"gpu"`` flag used by ``interpolate_mesh_to_pc``."""
-    if run_device.startswith("cuda"):
-        return "gpu"
-    return "cpu"
+    """Map ``config.run.device`` to a device string for ``interpolate_mesh_to_pc``."""
+    return run_device
 
 
 def aggregate_volume_errors(
