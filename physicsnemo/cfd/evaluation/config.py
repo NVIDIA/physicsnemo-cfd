@@ -71,6 +71,10 @@ class RunConfig:
     #: When True (default) and launched multi-process (e.g. ``torchrun``), shard cases across ranks via
     #: ``DistributedManager`` and merge before reports. When False, each rank runs the full case list (debug only).
     distributed: bool = True
+    #: If True, :func:`run_benchmark` raises :class:`BenchmarkPolicyError` when every matrix/single run was skipped.
+    fail_on_all_skipped: bool = False
+    #: If True, :func:`run_benchmark` raises when any aggregate metric value in ``results[*]["metrics"]`` is NaN.
+    fail_on_any_metric_nan: bool = False
 
 
 @dataclass
@@ -101,7 +105,8 @@ class DatasetConfig:
 
 @dataclass
 class ReproducibilityConfig:
-    log_env: bool = True
+    #: When True, write full ``os.environ`` to ``env.json`` under ``run.output_dir`` (avoid in shared CI; may leak secrets).
+    log_env: bool = False
     save_artifacts: bool = True
 
 
@@ -211,6 +216,8 @@ class Config:
                 path=str(mc_raw.get("path") or ""),
             ),
             distributed=bool(run_raw.get("distributed", True)),
+            fail_on_all_skipped=bool(run_raw.get("fail_on_all_skipped", False)),
+            fail_on_any_metric_nan=bool(run_raw.get("fail_on_any_metric_nan", False)),
         )
         model = ModelConfig(**(data.get("model") or {}))
         dataset = DatasetConfig(**(data.get("dataset") or {}))

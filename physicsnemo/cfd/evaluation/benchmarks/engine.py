@@ -43,9 +43,14 @@ rank 0 only. Inference uses ``str(dm.device)`` per rank when ``DistributedManage
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any
+
+
+class BenchmarkPolicyError(RuntimeError):
+    """Raised when :func:`run_benchmark` policy flags reject the result (e.g. all runs skipped)."""
 
 from physicsnemo.cfd.evaluation.benchmarks.distributed_utils import (
     effective_device_str,
@@ -631,6 +636,11 @@ def run_benchmark(
     -------
     list of dict
         One result dict per model×dataset pair (or single pair in ``single`` mode).
+
+    Raises
+    ------
+    BenchmarkPolicyError
+        If ``run.fail_on_all_skipped`` or ``run.fail_on_any_metric_nan`` rejects the outcome.
     """
     import physicsnemo.cfd.evaluation.datasets.adapters  # noqa: F401
     import physicsnemo.cfd.evaluation.inference.wrappers  # noqa: F401
@@ -735,7 +745,32 @@ def run_benchmark(
             context={"comparison_meshes_by_run": meshes_by_run},
         )
 
+    _enforce_benchmark_policy(config, results)
+
     return results
+
+
+def _enforce_benchmark_policy(config: Config, results: list[dict[str, Any]]) -> None:
+    """Raise :class:`BenchmarkPolicyError` when ``run.fail_on_*`` flags apply."""
+    if not results:
+        return
+    run = config.run
+    if run.fail_on_all_skipped and all(r.get("skipped") for r in results):
+        raise BenchmarkPolicyError(
+            "All benchmark runs were skipped; set run.fail_on_all_skipped=false to allow exit 0, "
+            "or fix model/dataset domain and paths."
+        )
+    if run.fail_on_any_metric_nan:
+        for r in results:
+            if r.get("skipped"):
+                continue
+            metrics = r.get("metrics") or {}
+            for _k, v in metrics.items():
+                if isinstance(v, float) and math.isnan(v):
+                    raise BenchmarkPolicyError(
+                        "Aggregate metric NaN encountered; set run.fail_on_any_metric_nan=false to allow exit 0, "
+                        "or fix failing metrics."
+                    )
 
 
 def _config_to_dict(c: Config) -> dict:
@@ -764,6 +799,8 @@ def _config_to_dict(c: Config) -> dict:
                 "path": c.run.metrics_cache.path,
             },
             "distributed": c.run.distributed,
+            "fail_on_all_skipped": c.run.fail_on_all_skipped,
+            "fail_on_any_metric_nan": c.run.fail_on_any_metric_nan,
         },
         "model": {
             "name": c.model.name,

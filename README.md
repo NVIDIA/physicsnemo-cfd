@@ -41,7 +41,7 @@ from a Python interface, facilitating scalable deployment of trained models.
   metrics, PDE residuals). [Related publication](https://www.arxiv.org/abs/2507.10747)
   - The `physicsnemo.cfd.evaluation` package runs config-driven inference and
     uses the same `physicsnemo.cfd.postprocessing_tools` metric implementations as the
-    **`workflows/benchmarking_workflow/`** workflow (run **`python main.py`** there; see that README).
+    **[`workflows/benchmarking_workflow/`](workflows/benchmarking_workflow/)** Hydra workflow (run **`python main.py`** from that directory; see **[that README](workflows/benchmarking_workflow/README.md)**). Pretrained checkpoints and the reference evaluation dataset will be documented on **NVIDIA NGC** when published (**links TBD**; until then, configure local paths in YAML or via Hydra overrides).
   - Utilities to extend and build custom metrics, analyze, and visualize the
     results of trained ML models, both mesh-based and point-cloud based models
 
@@ -69,6 +69,12 @@ You can install PhysicsNeMo-CFD via pip:
 git clone https://github.com/NVIDIA/physicsnemo-cfd.git
 cd physicsnemo-cfd
 pip install .
+```
+
+For **local development** (editable install, tests, and benchmarking workflow checks), use optional **dev** dependencies from [`pyproject.toml`](pyproject.toml):
+
+```bash
+pip install -e ".[dev]"
 ```
 
 To get access to GPU-accelerated functionalities from this repository when installing
@@ -120,10 +126,13 @@ output_dict = call_domino_nim(
 
 ```
 
-Refer to the [`workflows` directory](./workflows) for detailed instructions on
-executing individual reference workflows and samples. These are primarily
-packaged as Jupyter notebooks where possible, to provide inline
-documentation and visualization of expected results.
+Reference workflows live under the [`workflows`](./workflows) directory. The
+**[benchmarking workflow](workflows/benchmarking_workflow/)** is the supported path for
+config-driven model evaluation and metrics (`python main.py` with Hydra). Older
+file-based benchmarking samples were moved to
+**[workflows/deprecated/bench_example](workflows/deprecated/bench_example/)** and are
+superseded by `benchmarking_workflow`. Other samples may be packaged as Jupyter
+notebooks for inline documentation and visualization.
 
 ## Contributing to PhysicsNeMo
 
@@ -132,7 +141,9 @@ community contributions to further the field of Physics-ML. Thank you for
 contributing to the project so others can build on top of your contributions.
 
 For guidance on contributing to PhysicsNeMo, refer to the [contributing
-guidelines](CONTRIBUTING.md).
+guidelines](CONTRIBUTING.md). Changes to **`physicsnemo.cfd.evaluation`** or the
+**benchmarking workflow** should follow the tests and notes in **CONTRIBUTING.md**
+(including the recommended `pytest` command for `test/ci_tests/`).
 
 ## Cite PhysicsNeMo
 

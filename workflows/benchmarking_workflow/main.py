@@ -31,19 +31,14 @@ Default Hydra config is ``conf/config_surface.yaml``. Use
 
 from __future__ import annotations
 
+import sys
+
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
-from physicsnemo.cfd.evaluation.benchmarks.engine import run_benchmark
+from physicsnemo.cfd.evaluation.benchmarks.engine import BenchmarkPolicyError, run_benchmark
+from physicsnemo.cfd.evaluation.benchmarks.hydra_utils import hydra_config_to_benchmark_dict
 from physicsnemo.cfd.evaluation.config import Config
-
-
-def _config_dict_from_hydra(cfg: DictConfig) -> dict:
-    """Turn composed DictConfig into a plain dict for :class:`Config`."""
-    raw = OmegaConf.to_container(cfg, resolve=True)
-    if not isinstance(raw, dict):
-        raise TypeError("Hydra config root must map to a dict")
-    return raw
 
 
 @hydra.main(version_base="1.3", config_path="conf", config_name="config_surface")
@@ -57,18 +52,13 @@ def main(cfg: DictConfig) -> None:
         Composed user config (``conf/config_surface.yaml`` by default, or
         ``config_volume`` via ``--config-name=config_volume``) plus CLI overrides.
     """
-    raw = _config_dict_from_hydra(cfg)
-    case_id = raw.pop("case_id", None)
-    raw.pop("defaults", None)
-    raw.pop("hydra", None)
-    if case_id is None or case_id == "null":
-        case_id = None
-    elif isinstance(case_id, (list, tuple)):
-        case_id = [str(x) for x in case_id]
-    else:
-        case_id = str(case_id)
+    raw, case_id = hydra_config_to_benchmark_dict(cfg)
     config = Config.from_dict(raw)
-    results = run_benchmark(config, case_id=case_id)
+    try:
+        results = run_benchmark(config, case_id=case_id)
+    except BenchmarkPolicyError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
     print(f"Completed {len(results)} run(s). Results in {config.run.output_dir}")
 
 

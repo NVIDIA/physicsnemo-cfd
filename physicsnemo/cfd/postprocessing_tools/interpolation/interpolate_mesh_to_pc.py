@@ -25,7 +25,7 @@ from physicsnemo.nn.functional.neighbors.knn import knn
 
 # ---------------------------------------------------------------------------
 # Deprecated legacy helpers — kept for backward compatibility with
-# bench_example notebooks. Will be removed when bench_example is retired.
+# workflows/deprecated/bench_example notebooks. Will be removed when that workflow is retired.
 # ---------------------------------------------------------------------------
 
 def _create_nbrs_surface(coords_source, n_neighbors=5, device="cpu"):

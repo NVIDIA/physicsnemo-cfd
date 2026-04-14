@@ -146,3 +146,40 @@ pre-commit install
 
 Once the above commands are executed, the pre-commit hooks will be activated and
 all commits will be checked for appropriate formatting.
+
+### Developing and testing the benchmarking workflow
+
+Install the package in editable mode with dev dependencies from the repository root
+([`pyproject.toml`](pyproject.toml)):
+
+```bash
+pip install -e ".[dev]"
+```
+
+Before opening a pull request that changes **`physicsnemo/cfd/evaluation/`** or
+**`workflows/benchmarking_workflow/`**, run the CI test subset:
+
+```bash
+pytest -q test/ci_tests/test_distributed_utils.py \
+  test/ci_tests/test_metrics_cache.py \
+  test/ci_tests/test_benchmark_workflow.py \
+  test/ci_tests/test_evaluation.py
+```
+
+The **`test_evaluation.py`** module may skip entirely if `physicsnemo.utils.sdf` is
+unavailable (install or upgrade `nvidia-physicsnemo`).
+
+Do **not** commit generated benchmark outputs under **`workflows/benchmarking_workflow/`**
+(e.g. `benchmark_results*/`, `gpu_output.log`, `metrics_cache/`, Hydra outputs under the
+run directory). That directory includes a **`.gitignore`** for common artifacts.
+
+**Exit codes:** the Hydra entrypoint **`workflows/benchmarking_workflow/main.py`** can exit
+non-zero when **`run.fail_on_all_skipped`** or **`run.fail_on_any_metric_nan`** is enabled.
+See **`workflows/benchmarking_workflow/README.md`** for automation-oriented runs.
+
+**Continuous integration:** [`.github/workflows/ci-tests.yml`](.github/workflows/ci-tests.yml)
+runs the pytest command above on push and pull requests. If your team uses additional
+infrastructure (for example Blossom CI), use the same tests there when possible.
+
+Update [`CHANGELOG.md`](CHANGELOG.md) for user-visible changes to evaluation or benchmark
+behavior and configuration.

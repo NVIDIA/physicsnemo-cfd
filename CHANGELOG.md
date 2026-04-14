@@ -11,8 +11,12 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`run.fail_on_all_skipped` / `run.fail_on_any_metric_nan`:** optional benchmark exit policy; raises `BenchmarkPolicyError` (Hydra `main.py` and `python -m physicsnemo.cfd.evaluation.benchmarks.run` exit with code 1).
+- **`physicsnemo.cfd.evaluation.benchmarks.hydra_utils`:** shared Hydra → `Config` dict conversion for tests and `workflows/benchmarking_workflow/main.py`.
+- **CI:** `.github/workflows/ci-tests.yml` runs `pytest` on `test/ci_tests/` (including `test_benchmark_workflow.py`, which composes Hydra configs under `workflows/benchmarking_workflow/conf/`).
 - **Multi-GPU benchmarks:** `run_benchmark` / Hydra `main.py` can run under `torchrun` with PhysicsNeMo `DistributedManager` — per-rank case sharding, gather/merge on rank 0, and optional `run.distributed` (default true) to disable sharding for debugging.
 - **Tests:** `test/ci_tests/test_distributed_utils.py` covers merge/shard helpers and `_case_ids_for_run`.
+- **Tests:** `test/ci_tests/test_benchmark_workflow.py` composes workflow YAML and loads `Config`.
 - **Metrics cache:** optional `run.metrics_cache` (`enabled`, `path`) stores per-case scalar metrics on disk
   so repeat benchmark runs can skip VTK I/O and inference for unchanged configs; visualization is unchanged.
 - `physicsnemo.cfd.evaluation`: config-driven inference and benchmarking with
@@ -28,6 +32,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Benchmarking workflow layout:** legacy **`workflows/bench_example`** moved to **`workflows/deprecated/bench_example`** (superseded by **`workflows/benchmarking_workflow/`**).
+- **`benchmark.reproducibility.log_env`:** default is now **`false`** (was **`true`**) to avoid writing full `os.environ` to `env.json` unless explicitly enabled in YAML.
 - **Breaking:** `physicsnemo.cfd.bench` was renamed to **`physicsnemo.cfd.postprocessing_tools`**
   (same submodules: `metrics`, `visualization`, `geometry`, `interpolation`, `metric_registry`).
 - **`reports.visual_case_ids`**: optional list limiting which cases get an in-memory comparison mesh for

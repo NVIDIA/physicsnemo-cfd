@@ -62,7 +62,7 @@ def bench_style_surface_centerlines(
 ) -> tuple[pv.PolyData, pv.PolyData]:
     """DrivAer-style top/bottom strips: ``y`` slice at ``y_slice_origin``, split at ``z = z_clip``.
 
-    Matches ``workflows/bench_example/utils.py`` (surface): top = ``z`` above the clip plane,
+    Matches ``workflows/deprecated/bench_example/utils.py`` (surface): top = ``z`` above the clip plane,
     bottom = below.
     """
     slice_y = mesh.slice(normal="y", origin=y_slice_origin)
@@ -104,7 +104,7 @@ def line_plot_centerlines(
     z_clip: float = 0.4,
     **kwargs: Any,
 ) -> None:
-    """GT vs pred line plots on **top** and **bottom** surface centerline strips (bench_example style).
+    """GT vs pred line plots on **top** and **bottom** surface centerline strips (legacy bench_example style).
 
     Geometry: slice with normal ``y`` through ``y_slice_origin`` (default origin), then clip at
     ``z = z_clip`` to separate upper (``top``) and lower (``bottom``) surface lines along the vehicle.
