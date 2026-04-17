@@ -74,7 +74,7 @@ def domino_count_output_features(cfg: DictConfig) -> tuple[int | None, int | Non
 
 
 def _find_stl(run_dir: Path, tag: int) -> Path:
-    """Resolve STL path (domino test uses ``drivaer_{tag}.stl``; DrivAerML may use ``*_single_solid.stl``)."""
+    """Resolve STL path using progressively looser name patterns."""
     candidates = [
         run_dir / f"drivaer_{tag}.stl",
         run_dir / f"drivaer_{tag}_single_solid.stl",
@@ -82,9 +82,10 @@ def _find_stl(run_dir: Path, tag: int) -> Path:
     for p in candidates:
         if p.exists():
             return p
-    globs = list(run_dir.glob("*_single_solid.stl"))
-    if globs:
-        return globs[0]
+    for pattern in ("*_single_solid.stl", "*.stl"):
+        globs = list(run_dir.glob(pattern))
+        if globs:
+            return globs[0]
     raise FileNotFoundError(f"No STL found in {run_dir} for tag {tag}")
 
 

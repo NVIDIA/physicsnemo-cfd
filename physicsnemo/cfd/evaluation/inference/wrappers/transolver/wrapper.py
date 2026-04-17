@@ -224,8 +224,8 @@ class TransolverWrapper(CFDModel):
             "path": str(checkpoint_dir),
             "models": self._model,
         }
-        loaded_epoch = load_checkpoint(device=dev, **ckpt_args)
-        # load_checkpoint(path=str(checkpoint_dir), models=self._model, device=dev)
+        with trusted_torch_load_context():
+            loaded_epoch = load_checkpoint(device=dev, **ckpt_args)
         self._model = self._model.to(dev)
         self._model.eval()
         log_inference("transolver", "Checkpoint loaded; model ready for inference.")
