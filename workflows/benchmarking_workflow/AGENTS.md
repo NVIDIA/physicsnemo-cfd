@@ -13,6 +13,15 @@ Key reference files:
 - `physicsnemo/cfd/evaluation/datasets/adapters/drivaerml.py` — reference implementation
 - `workflows/benchmarking_workflow/notebooks/adding_a_new_dataset.ipynb` — end-to-end tutorial
 
+### Creating a New Model Wrapper
+
+When the user wants to add a new CFD model, integrate a new neural network architecture, or run a custom model through the benchmarking pipeline, follow the instructions in [`.cursor/skills/create-model-wrapper/SKILL.md`](../../.cursor/skills/create-model-wrapper/SKILL.md).
+
+Key reference files:
+- `physicsnemo/cfd/evaluation/inference/model_registry.py` — `CFDModel` base class
+- `physicsnemo/cfd/evaluation/inference/wrappers/surface_baseline.py` — simplest reference implementation
+- `workflows/benchmarking_workflow/notebooks/adding_a_new_model.ipynb` — end-to-end tutorial
+
 ## Codebase Conventions
 
 - **Canonical keys**: Surface fields use `pressure` and `shear_stress`. Volume fields use `pressure`, `velocity`, `turbulent_viscosity`. The same key `pressure` is used for both domains — the metric registry resolves the correct implementation via `domain` scoping.
