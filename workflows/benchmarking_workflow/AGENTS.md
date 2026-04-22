@@ -22,6 +22,15 @@ Key reference files:
 - `physicsnemo/cfd/evaluation/inference/wrappers/surface_baseline.py` — simplest reference implementation
 - `workflows/benchmarking_workflow/notebooks/adding_a_new_model.ipynb` — end-to-end tutorial
 
+### Creating a Custom Metric
+
+When the user wants to add a new evaluation metric, implement a custom error measure, compute force coefficients, or extend the benchmark with domain-specific quantities, follow the instructions in [`.cursor/skills/create-custom-metric/SKILL.md`](../../.cursor/skills/create-custom-metric/SKILL.md).
+
+Key reference files:
+- `physicsnemo/cfd/postprocessing_tools/metric_registry.py` — `register_metric`, `MetricFn`
+- `physicsnemo/cfd/evaluation/metrics/builtin/forces.py` — reference force metric implementation
+- `workflows/benchmarking_workflow/notebooks/adding_a_new_metric.ipynb` — end-to-end tutorial
+
 ## Codebase Conventions
 
 - **Canonical keys**: Surface fields use `pressure` and `shear_stress`. Volume fields use `pressure`, `velocity`, `turbulent_viscosity`. The same key `pressure` is used for both domains — the metric registry resolves the correct implementation via `domain` scoping.
