@@ -89,13 +89,24 @@ You can also export environment variables and reference them in a local, gitigno
 
 The **`drivaerml`** adapter expects a **local root directory** (`benchmark.datasets[].root`) whose children are **`run_<id>`** folders. Each run holds the VTK ground-truth meshes the metrics read from.
 
-**Where to get the data**
+**Canonical source:** [Hugging Face `neashton/drivaerml`](https://huggingface.co/datasets/neashton/drivaerml) — dataset card, file layout, and download examples (also mirrored in spirit on [CAE-ML Datasets](https://caemldatasets.org/drivaerml/)). License: **CC BY-SA 4.0**; cite the [DrivAerML paper](https://arxiv.org/abs/2408.11969) per the card.
 
-- **Project / landing page:** [DrivAerML on CAE-ML Datasets](https://caemldatasets.org/drivaerml/) — licensing, citation, and overview.
-- **Hugging Face (common for downloads):** [`neashton/drivaerml`](https://huggingface.co/datasets/neashton/drivaerml) — dataset repository you can sync to disk.
-- **NGC:** when the [benchmark table](#benchmark-assets-on-ngc-coming-soon) lists a DrivAerML (or successor) bundle, use the documented unpack path the same way as a manually downloaded tree.
+**Scale:** the full repository is on the order of **~31 TB**. Do **not** blindly run a whole-repo sync on a laptop; use **Git LFS** only when you intend to host the full tree, or use **selective** HTTP / CLI downloads for testing.
 
-The full public release is **large** (many `run_*` directories and VTK files). Plan disk space and use partial sync if you only need a few cases for smoke tests.
+**What each `run_<i>/` contains (per the dataset card)**
+
+| File / folder | Role |
+| ------------- | ---- |
+| `drivaer_<i>.stl` | Geometry |
+| `geo_ref_<i>.csv`, `geo_parameters_<i>.csv` | Reference / parameter metadata |
+| **`boundary_<i>.vtp`** | **Surface** mesh + fields — **required for surface benchmarking** |
+| **`volume_<i>.vtu`** | **Volume** mesh — **required for volume benchmarking** (see note below) |
+| `force_mom_<i>.csv`, `force_mom_constref_<i>.csv` | Forces / moments |
+| `slices/`, `Images/` | Slices and images (optional for this workflow) |
+
+Repo-level extras include `openfoam_meshes/`, `force_mom_all.csv`, etc.; the adapter does not need those for standard metrics.
+
+**Volume files on Hugging Face:** for many runs, **`volume_<i>.vtu` is split** on the Hub into **two parts**. Download both parts for a given `i`, then **concatenate** them into a single `volume_<i>.vtu` in `run_<i>/` before running volume benchmarks (see the [dataset card](https://huggingface.co/datasets/neashton/drivaerml) for naming). Surface-only tests only need **`boundary_<i>.vtp`**.
 
 **On-disk layout (what the adapter checks)**
 
@@ -106,28 +117,59 @@ The full public release is **large** (many `run_*` directories and VTK files). P
 
 Only directories that contain the required mesh for the selected mode are listed as cases. Overrides for non-standard filenames are documented on **`DrivAerMLAdapter`** in **`physicsnemo.cfd.evaluation.datasets.adapters.drivaerml`**.
 
-**Download with the Hugging Face CLI (typical)**
+**1) Full mirror — Git + Git LFS (dataset maintainers’ example)**
 
-Install the CLI, then download the dataset repo into a directory you will point at as **`dataset.root`**:
+Install [Git LFS](https://git-lfs.com/), then clone the dataset repo. The clone root (the directory that contains the `run_*` folders) is **`benchmark.datasets[].root`**.
+
+```bash
+git lfs install
+git clone https://huggingface.co/datasets/neashton/drivaerml
+# SSH alternative (if configured on Hugging Face): git clone git@hf.co:datasets/neashton/drivaerml
+```
+
+This pulls the **entire** ~31 TB collection when LFS objects are fetched — use only with appropriate storage and bandwidth.
+
+**2) Selective download for testing — HTTP (`wget` / `curl`)**
+
+The [dataset card](https://huggingface.co/datasets/neashton/drivaerml) documents looping over `run_$i` and pulling individual files. For **surface** workflow smoke tests, fetch at least **`boundary_<i>.vtp`** per run. Example (adjust the ID list or `seq` range):
+
+```bash
+HF_OWNER="neashton"
+HF_PREFIX="drivaerml"
+LOCAL_DIR="./drivaer_data"
+mkdir -p "$LOCAL_DIR"
+
+for i in 1 11 202; do
+  RUN_DIR="run_${i}"
+  DEST="$LOCAL_DIR/$RUN_DIR"
+  mkdir -p "$DEST"
+  wget -c "https://huggingface.co/datasets/${HF_OWNER}/${HF_PREFIX}/resolve/main/${RUN_DIR}/boundary_${i}.vtp" \
+    -O "$DEST/boundary_${i}.vtp"
+done
+```
+
+Then point the benchmark at the parent directory:
+
+```bash
+python main.py benchmark.datasets.0.root="$(pwd)/drivaer_data"
+```
+
+Adapt the URL pattern to add `volume_*` parts, STL, or force CSVs as needed; the card’s **Example 2** shows the same idea for STL + force files.
+
+**3) Hugging Face Hub CLI — partial tree**
+
+Install the CLI and prefer **include patterns** so you do not sync 31 TB by accident:
 
 ```bash
 pip install "huggingface_hub[cli]"
-huggingface-cli download neashton/drivaerml --repo-type dataset --local-dir /path/to/drivaerml_data
+huggingface-cli download neashton/drivaerml --repo-type dataset \
+  --local-dir /path/to/drivaerml_subset \
+  --include "run_1/*" --include "run_11/*"
 ```
 
-Set in YAML or via override, for example:
+Expand `--include` for every `run_<i>` you need. For a full local mirror without Git, understand the size implications before omitting filters.
 
-```bash
-python main.py benchmark.datasets.0.root=/path/to/drivaerml_data
-```
-
-**Alternative: `git` + Git LFS**
-
-If you prefer a Git workflow, clone the Hugging Face dataset repository with **Git LFS** installed so large VTK objects are fetched. The resulting clone root (the folder that contains the `run_*` directories) is the same value for **`benchmark.datasets[].root`**.
-
-**Single-run or scripted downloads**
-
-For a minimal sanity check, you can copy individual `run_<id>` trees (surface `boundary_*.vtp` and any co-located files your workflow needs) under one parent directory so that parent is **`root`**. The notebook [`notebooks/surface_benchmarking.ipynb`](notebooks/surface_benchmarking.ipynb) shows example URLs for fetching files from the Hugging Face dataset for one sample.
+**NGC:** when the [benchmark table](#benchmark-assets-on-ngc-coming-soon) lists a DrivAerML bundle, unpack so the **`run_*`** layout matches the table above and set **`benchmark.datasets[].root`** accordingly.
 
 **Train / validation split for benchmarking**
 

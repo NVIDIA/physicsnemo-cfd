@@ -18,8 +18,12 @@
 #
 # Run:
 #   python main.py --config-name=config_matrix_volume
-#
-# Edit paths for your machine. Uncomment Transolver when a volume checkpoint is available.
+
+# When ``checkpoint`` and ``stats_path`` are both set, they override built-in ``hf://`` defaults
+# (per-model roots in ``builtin_packages``: ``GEOTRANSOLVER_PACKAGE_ROOT``, etc.). Omit those keys to download from Hub instead.
+# DoMINO: omit ``checkpoint`` / ``stats_path`` / ``domino_config`` to pull weights + ``config.yaml`` from Hub
+# (see ``builtin_packages``); set any of them to override.
+# Uncomment or add more models (registered names: geotransolver, transolver, domino, fignet, xmgn, …).
 
 defaults:
   - _self_
