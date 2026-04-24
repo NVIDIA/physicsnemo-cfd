@@ -37,10 +37,14 @@ class CFDModel(ABC):
 
     ``INFERENCE_DOMAIN`` is ``surface`` or ``volume``. ``OUTPUT_LOCATION`` is where
     pointwise/cellwise predictions live (``point`` vs ``cell``) on that mesh.
+
+    Set ``REQUIRES_REMOTE_ASSETS = False`` on stubs (e.g. baselines) that do not need
+    ``checkpoint`` / ``stats_path`` or a Hugging Face ``package``.
     """
 
     OUTPUT_LOCATION: ClassVar[OutputLocation]
     INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "surface"
+    REQUIRES_REMOTE_ASSETS: ClassVar[bool] = True
 
     @property
     @abstractmethod

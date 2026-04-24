@@ -80,6 +80,7 @@ from physicsnemo.cfd.evaluation.config import (
 )
 from physicsnemo.cfd.evaluation.datasets import get_adapter
 from physicsnemo.cfd.evaluation.datasets.gt_alignment import resolve_dataset_kwargs_for_model
+from physicsnemo.cfd.evaluation.assets import resolve_model_assets
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.inference import get_model_wrapper
 from physicsnemo.cfd.evaluation.inference.model_registry import get_inference_domain_for_model
@@ -392,6 +393,11 @@ def _run_single(
             {},
         )
 
+    wrapper_class = get_model_wrapper(model_config.name)
+    resolved_ck, resolved_st, asset_identity = resolve_model_assets(model_config, wrapper_class)
+    fp_ck = "" if asset_identity else resolved_ck
+    fp_st = "" if asset_identity else resolved_st
+
     cache_root = resolve_metrics_cache_root(
         enabled=run_config.metrics_cache.enabled,
         path=run_config.metrics_cache.path,
@@ -401,10 +407,11 @@ def _run_single(
     if cache_root is not None:
         fingerprint = metrics_cache_fingerprint(
             model_name=model_config.name,
-            model_checkpoint=model_config.checkpoint,
-            model_stats_path=model_config.stats_path,
+            model_checkpoint=fp_ck,
+            model_stats_path=fp_st,
             model_kwargs=dict(model_config.kwargs),
             model_inference_domain=model_config.inference_domain,
+            model_asset_identity=asset_identity,
             dataset_name=dataset_config.name,
             dataset_root=dataset_config.root,
             dataset_split=dataset_config.split,
@@ -417,7 +424,6 @@ def _run_single(
             f"Metrics cache enabled under {cache_root} (fingerprint {fingerprint[:12]}…)…",
         )
 
-    wrapper_class = get_model_wrapper(model_config.name)
     wrapper = None
 
     per_case = []
@@ -465,8 +471,8 @@ def _run_single(
         if wrapper is None:
             wrapper = wrapper_class()
             wrapper.load(
-                checkpoint_path=model_config.checkpoint,
-                stats_path=model_config.stats_path,
+                checkpoint_path=resolved_ck,
+                stats_path=resolved_st,
                 device=device,
                 **model_config.merged_kwargs_for_load(),
             )

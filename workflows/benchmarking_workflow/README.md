@@ -120,7 +120,7 @@ The flat CLI **`python -m physicsnemo.cfd.evaluation.benchmarks.run`** applies t
 | Section | Contents |
 | ------- | -------- |
 | **run** | `device`, `output_dir`, `seed`, `batch_size`, **`save_inference_mesh`**, **`distributed`**, **`fail_on_all_skipped`**, **`fail_on_any_metric_nan`**, optional **`metrics_cache`** |
-| **model** / **benchmark.models** | `name`, `checkpoint`, `stats_path`, `inference_domain` (`surface` \| `volume`), `kwargs` |
+| **model** / **benchmark.models** | `name`, `checkpoint`, `stats_path`, optional **`package`** (`hf://org/repo@rev`, `s3://…`, or local dir), **`checkpoint_relpath`** / **`stats_relpath`** (paths inside the package), `inference_domain`, `kwargs` |
 | **dataset** / **benchmark.datasets** | `name`, `root`, `split`, optional `case_ids` (`null` = all), `kwargs` |
 | **output** | VTK field name maps; **`streamlines_vector_canonical`** (volume); optional **`surface_interpolate_point_to_cell_for_metrics`** (kNN-IDW point → cell for XmGN/FiGNet-style surfaces so drag/lift/L2 use **`metric_dtype: cell`**), plus **`surface_metrics_idw_k`**, **`surface_metrics_idw_device`** |
 | **metrics** | Metric names or `{ name: ..., ...kwargs }` |
@@ -132,6 +132,8 @@ The flat CLI **`python -m physicsnemo.cfd.evaluation.benchmarks.run`** applies t
 **`benchmark.reproducibility.log_env`:** when `true`, writes **full `os.environ`** to `env.json` under `run.output_dir` — avoid in shared CI or when secrets may be present. Default in code is `false`; example configs may set `true` for local debugging.
 
 **Metrics cache:** `run.metrics_cache.enabled` stores per-case scalars; delete the cache directory for a full recompute. Plots and meshes are not cached.
+
+**Remote model assets:** Install optional **`pip install 'nvidia-physicsnemo-cfd[evaluation-hf]'`** for `hf://` and `s3://` package roots. Cache directory defaults to `~/.cache/physicsnemo-cfd/models` or override with **`PHYSICSNEMO_CFD_MODEL_CACHE`**. Either set both **`checkpoint`** and **`stats_path`** to local files, or set **`package`** plus **`checkpoint_relpath`** / **`stats_relpath`** (or register defaults via **`register_default_asset`** in code). See **[CONTRIBUTING.md](../../CONTRIBUTING.md)** for custom-wrapper tiers.
 
 ---
 

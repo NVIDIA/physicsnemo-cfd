@@ -104,6 +104,23 @@ def test_config_from_dict_surface_interpolate_output_keys() -> None:
     assert cfg.output.surface_metrics_idw_device == "cpu"
 
 
+def test_config_from_dict_model_package_keys() -> None:
+    cfg = Config.from_dict(
+        {
+            "model": {
+                "name": "fignet",
+                "package": "hf://nvidia/demo@main",
+                "checkpoint_relpath": "ckpt/model.pt",
+                "stats_relpath": "global_stats.json",
+            },
+        }
+    )
+    assert cfg.model.package == "hf://nvidia/demo@main"
+    assert cfg.model.checkpoint_relpath == "ckpt/model.pt"
+    assert cfg.model.stats_relpath == "global_stats.json"
+    assert "package" not in cfg.model.merged_kwargs_for_load()
+
+
 def test_list_metrics_includes_core_builtin() -> None:
     names = list_metrics()
     assert "l2_pressure" in names

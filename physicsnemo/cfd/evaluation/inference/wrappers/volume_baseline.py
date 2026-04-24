@@ -43,6 +43,7 @@ class VolumeBaselineWrapper(CFDModel):
 
     INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "volume"
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
+    REQUIRES_REMOTE_ASSETS: ClassVar[bool] = False
 
     @property
     def output_location(self) -> OutputLocation:

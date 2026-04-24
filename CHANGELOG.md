@@ -11,6 +11,11 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`physicsnemo.cfd.evaluation.assets`:** first-party **`Package`** helper for **`hf://`**, **`s3://`**, and local
+  directories (optional extra **`evaluation-hf`**: `huggingface_hub`, `fsspec`); **`resolve_model_assets`** in the
+  benchmark engine; **`ModelConfig.package`**, **`checkpoint_relpath`**, **`stats_relpath`**; **`register_default_asset`**
+  / **`AssetSpec`** for default Hub layouts; metrics-cache fingerprint **`asset_identity`** for stable keys when using
+  remote packages; baseline wrappers set **`REQUIRES_REMOTE_ASSETS = False`**. **`ngc://`** is reserved (not implemented).
 - **`output.surface_interpolate_point_to_cell_for_metrics`:** optional kNN-IDW promotion of surface
   point fields to cell centers before metrics (``interpolate_point_data_to_cell_centers`` in
   ``postprocessing_tools/interpolation``), so point-native models (e.g. XmGN, FiGNet) can report

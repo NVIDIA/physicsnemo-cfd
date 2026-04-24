@@ -62,6 +62,48 @@ def test_fingerprint_changes_with_checkpoint() -> None:
     assert fp1 == fp_same
 
 
+def test_fingerprint_canonical_dataset_root() -> None:
+    """Equivalent paths must yield the same digest (stable cache lookups)."""
+    out = output_config_to_fingerprint_dict(OutputConfig())
+    base = dict(
+        model_name="m",
+        model_checkpoint="/tmp/a.pt",
+        model_stats_path="/tmp/st.json",
+        model_kwargs={},
+        model_inference_domain=None,
+        dataset_name="d",
+        dataset_root="/tmp/../tmp/dataset",
+        dataset_split=None,
+        dataset_kwargs_resolved={},
+        output_dict=out,
+        metric_specs=[("l2_pressure", {})],
+    )
+    fp_norm = metrics_cache_fingerprint(**{**base, "dataset_root": "/tmp/dataset"})
+    fp_canon = metrics_cache_fingerprint(**base)
+    assert fp_norm == fp_canon
+
+
+def test_fingerprint_numpy_model_kwargs_stable() -> None:
+    np = pytest.importorskip("numpy")
+    out = output_config_to_fingerprint_dict(OutputConfig())
+    base = dict(
+        model_name="m",
+        model_checkpoint="c.pt",
+        model_stats_path="",
+        model_kwargs={"batch_resolution": np.int64(60000)},
+        model_inference_domain="surface",
+        dataset_name="d",
+        dataset_root="/r",
+        dataset_split=None,
+        dataset_kwargs_resolved={},
+        output_dict=out,
+        metric_specs=[("l2_pressure", {})],
+    )
+    fp_np = metrics_cache_fingerprint(**base)
+    fp_py = metrics_cache_fingerprint(**{**base, "model_kwargs": {"batch_resolution": 60000}})
+    assert fp_np == fp_py
+
+
 def test_fingerprint_metric_spec_kwargs_order() -> None:
     out = output_config_to_fingerprint_dict(OutputConfig())
     base = dict(
@@ -135,3 +177,10 @@ def test_config_from_dict_metrics_cache() -> None:
     )
     assert cfg.run.metrics_cache.enabled is True
     assert cfg.run.metrics_cache.path == "/tmp/mc"
+
+
+def test_config_metrics_cache_enabled_string_false() -> None:
+    cfg = Config.from_dict(
+        {"run": {"metrics_cache": {"enabled": "false", "path": ""}}},
+    )
+    assert cfg.run.metrics_cache.enabled is False

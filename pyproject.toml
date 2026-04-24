@@ -36,6 +36,11 @@ dynamic = ["version"]
 dev = [
     "pytest>=7.0",
 ]
+# Hugging Face Hub + fsspec for ``hf://`` / ``s3://`` model packages (see evaluation.assets.Package)
+evaluation-hf = [
+    "huggingface_hub>=0.23.0",
+    "fsspec>=2024.1.0",
+]
 # dependencies for GPU-accelerated functionality
 gpu = [
     "cupy-cuda13x>=13.6.0",
@@ -43,7 +48,7 @@ gpu = [
     "warp-lang>=1.7.1",
 ]
 all = [
-    "nvidia-physicsnemo-cfd[dev,gpu]",
+    "nvidia-physicsnemo-cfd[dev,gpu,evaluation-hf]",
 ]
 
 [tool.setuptools.dynamic]

@@ -156,12 +156,31 @@ Install the package in editable mode with dev dependencies from the repository r
 pip install -e ".[dev]"
 ```
 
+For Hugging Face / fsspec-backed **`model.package`** URIs in benchmarks, also install
+**`pip install -e ".[evaluation-hf]"`** (optional extra in [`pyproject.toml`](pyproject.toml)).
+
+### Model checkpoints and remote packages (`evaluation.assets`)
+
+Built-in and custom **`CFDModel`** wrappers load weights via **`load(checkpoint_path, stats_path, …)`**.
+The benchmark engine resolves paths first using **`physicsnemo.cfd.evaluation.assets.resolve_model_assets`**:
+
+| Tier | Use case | Configuration |
+| ---- | -------- | --------------- |
+| **A** | Private or local weights | Set both **`model.checkpoint`** and **`model.stats_path`** (no `package`). |
+| **B** | Weights in a Hub/S3/local tree | Set **`model.package`** (e.g. `hf://org/repo@revision`) and **`checkpoint_relpath`** / **`stats_relpath`**, or the same keys under **`model.kwargs`**. |
+| **C** | Default URI for a registered name | Call **`register_default_asset(name, AssetSpec(...))`** (e.g. at import time); then **`checkpoint`** / **`stats_path`** may be omitted if **`REQUIRES_REMOTE_ASSETS`** is true. |
+
+Stubs that do not load weights (e.g. **`surface_baseline`**, **`volume_baseline`**) set **`REQUIRES_REMOTE_ASSETS = False`** on the wrapper class so empty checkpoint/stats remain valid.
+
+Optional Hub analytics: the engine performs a best-effort resolve of **`config.json`** inside HF-backed packages (ignored if missing). **`ngc://`** roots are not implemented yet (constructor/`resolve` will raise **`NotImplementedError`**).
+
 Before opening a pull request that changes **`physicsnemo/cfd/evaluation/`** or
 **`workflows/benchmarking_workflow/`**, run the CI test subset:
 
 ```bash
 pytest -q test/ci_tests/test_distributed_utils.py \
   test/ci_tests/test_metrics_cache.py \
+  test/ci_tests/test_model_assets.py \
   test/ci_tests/test_benchmark_workflow.py \
   test/ci_tests/test_evaluation.py
 ```

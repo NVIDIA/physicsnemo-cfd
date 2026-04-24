@@ -34,7 +34,8 @@ hydra:
     chdir: false
 
 # null = use each dataset's ``case_ids`` below (or CLI ``case_id=run_1`` / list override).
-case_id: null
+# case_id: null
+case_id: [run_1, run_11]
 
 run:
   device: "cuda:0"
@@ -91,6 +92,8 @@ benchmark:
     save_artifacts: true
 
 output:
+  surface_interpolate_point_to_cell_for_metrics: true
+  surface_metrics_idw_k: 5
   mesh_field_names:
     pressure: "pMeanTrimPred"
     shear_stress: "wallShearStressMeanTrimPred"

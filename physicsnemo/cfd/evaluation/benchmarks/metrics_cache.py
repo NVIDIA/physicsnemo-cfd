@@ -25,10 +25,47 @@ from __future__ import annotations
 
 import hashlib
 import json
+import numbers
 from pathlib import Path
 from typing import Any
 
 CACHE_FORMAT_VERSION = 1
+
+
+def _canonical_fingerprint_path(path_str: str) -> str:
+    """Normalize filesystem paths so equivalent locations share one cache fingerprint."""
+    if not path_str:
+        return ""
+    p = Path(path_str).expanduser()
+    try:
+        return str(p.resolve(strict=False))
+    except (OSError, RuntimeError):
+        return str(p)
+
+
+def _fingerprint_jsonify(obj: Any) -> Any:
+    """
+    Recursively convert values to JSON-stable Python scalars for hashing.
+
+    Avoids fingerprint drift from NumPy scalar types and normalizes nested dicts.
+    """
+
+    if isinstance(obj, dict):
+        return {str(k): _fingerprint_jsonify(obj[k]) for k in sorted(obj.keys())}
+    if isinstance(obj, (list, tuple)):
+        return [_fingerprint_jsonify(v) for v in obj]
+    if obj is None or isinstance(obj, (bool, str)):
+        return obj
+    if isinstance(obj, numbers.Integral):
+        return int(obj)
+    if isinstance(obj, numbers.Real) and not isinstance(obj, bool):
+        return float(obj)
+    if hasattr(obj, "item") and callable(getattr(obj, "item", None)):
+        try:
+            return _fingerprint_jsonify(obj.item())
+        except Exception:
+            pass
+    return str(obj)
 
 
 def _stable_json(obj: Any) -> str:
@@ -43,6 +80,7 @@ def metrics_cache_fingerprint(
     model_stats_path: str,
     model_kwargs: dict[str, Any],
     model_inference_domain: str | None,
+    model_asset_identity: str | None = None,
     dataset_name: str,
     dataset_root: str,
     dataset_split: str | None,
@@ -68,6 +106,10 @@ def metrics_cache_fingerprint(
         Extra arguments passed to the model wrapper.
     model_inference_domain : str or None
         ``"surface"``, ``"volume"``, or ``None`` for registry default.
+    model_asset_identity : str or None, optional
+        Stable id when weights come from a remote :class:`~physicsnemo.cfd.evaluation.assets.Package`
+        (e.g. ``package:hf://...|ckpt|stats``). When set, ``model_checkpoint`` / ``model_stats_path``
+        in the payload are left empty so cache keys do not depend on local Hub cache paths.
     dataset_name : str
         Registered dataset adapter name.
     dataset_root : str
@@ -88,23 +130,32 @@ def metrics_cache_fingerprint(
     """
     specs_serializable: list[Any] = []
     for name, kw in sorted(metric_specs, key=lambda x: (x[0], tuple(sorted(x[1].keys())))):
-        specs_serializable.append([name, {k: kw[k] for k in sorted(kw.keys())}])
+        specs_serializable.append(
+            [name, _fingerprint_jsonify({k: kw[k] for k in sorted(kw.keys())})]
+        )
+    ck_fp = "" if model_asset_identity else _canonical_fingerprint_path(model_checkpoint)
+    st_fp = "" if model_asset_identity else _canonical_fingerprint_path(model_stats_path)
     payload = {
         "fingerprint_schema": CACHE_FORMAT_VERSION,
         "model": {
             "name": model_name,
-            "checkpoint": model_checkpoint,
-            "stats_path": model_stats_path,
-            "kwargs": {k: model_kwargs[k] for k in sorted(model_kwargs.keys())},
+            "checkpoint": ck_fp,
+            "stats_path": st_fp,
+            "asset_identity": model_asset_identity or "",
+            "kwargs": _fingerprint_jsonify(
+                {k: model_kwargs[k] for k in sorted(model_kwargs.keys())}
+            ),
             "inference_domain": model_inference_domain,
         },
         "dataset": {
             "name": dataset_name,
-            "root": dataset_root,
+            "root": _canonical_fingerprint_path(dataset_root),
             "split": dataset_split,
-            "kwargs": {k: dataset_kwargs_resolved[k] for k in sorted(dataset_kwargs_resolved.keys())},
+            "kwargs": _fingerprint_jsonify(
+                {k: dataset_kwargs_resolved[k] for k in sorted(dataset_kwargs_resolved.keys())}
+            ),
         },
-        "output": output_dict,
+        "output": _fingerprint_jsonify(output_dict),
         "metrics": specs_serializable,
     }
     return hashlib.sha256(_stable_json(payload).encode("utf-8")).hexdigest()

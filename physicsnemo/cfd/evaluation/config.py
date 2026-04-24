@@ -23,6 +23,21 @@ from typing import Any
 import yaml
 
 
+def _parse_bool(value: Any, *, default: bool = False) -> bool:
+    """Parse booleans from YAML/JSON and from common string forms (e.g. ``\"false\"``)."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        s = value.strip().lower()
+        if s in ("false", "0", "no", "off", ""):
+            return False
+        if s in ("true", "1", "yes", "on"):
+            return True
+    return bool(value)
+
+
 def deep_merge_dict(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge ``overlay`` into ``base``; overlay wins for non-dict values and new keys."""
     result = dict(base)
@@ -82,6 +97,11 @@ class ModelConfig:
     name: str = "fignet"
     checkpoint: str = ""
     stats_path: str = ""
+    #: Remote package root when checkpoint/stats are omitted: ``hf://org/repo@rev``, ``s3://...``, or local path.
+    package: str = ""
+    #: Paths relative to :attr:`package` (overridable via ``model.kwargs``).
+    checkpoint_relpath: str = ""
+    stats_relpath: str = ""
     kwargs: dict[str, Any] = field(default_factory=dict)
     # Optional override; otherwise taken from the registered wrapper's INFERENCE_DOMAIN.
     inference_domain: str | None = None
@@ -89,6 +109,8 @@ class ModelConfig:
     def merged_kwargs_for_load(self) -> dict[str, Any]:
         """``model.kwargs`` plus ``inference_domain`` so wrappers can branch surface vs volume."""
         kw = dict(self.kwargs)
+        for k in ("package", "checkpoint_relpath", "stats_relpath"):
+            kw.pop(k, None)
         if self.inference_domain in ("surface", "volume"):
             kw["inference_domain"] = self.inference_domain
         return kw
@@ -219,7 +241,7 @@ class Config:
             batch_size=int(run_raw.get("batch_size", 1)),
             save_inference_mesh=bool(run_raw.get("save_inference_mesh", True)),
             metrics_cache=MetricsCacheConfig(
-                enabled=bool(mc_raw.get("enabled", False)),
+                enabled=_parse_bool(mc_raw.get("enabled"), default=False),
                 path=str(mc_raw.get("path") or ""),
             ),
             distributed=bool(run_raw.get("distributed", True)),
