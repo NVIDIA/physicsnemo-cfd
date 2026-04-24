@@ -50,7 +50,7 @@ python main.py run.fail_on_all_skipped=true
 
 ```bash
 torchrun --standalone --nproc_per_node=4 main.py
-# or: torchrun --standalone --nproc_per_node=4 main.py --config-name=config_volume
+# or: torchrun --standalone --nproc_per_node=8 main.py --config-name=config_matrix_surface
 ```
 
 Cases are split across GPUs (`cases[rank::world_size]`). Rank 0 writes reports and optional artifacts. Set `run.distributed: false` only for debugging (each rank would run the full case list).
@@ -122,7 +122,7 @@ The flat CLI **`python -m physicsnemo.cfd.evaluation.benchmarks.run`** applies t
 | **run** | `device`, `output_dir`, `seed`, `batch_size`, **`save_inference_mesh`**, **`distributed`**, **`fail_on_all_skipped`**, **`fail_on_any_metric_nan`**, optional **`metrics_cache`** |
 | **model** / **benchmark.models** | `name`, `checkpoint`, `stats_path`, `inference_domain` (`surface` \| `volume`), `kwargs` |
 | **dataset** / **benchmark.datasets** | `name`, `root`, `split`, optional `case_ids` (`null` = all), `kwargs` |
-| **output** | VTK field name maps; **`streamlines_vector_canonical`** (volume) |
+| **output** | VTK field name maps; **`streamlines_vector_canonical`** (volume); optional **`surface_interpolate_point_to_cell_for_metrics`** (kNN-IDW point → cell for XmGN/FiGNet-style surfaces so drag/lift/L2 use **`metric_dtype: cell`**), plus **`surface_metrics_idw_k`**, **`surface_metrics_idw_device`** |
 | **metrics** | Metric names or `{ name: ..., ...kwargs }` |
 | **reports** | Optional PNG pipeline |
 | **benchmark** | `mode`, `models` / `datasets`, **`reproducibility`** (`log_env`, `save_artifacts`) |

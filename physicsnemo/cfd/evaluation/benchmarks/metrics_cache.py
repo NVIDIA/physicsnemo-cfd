@@ -177,6 +177,9 @@ def output_config_to_fingerprint_dict(output: Any) -> dict[str, Any]:
             for k in sorted(output.ground_truth_volume_mesh_field_names.keys())
         },
         "streamlines_vector_canonical": output.streamlines_vector_canonical,
+        "surface_interpolate_point_to_cell_for_metrics": output.surface_interpolate_point_to_cell_for_metrics,
+        "surface_metrics_idw_k": output.surface_metrics_idw_k,
+        "surface_metrics_idw_device": output.surface_metrics_idw_device,
     }
 
 

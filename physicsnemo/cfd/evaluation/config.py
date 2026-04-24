@@ -182,6 +182,13 @@ class OutputConfig:
     )
     #: Canonical key for ``streamlines_comparison`` report visual (volume vector field).
     streamlines_vector_canonical: str = "velocity"
+    #: If True and surface fields are on points (e.g. MeshGraphNet / FiGNet), kNN-IDW them to cell
+    #: centers before metrics so ``metric_dtype`` is ``cell`` (L2, drag, lift, area-weighted L2).
+    surface_interpolate_point_to_cell_for_metrics: bool = False
+    #: Neighbor count for :func:`~physicsnemo.cfd.postprocessing_tools.interpolation.interpolate_mesh_to_pc.interpolate_point_data_to_cell_centers`.
+    surface_metrics_idw_k: int = 5
+    #: ``\"cpu\"``, ``\"cuda\"``, etc. Passed to kNN interpolation (default CPU for portability).
+    surface_metrics_idw_device: str = "cpu"
 
 
 @dataclass
@@ -242,6 +249,11 @@ class Config:
             streamlines_vector_canonical=str(
                 out.get("streamlines_vector_canonical") or "velocity"
             ),
+            surface_interpolate_point_to_cell_for_metrics=bool(
+                out.get("surface_interpolate_point_to_cell_for_metrics", False)
+            ),
+            surface_metrics_idw_k=int(out.get("surface_metrics_idw_k", 5)),
+            surface_metrics_idw_device=str(out.get("surface_metrics_idw_device", "cpu")),
         )
         metrics = data.get("metrics", ["l2_pressure"])
         bench = data.get("benchmark") or {}

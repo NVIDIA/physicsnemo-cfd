@@ -11,6 +11,11 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`output.surface_interpolate_point_to_cell_for_metrics`:** optional kNN-IDW promotion of surface
+  point fields to cell centers before metrics (``interpolate_point_data_to_cell_centers`` in
+  ``postprocessing_tools/interpolation``), so point-native models (e.g. XmGN, FiGNet) can report
+  cell-based L2, drag, and lift. Tunables: ``output.surface_metrics_idw_k``,
+  ``output.surface_metrics_idw_device``.
 - **`run.fail_on_all_skipped` / `run.fail_on_any_metric_nan`:** optional benchmark exit policy; raises `BenchmarkPolicyError` (Hydra `main.py` and `python -m physicsnemo.cfd.evaluation.benchmarks.run` exit with code 1).
 - **`physicsnemo.cfd.evaluation.benchmarks.hydra_utils`:** shared Hydra → `Config` dict conversion for tests and `workflows/benchmarking_workflow/main.py`.
 - **CI:** `.github/workflows/ci-tests.yml` runs `pytest` on `test/ci_tests/` (including `test_benchmark_workflow.py`, which composes Hydra configs under `workflows/benchmarking_workflow/conf/`).
@@ -32,6 +37,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Surface comparison mesh:** ``build_comparison_mesh`` respects ``CanonicalCase.mesh_type`` — point GT/pred (e.g. ``xmgn`` with ``align_ground_truth_to_model``) no longer forces ``point_data_to_cell_data``, fixing length mismatches vs cell counts.
 - **Benchmarking workflow layout:** legacy **`workflows/bench_example`** moved to **`workflows/deprecated/bench_example`** (superseded by **`workflows/benchmarking_workflow/`**).
 - **`benchmark.reproducibility.log_env`:** default is now **`false`** (was **`true`**) to avoid writing full `os.environ` to `env.json` unless explicitly enabled in YAML.
 - **Breaking:** `physicsnemo.cfd.bench` was renamed to **`physicsnemo.cfd.postprocessing_tools`**
@@ -60,6 +66,10 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Surface comparison mesh:** ``build_comparison_mesh`` infers point vs cell attachment from GT
+  length when it matches exactly one of ``mesh.n_points`` or ``mesh.n_cells``, so datasets that
+  register ``mesh_type: cell`` but supply point-sized fields (e.g. some DrivAerML paths) no longer
+  fail with ``expected N cell values, got ...`` mismatches.
 - Fixed a bug in GPU kernel for gradient computation.
 
 ### Security

@@ -17,6 +17,7 @@
 import warnings
 
 import numpy as np
+import pyvista as pv
 import torch
 from scipy.spatial import cKDTree
 
@@ -185,3 +186,66 @@ def interpolate_mesh_to_pc(pc, mesh, fields_to_interpolate, mesh_dtype="cell", d
         pc.point_data[field_name] = _idw_interpolate(source_t, target_t, field_arr, k=k)
 
     return pc
+
+
+def interpolate_point_data_to_cell_centers(
+    mesh: pv.DataSet,
+    field_names: list[str],
+    *,
+    k: int = 5,
+    device: str = "cpu",
+) -> pv.DataSet:
+    """Interpolate fields defined on mesh vertices to cell centers via kNN inverse-distance weighting.
+
+    Uses the same ``knn`` + IDW path as :func:`interpolate_mesh_to_pc` (source = ``mesh.points``,
+    targets = ``mesh.cell_centers().points``). Each interpolated array is written to ``mesh.cell_data``
+    and removed from ``mesh.point_data`` so downstream metrics can use ``dtype=\"cell\"`` (e.g.
+    :func:`~physicsnemo.cfd.postprocessing_tools.metrics.aero_forces.compute_drag_and_lift`).
+
+    Parameters
+    ----------
+    mesh :
+        Surface (or any dataset with points and cells). Fields must live in ``mesh.point_data``.
+    field_names :
+        VTK array names to promote. Names missing from ``point_data`` are skipped.
+    k :
+        Number of neighbors for IDW (default 5).
+    device :
+        ``\"cpu\"``, ``\"gpu\"`` (maps to CUDA), or a torch device string.
+
+    Returns
+    -------
+    pv.DataSet
+        The same ``mesh`` instance, modified in place.
+    """
+    dev = _resolve_device(device)
+    source_points = np.asarray(mesh.points, dtype=np.float32)
+    target_points = np.asarray(mesh.cell_centers().points, dtype=np.float32)
+    source_t = torch.tensor(source_points, dtype=torch.float32, device=dev)
+    target_t = torch.tensor(target_points, dtype=torch.float32, device=dev)
+    n_pt = int(mesh.n_points)
+
+    for field_name in field_names:
+        if field_name not in mesh.point_data:
+            continue
+        field_arr = np.asarray(mesh.point_data[field_name])
+        if field_arr.ndim == 1:
+            if field_arr.shape[0] != n_pt:
+                raise ValueError(
+                    f"Field {field_name!r}: expected {n_pt} point values, got shape {field_arr.shape}"
+                )
+        elif field_arr.ndim == 2:
+            if field_arr.shape[0] != n_pt:
+                raise ValueError(
+                    f"Field {field_name!r}: expected ({n_pt}, C) at points, got {field_arr.shape}"
+                )
+        else:
+            raise ValueError(f"Unsupported point array shape for {field_name!r}: {field_arr.shape}")
+
+        mesh.cell_data[field_name] = _idw_interpolate(source_t, target_t, field_arr, k=k)
+        try:
+            mesh.point_data.remove(field_name)
+        except AttributeError:
+            del mesh.point_data[field_name]
+
+    return mesh

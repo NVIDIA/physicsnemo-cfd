@@ -20,6 +20,7 @@ if importlib.util.find_spec("physicsnemo.utils.sdf") is None:
 import numpy as np
 import pyvista as pv
 
+from physicsnemo.cfd.postprocessing_tools.metrics.aero_forces import compute_drag_and_lift
 from physicsnemo.cfd.postprocessing_tools.metrics.l2_errors import compute_l2_errors
 from physicsnemo.cfd.evaluation.benchmarks.engine import _call_metric, _normalize_metrics_config
 from physicsnemo.cfd.evaluation.benchmarks.report_plugins import _apply_default_case_ids_to_visuals
@@ -88,6 +89,21 @@ def test_config_from_dict_merges_output_and_reports() -> None:
     assert cfg.reports.visual_case_ids == ["run_1"]
 
 
+def test_config_from_dict_surface_interpolate_output_keys() -> None:
+    cfg = Config.from_dict(
+        {
+            "output": {
+                "surface_interpolate_point_to_cell_for_metrics": True,
+                "surface_metrics_idw_k": 7,
+                "surface_metrics_idw_device": "cpu",
+            },
+        }
+    )
+    assert cfg.output.surface_interpolate_point_to_cell_for_metrics is True
+    assert cfg.output.surface_metrics_idw_k == 7
+    assert cfg.output.surface_metrics_idw_device == "cpu"
+
+
 def test_list_metrics_includes_core_builtin() -> None:
     names = list_metrics()
     assert "l2_pressure" in names
@@ -127,6 +143,71 @@ def test_build_comparison_mesh_surface_zero_l2_when_identical() -> None:
         output=output,
     )
     assert abs(v) < 1e-10
+
+
+def test_build_comparison_mesh_surface_point_dtype_aligns_with_n_points() -> None:
+    """Surface ``mesh_type: point`` keeps point dofs (e.g. MeshGraphNet / xmgn + aligned GT)."""
+    base = pv.Plane(i_resolution=6, j_resolution=6)
+    n_pts = base.n_points
+    p = np.random.randn(n_pts).astype(np.float64)
+    wss = np.random.randn(n_pts, 3).astype(np.float64)
+
+    case = CanonicalCase(
+        case_id="syn_pt",
+        mesh_path="",
+        mesh_type="point",
+        ground_truth={"pressure": p, "shear_stress": wss},
+        inference_domain="surface",
+    )
+    pred = {"pressure": p.copy(), "shear_stress": wss.copy()}
+    output = OutputConfig()
+    mesh, dtype = build_comparison_mesh(case, pred, output, mesh_override=base)
+    assert dtype == "point"
+    assert mesh.n_points == n_pts
+    gtn = output.ground_truth_mesh_field_names["pressure"]
+    prn = output.mesh_field_names["pressure"]
+    d = compute_l2_errors(mesh, [gtn], [prn], dtype=dtype)
+    key = f"{gtn}_l2_error"
+    assert abs(float(d[key])) < 1e-10
+
+
+def test_build_comparison_mesh_surface_point_to_cell_idw_for_metrics() -> None:
+    """Point-based surface fields promoted to cells for cell-typed metrics (XmGN / FiGNet pattern)."""
+    base = pv.Plane(i_resolution=6, j_resolution=6)
+    n_pts = base.n_points
+    p = np.ones(n_pts, dtype=np.float64) * 0.5
+    wss = np.zeros((n_pts, 3), dtype=np.float64)
+
+    case = CanonicalCase(
+        case_id="syn_idw",
+        mesh_path="",
+        mesh_type="point",
+        ground_truth={"pressure": p, "shear_stress": wss},
+        inference_domain="surface",
+    )
+    pred = {"pressure": p.copy(), "shear_stress": wss.copy()}
+    output = OutputConfig(
+        surface_interpolate_point_to_cell_for_metrics=True,
+        surface_metrics_idw_k=5,
+        surface_metrics_idw_device="cpu",
+    )
+    mesh, dtype = build_comparison_mesh(case, pred, output, mesh_override=base)
+    assert dtype == "cell"
+    gtn = output.ground_truth_mesh_field_names["pressure"]
+    prn = output.mesh_field_names["pressure"]
+    gtw = output.ground_truth_mesh_field_names["shear_stress"]
+    assert gtn in mesh.cell_data and prn in mesh.cell_data
+    assert gtn not in mesh.point_data
+    d = compute_l2_errors(mesh, [gtn], [prn], dtype=dtype)
+    assert abs(float(d[f"{gtn}_l2_error"])) < 1e-9
+
+    cd_gt, *_ = compute_drag_and_lift(
+        mesh,
+        pressure_field=gtn,
+        wss_field=gtw,
+        dtype="cell",
+    )
+    assert not np.isnan(cd_gt)
 
 
 def test_legacy_metric_call_without_extended_kwargs() -> None:
