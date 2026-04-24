@@ -14,6 +14,7 @@ from physicsnemo.cfd.evaluation.config import Config, load_config
 import physicsnemo.cfd.evaluation.datasets.adapters  # noqa: F401
 from physicsnemo.cfd.evaluation.datasets import get_adapter
 from physicsnemo.cfd.evaluation.datasets.gt_alignment import resolve_dataset_kwargs_for_model
+import physicsnemo.cfd.evaluation.models.wrappers  # noqa: F401 — register built-in models
 
 
 def _parse_overrides(args: list[str]) -> dict[str, str]:
@@ -65,8 +66,9 @@ def main() -> None:
         raise SystemExit("No cases found for dataset.")
 
     print(
-        "[evaluation] physicsnemo.cfd.evaluation.inference forwards to the benchmark engine; "
-        "prefer: workflows/benchmarking_workflow (python main.py) or benchmarks.run with flat YAML",
+        "[evaluation] This CLI (python -m physicsnemo.cfd.evaluation.inference) forwards to the "
+        "benchmark engine; model wrappers live under physicsnemo.cfd.evaluation.models. "
+        "Prefer: workflows/benchmarking_workflow (python main.py) or benchmarks.run with flat YAML.",
         file=sys.stderr,
     )
     results = run_benchmark(config, case_id=case_id)

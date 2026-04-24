@@ -16,14 +16,14 @@
 
 """Model wrapper implementations; registration happens on import."""
 
-from physicsnemo.cfd.evaluation.inference.model_registry import register_model
-from physicsnemo.cfd.evaluation.inference.wrappers.domino import DominoWrapper
-from physicsnemo.cfd.evaluation.inference.wrappers.fignet import FIGNetWrapper
-from physicsnemo.cfd.evaluation.inference.wrappers.geotransolver import GeoTransolverWrapper
-from physicsnemo.cfd.evaluation.inference.wrappers.surface_baseline import SurfaceBaselineWrapper
-from physicsnemo.cfd.evaluation.inference.wrappers.transolver import TransolverWrapper
-from physicsnemo.cfd.evaluation.inference.wrappers.volume_baseline import VolumeBaselineWrapper
-from physicsnemo.cfd.evaluation.inference.wrappers.xmgn import XMGNWrapper
+from physicsnemo.cfd.evaluation.models.model_registry import register_model
+from physicsnemo.cfd.evaluation.models.wrappers.domino import DominoWrapper
+from physicsnemo.cfd.evaluation.models.wrappers.fignet import FIGNetWrapper
+from physicsnemo.cfd.evaluation.models.wrappers.geotransolver import GeoTransolverWrapper
+from physicsnemo.cfd.evaluation.models.wrappers.surface_baseline import SurfaceBaselineWrapper
+from physicsnemo.cfd.evaluation.models.wrappers.transolver import TransolverWrapper
+from physicsnemo.cfd.evaluation.models.wrappers.volume_baseline import VolumeBaselineWrapper
+from physicsnemo.cfd.evaluation.models.wrappers.xmgn import XMGNWrapper
 
 register_model("fignet", FIGNetWrapper)
 register_model("xmgn", XMGNWrapper)

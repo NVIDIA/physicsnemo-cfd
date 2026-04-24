@@ -24,7 +24,7 @@ Then use the commands below **from this directory** (`workflows/benchmarking_wor
 ## Quick start
 
 1. **Prerequisites:** Python 3.10+, NVIDIA GPU for full inference runs, checkpoints and dataset on disk or mounted volume.
-2. **Assets:** Download benchmark checkpoints and the evaluation dataset when they are published on **NGC** (see [Benchmark assets on NGC](#benchmark-assets-on-ngc-coming-soon)). Until links are available, point `model.checkpoint`, `stats_path`, and `dataset.root` in `conf/*.yaml` at your local paths, or use [Hydra overrides](#paths-without-ngc-hydra-overrides).
+2. **Assets:** Download benchmark checkpoints and the **DrivAerML** evaluation tree (see [DrivAerML dataset: download and directory layout](#drivaerml-dataset-download-and-directory-layout)); **NGC** may mirror these later (see [Benchmark assets on NGC](#benchmark-assets-on-ngc-coming-soon)). Point `model.checkpoint`, `stats_path`, and `dataset.root` in `conf/*.yaml` at local paths, or use [Hydra overrides](#paths-without-ngc-hydra-overrides).
 3. **Configure:** Edit `conf/config_surface.yaml` (default), `config_volume.yaml`, or matrix configs under `conf/`.
 4. **Run:**
 
@@ -64,9 +64,9 @@ Pretrained checkpoints and the ground-truth evaluation dataset are intended to b
 | Resource | Description | NGC link |
 | -------- | ----------- | -------- |
 | Benchmark model checkpoints | Surface/volume checkpoints + `global_stats.json` (or equivalent) per model | *TBD* |
-| Evaluation dataset | DrivAerML (or successor) layout expected by the `drivaerml` adapter | *TBD* |
+| Evaluation dataset | DrivAerML (or successor) — same **`run_*`** layout as [DrivAerML dataset](#drivaerml-dataset-download-and-directory-layout) | *TBD* |
 
-After release, unpack assets to a stable path and set `benchmark.models[].checkpoint` / `stats_path` and `benchmark.datasets[].root` to match the documented layout (or use env-driven paths in your deployment).
+After release, unpack assets to a stable path and set `benchmark.models[].checkpoint` / `stats_path` and `benchmark.datasets[].root` to match the documented layout (or use env-driven paths in your deployment). Until then, use Hugging Face or a local mirror as described in that section.
 
 ---
 
@@ -82,6 +82,56 @@ python main.py \
 ```
 
 You can also export environment variables and reference them in a local, gitignored config using OmegaConf `oc.env` patterns if you add them to your YAML.
+
+---
+
+## DrivAerML dataset: download and directory layout
+
+The **`drivaerml`** adapter expects a **local root directory** (`benchmark.datasets[].root`) whose children are **`run_<id>`** folders. Each run holds the VTK ground-truth meshes the metrics read from.
+
+**Where to get the data**
+
+- **Project / landing page:** [DrivAerML on CAE-ML Datasets](https://caemldatasets.org/drivaerml/) — licensing, citation, and overview.
+- **Hugging Face (common for downloads):** [`neashton/drivaerml`](https://huggingface.co/datasets/neashton/drivaerml) — dataset repository you can sync to disk.
+- **NGC:** when the [benchmark table](#benchmark-assets-on-ngc-coming-soon) lists a DrivAerML (or successor) bundle, use the documented unpack path the same way as a manually downloaded tree.
+
+The full public release is **large** (many `run_*` directories and VTK files). Plan disk space and use partial sync if you only need a few cases for smoke tests.
+
+**On-disk layout (what the adapter checks)**
+
+| Mode | Per-run directory | Default file |
+| ---- | ----------------- | ------------ |
+| **Surface** (default) | `root/run_<n>/` | `boundary_<n>.vtp` (e.g. `run_1/boundary_1.vtp`) |
+| **Volume** (`dataset.kwargs.inference_domain: volume`) | `root/run_<n>/` | `volume_<n>.vtu` |
+
+Only directories that contain the required mesh for the selected mode are listed as cases. Overrides for non-standard filenames are documented on **`DrivAerMLAdapter`** in **`physicsnemo.cfd.evaluation.datasets.adapters.drivaerml`**.
+
+**Download with the Hugging Face CLI (typical)**
+
+Install the CLI, then download the dataset repo into a directory you will point at as **`dataset.root`**:
+
+```bash
+pip install "huggingface_hub[cli]"
+huggingface-cli download neashton/drivaerml --repo-type dataset --local-dir /path/to/drivaerml_data
+```
+
+Set in YAML or via override, for example:
+
+```bash
+python main.py benchmark.datasets.0.root=/path/to/drivaerml_data
+```
+
+**Alternative: `git` + Git LFS**
+
+If you prefer a Git workflow, clone the Hugging Face dataset repository with **Git LFS** installed so large VTK objects are fetched. The resulting clone root (the folder that contains the `run_*` directories) is the same value for **`benchmark.datasets[].root`**.
+
+**Single-run or scripted downloads**
+
+For a minimal sanity check, you can copy individual `run_<id>` trees (surface `boundary_*.vtp` and any co-located files your workflow needs) under one parent directory so that parent is **`root`**. The notebook [`notebooks/surface_benchmarking.ipynb`](notebooks/surface_benchmarking.ipynb) shows example URLs for fetching files from the Hugging Face dataset for one sample.
+
+**Train / validation split for benchmarking**
+
+After the tree is on disk, use the fixed 90/10 split files under [`drivaer_ml_files/`](drivaer_ml_files/) if you want to align case lists with that split — see [`drivaer_ml_files/README.md`](drivaer_ml_files/README.md).
 
 ---
 
@@ -133,7 +183,7 @@ The flat CLI **`python -m physicsnemo.cfd.evaluation.benchmarks.run`** applies t
 
 **Metrics cache:** `run.metrics_cache.enabled` stores per-case scalars; delete the cache directory for a full recompute. Plots and meshes are not cached.
 
-**Remote model assets:** Install optional **`pip install 'nvidia-physicsnemo-cfd[evaluation-hf]'`** for `hf://` and `s3://` package roots. Cache directory defaults to `~/.cache/physicsnemo-cfd/models` or override with **`PHYSICSNEMO_CFD_MODEL_CACHE`**. Either set both **`checkpoint`** and **`stats_path`** to local files, or set **`package`** plus **`checkpoint_relpath`** / **`stats_relpath`** (or register defaults via **`register_default_asset`** in code). See **[CONTRIBUTING.md](../../CONTRIBUTING.md)** for custom-wrapper tiers.
+**Remote model assets:** Install optional **`pip install 'nvidia-physicsnemo-cfd[evaluation-hf]'`** for `hf://` and `s3://` package roots. Cache directory defaults to `~/.cache/physicsnemo-cfd/models` or override with **`PHYSICSNEMO_CFD_MODEL_CACHE`**. Built-in matrix models (including **domino**, which also resolves **`domino_config`** from the package) use per-model roots in **`physicsnemo.cfd.evaluation.assets.builtin_packages`** when **`checkpoint`** / **`stats_path`** are omitted; override with explicit paths or **`model.package`** as needed. **`register_default_asset`** remains available for custom names. See **[CONTRIBUTING.md](../../CONTRIBUTING.md)** for custom-wrapper tiers.
 
 ---
 
@@ -141,7 +191,7 @@ The flat CLI **`python -m physicsnemo.cfd.evaluation.benchmarks.run`** applies t
 
 ### Custom models
 
-1. Subclass **`CFDModel`** (`physicsnemo.cfd.evaluation.inference.model_registry`) under `physicsnemo/cfd/evaluation/inference/wrappers/`.
+1. Subclass **`CFDModel`** (`physicsnemo.cfd.evaluation.models.model_registry`) under `physicsnemo/cfd/evaluation/models/wrappers/`.
 2. Implement `INFERENCE_DOMAIN`, `OUTPUT_LOCATION`, `load`, `prepare_inputs`, `predict`, `decode_outputs`.
 3. **`register_model("my_model", MyWrapper)`** in `wrappers/__init__.py`.
 
@@ -211,6 +261,7 @@ Register more: **`physicsnemo.cfd.evaluation.reports.register_visual`**.
 ## Troubleshooting
 
 - **Missing checkpoints / bad paths:** inference fails or skips; verify overrides and `inference_domain`.
+- **DrivAerML `root` wrong:** `dataset.root` must be the directory that **directly contains** `run_*` folders with `boundary_*.vtp` (surface) or `volume_*.vtu` (volume), not a parent of an extra nesting level; see [DrivAerML dataset](#drivaerml-dataset-download-and-directory-layout).
 - **CUDA OOM:** reduce batch resolution in `model.kwargs` or use a smaller `case_id` set.
 - **Matrix skips:** incompatible model vs dataset domain — check logs for `SKIP` lines.
 - **Editable install:** use `pip install -e ".[dev]"` so local `physicsnemo.cfd` changes apply.
@@ -219,7 +270,7 @@ Register more: **`physicsnemo.cfd.evaluation.reports.register_visual`**.
 
 ## Advanced (Python API)
 
-**`physicsnemo.cfd.evaluation.benchmarks.engine.run_benchmark`** and **`Config.from_dict`** are for scripts and tests. **`python -m physicsnemo.cfd.evaluation.benchmarks.run`** and **`evaluation.inference`** accept flat YAML/JSON **without** Hydra `${...}` interpolation unless you materialize values first.
+**`physicsnemo.cfd.evaluation.benchmarks.engine.run_benchmark`** and **`Config.from_dict`** are for scripts and tests. **`python -m physicsnemo.cfd.evaluation.benchmarks.run`** and **`python -m physicsnemo.cfd.evaluation.inference`** accept flat YAML/JSON **without** Hydra `${...}` interpolation unless you materialize values first. **`physicsnemo.cfd.evaluation.models`** holds **`CFDModel`** and wrappers; **`evaluation.inference`** adds **`log_inference`** and the compatibility CLI.
 
 ---
 
@@ -231,7 +282,7 @@ Smoke-test wrappers: **`checkpoint: ""`**, **`stats_path: ""`**. Use in **`bench
 
 ## DrivAerML train/validation split
 
-The [`drivaer_ml_files/`](drivaer_ml_files/) directory contains a reproducible 90/10 train/validation split. See [`drivaer_ml_files/README.md`](drivaer_ml_files/README.md).
+The [`drivaer_ml_files/`](drivaer_ml_files/) directory lists which **`run_*`** IDs fall in the proposed 90/10 train/validation partition. Download the dataset first ([section above](#drivaerml-dataset-download-and-directory-layout)), then use those lists to constrain **`case_id`** or **`dataset.case_ids`**. Details: [`drivaer_ml_files/README.md`](drivaer_ml_files/README.md).
 
 ---
 

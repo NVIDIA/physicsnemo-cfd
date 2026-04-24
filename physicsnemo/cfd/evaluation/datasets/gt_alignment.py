@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from physicsnemo.cfd.evaluation.inference.model_registry import get_output_location_for_model
+from physicsnemo.cfd.evaluation.models.model_registry import get_output_location_for_model
 
 # Keys used only for resolution; stripped before passing kwargs to dataset adapters.
 _ALIGN_KEYS = frozenset({"align_ground_truth_to_model"})
@@ -37,7 +37,7 @@ def resolve_dataset_kwargs_for_model(
     - Explicit ``gt_data_type`` / ``gt_prefer`` of ``cell`` or ``point`` always wins.
     - Otherwise, if ``gt_data_type`` is ``from_model`` / ``model`` (case-insensitive), or
       ``align_ground_truth_to_model: true``, set ``gt_data_type`` to the registered model's
-      :attr:`~physicsnemo.cfd.evaluation.inference.model_registry.CFDModel.OUTPUT_LOCATION`.
+      :attr:`~physicsnemo.cfd.evaluation.models.model_registry.CFDModel.OUTPUT_LOCATION`.
     - Otherwise leave ``gt_data_type`` unchanged (e.g. ``auto``).
 
     Alignment keys are removed from the returned dict so adapters only see concrete

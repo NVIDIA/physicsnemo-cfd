@@ -168,7 +168,7 @@ The benchmark engine resolves paths first using **`physicsnemo.cfd.evaluation.as
 | ---- | -------- | --------------- |
 | **A** | Private or local weights | Set both **`model.checkpoint`** and **`model.stats_path`** (no `package`). |
 | **B** | Weights in a Hub/S3/local tree | Set **`model.package`** (e.g. `hf://org/repo@revision`) and **`checkpoint_relpath`** / **`stats_relpath`**, or the same keys under **`model.kwargs`**. |
-| **C** | Default URI for a registered name | Call **`register_default_asset(name, AssetSpec(...))`** (e.g. at import time); then **`checkpoint`** / **`stats_path`** may be omitted if **`REQUIRES_REMOTE_ASSETS`** is true. |
+| **C** | Default URI for a registered name | First-party models use **`physicsnemo.cfd.evaluation.assets.builtin_packages`** (per-model **`GEOTRANSOLVER_PACKAGE_ROOT`**, etc., and **`register_builtin_model_packages`**). Third parties call **`register_default_asset(name, AssetSpec(...))`**; then **`checkpoint`** / **`stats_path`** may be omitted if **`REQUIRES_REMOTE_ASSETS`** is true. |
 
 Stubs that do not load weights (e.g. **`surface_baseline`**, **`volume_baseline`**) set **`REQUIRES_REMOTE_ASSETS = False`** on the wrapper class so empty checkpoint/stats remain valid.
 

@@ -82,8 +82,8 @@ from physicsnemo.cfd.evaluation.datasets import get_adapter
 from physicsnemo.cfd.evaluation.datasets.gt_alignment import resolve_dataset_kwargs_for_model
 from physicsnemo.cfd.evaluation.assets import resolve_model_assets
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
-from physicsnemo.cfd.evaluation.inference import get_model_wrapper
-from physicsnemo.cfd.evaluation.inference.model_registry import get_inference_domain_for_model
+from physicsnemo.cfd.evaluation.models import get_model_wrapper
+from physicsnemo.cfd.evaluation.models.model_registry import get_inference_domain_for_model
 from physicsnemo.cfd.evaluation.metrics import get_metric
 from physicsnemo.cfd.evaluation.metrics.mesh_bridge import build_comparison_mesh
 
@@ -394,7 +394,9 @@ def _run_single(
         )
 
     wrapper_class = get_model_wrapper(model_config.name)
-    resolved_ck, resolved_st, asset_identity = resolve_model_assets(model_config, wrapper_class)
+    resolved_ck, resolved_st, asset_identity, asset_load_kw = resolve_model_assets(
+        model_config, wrapper_class
+    )
     fp_ck = "" if asset_identity else resolved_ck
     fp_st = "" if asset_identity else resolved_st
 
@@ -470,11 +472,12 @@ def _run_single(
 
         if wrapper is None:
             wrapper = wrapper_class()
+            load_kw = {**asset_load_kw, **model_config.merged_kwargs_for_load()}
             wrapper.load(
                 checkpoint_path=resolved_ck,
                 stats_path=resolved_st,
                 device=device,
-                **model_config.merged_kwargs_for_load(),
+                **load_kw,
             )
 
         log_dataset(
@@ -649,7 +652,7 @@ def run_benchmark(
         If ``run.fail_on_all_skipped`` or ``run.fail_on_any_metric_nan`` rejects the outcome.
     """
     import physicsnemo.cfd.evaluation.datasets.adapters  # noqa: F401
-    import physicsnemo.cfd.evaluation.inference.wrappers  # noqa: F401
+    import physicsnemo.cfd.evaluation.models.wrappers  # noqa: F401
     import physicsnemo.cfd.evaluation.metrics  # noqa: F401 — registers built-in metrics
 
     metric_specs = _normalize_metrics_config(config.metrics)

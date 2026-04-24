@@ -23,6 +23,21 @@ from typing import Any
 import yaml
 
 
+def _strip_none_model_path_keys(m: dict[str, Any]) -> dict[str, Any]:
+    """Hydra often emits ``null``; drop those keys so dataclass defaults apply."""
+    md = dict(m)
+    for key in (
+        "checkpoint",
+        "stats_path",
+        "package",
+        "checkpoint_relpath",
+        "stats_relpath",
+    ):
+        if md.get(key) is None:
+            md.pop(key, None)
+    return md
+
+
 def _parse_bool(value: Any, *, default: bool = False) -> bool:
     """Parse booleans from YAML/JSON and from common string forms (e.g. ``\"false\"``)."""
     if value is None:
@@ -248,7 +263,7 @@ class Config:
             fail_on_all_skipped=bool(run_raw.get("fail_on_all_skipped", False)),
             fail_on_any_metric_nan=bool(run_raw.get("fail_on_any_metric_nan", False)),
         )
-        model = ModelConfig(**(data.get("model") or {}))
+        model = ModelConfig(**_strip_none_model_path_keys(dict(data.get("model") or {})))
         dataset = DatasetConfig(**(data.get("dataset") or {}))
         out = data.get("output") or {}
         mesh_fn = dict(DEFAULT_MESH_FIELD_NAMES)
@@ -285,7 +300,7 @@ class Config:
         model_list = []
         for m in bench.get("models", []):
             if isinstance(m, dict):
-                model_list.append(ModelConfig(**m))
+                model_list.append(ModelConfig(**_strip_none_model_path_keys(dict(m))))
             else:
                 model_list.append(ModelConfig(**{**base_model, "name": str(m)}))
         dataset_list = []

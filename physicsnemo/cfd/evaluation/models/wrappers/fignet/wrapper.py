@@ -29,7 +29,7 @@ from physicsnemo.models.figconvnet.geometries import GridFeaturesMemoryFormat
 from physicsnemo.cfd.evaluation.common.io import load_global_stats, load_mesh
 from physicsnemo.cfd.evaluation.common.interpolation import interpolate_to_mesh
 from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, predictions_dict
-from physicsnemo.cfd.evaluation.inference.model_registry import (
+from physicsnemo.cfd.evaluation.models.model_registry import (
     CFDModel,
     ModelInput,
     OutputLocation,

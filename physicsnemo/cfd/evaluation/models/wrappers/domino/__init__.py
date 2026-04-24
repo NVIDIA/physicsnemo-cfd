@@ -14,6 +14,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from physicsnemo.cfd.evaluation.inference.wrappers.xmgn.wrapper import XMGNWrapper
+"""DoMINO surface inference: wrapper + colocated helpers."""
 
-__all__ = ["XMGNWrapper"]
+from physicsnemo.cfd.evaluation.models.wrappers.domino.inference import (
+    build_domin_surface_datadict,
+    domino_count_output_features,
+    domino_surface_test_step,
+)
+from physicsnemo.cfd.evaluation.models.wrappers.domino.scaling import load_scaling_factors_tensors
+from physicsnemo.cfd.evaluation.models.wrappers.domino.wrapper import DominoWrapper
+
+__all__ = [
+    "DominoWrapper",
+    "build_domin_surface_datadict",
+    "domino_count_output_features",
+    "domino_surface_test_step",
+    "load_scaling_factors_tensors",
+]

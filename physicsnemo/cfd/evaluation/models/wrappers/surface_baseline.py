@@ -14,21 +14,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Volume baseline wrapper: zeros (or shape-correct) predictions for pipeline tests."""
+"""Surface baseline wrapper: zeros on boundary VTP for pipeline / smoke tests."""
 
 from __future__ import annotations
 
 from typing import Any, ClassVar
 
 import numpy as np
-import pyvista as pv
 
+from physicsnemo.cfd.evaluation.common.io import load_mesh
 from physicsnemo.cfd.evaluation.datasets.schema import (
     CanonicalCase,
     InferenceDomain,
-    build_predictions_dict,
+    predictions_dict,
 )
-from physicsnemo.cfd.evaluation.inference.model_registry import (
+from physicsnemo.cfd.evaluation.models.model_registry import (
     CFDModel,
     ModelInput,
     OutputLocation,
@@ -38,10 +38,15 @@ from physicsnemo.cfd.evaluation.inference.model_registry import (
 from physicsnemo.cfd.evaluation.inference.progress import log_inference
 
 
-class VolumeBaselineWrapper(CFDModel):
-    """No trained weights: zeros for ``pressure`` and ``turbulent_viscosity`` on the volume mesh."""
+class SurfaceBaselineWrapper(CFDModel):
+    """No trained weights: zeros for ``pressure`` and ``shear_stress`` on the surface mesh.
 
-    INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "volume"
+    Uses **cell**-centered counts (same as many surface wrappers here). Pair with
+    ``drivaerml`` default surface branch and ``align_ground_truth_to_model`` / GT
+    location as needed for metrics.
+    """
+
+    INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "surface"
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
     REQUIRES_REMOTE_ASSETS: ClassVar[bool] = False
 
@@ -55,34 +60,31 @@ class VolumeBaselineWrapper(CFDModel):
         stats_path: str,
         device: str,
         **kwargs: Any,
-    ) -> VolumeBaselineWrapper:
+    ) -> SurfaceBaselineWrapper:
         log_inference(
-            "volume_baseline",
+            "surface_baseline",
             "No checkpoint to load (baseline stub).",
         )
         return self
 
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:
         log_inference(
-            "volume_baseline",
+            "surface_baseline",
             f"Preparing inputs (case {case.case_id}; mesh read in decode step).",
         )
         return None
 
     def predict(self, model_input: ModelInput) -> RawOutput:
-        log_inference("volume_baseline", "Running forward pass (no-op for baseline)…")
+        log_inference("surface_baseline", "Running forward pass (no-op for baseline)…")
         return None
 
     def decode_outputs(self, raw_output: RawOutput, case: CanonicalCase) -> Predictions:
         log_inference(
-            "volume_baseline",
-            f"Reading volume mesh and building baseline fields: {case.mesh_path}",
+            "surface_baseline",
+            f"Reading surface mesh and building baseline fields: {case.mesh_path}",
         )
-        mesh = pv.read(case.mesh_path)
-        if hasattr(mesh, "cast_to_unstructured_grid"):
-            mesh = mesh.cast_to_unstructured_grid()
+        mesh = load_mesh(case.mesh_path)
         n = mesh.n_cells if self.output_location == "cell" else mesh.n_points
-        return build_predictions_dict(
-            pressure=np.zeros((n,), dtype=np.float32),
-            turbulent_viscosity=np.zeros((n,), dtype=np.float32),
-        )
+        p = np.zeros((n,), dtype=np.float32)
+        wss = np.zeros((n, 3), dtype=np.float32)
+        return predictions_dict(p, wss)

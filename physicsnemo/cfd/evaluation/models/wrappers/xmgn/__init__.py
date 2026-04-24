@@ -14,6 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from physicsnemo.cfd.evaluation.inference.wrappers.fignet.wrapper import FIGNetWrapper
+from physicsnemo.cfd.evaluation.models.wrappers.xmgn.wrapper import XMGNWrapper
 
-__all__ = ["FIGNetWrapper"]
+__all__ = ["XMGNWrapper"]

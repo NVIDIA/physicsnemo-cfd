@@ -14,9 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Model inference and wrappers."""
+"""Inference CLI and progress helpers.
 
-from physicsnemo.cfd.evaluation.inference.model_registry import (
+Model wrappers and registration live in :mod:`physicsnemo.cfd.evaluation.models`.
+This package re-exports the registry API for backward compatibility.
+"""
+
+from physicsnemo.cfd.evaluation.inference.progress import log_inference
+from physicsnemo.cfd.evaluation.models import (
     CFDModel,
     OutputLocation,
     get_inference_domain_for_model,
@@ -25,12 +30,13 @@ from physicsnemo.cfd.evaluation.inference.model_registry import (
     list_models,
     register_model,
 )
-# Ensure wrappers register themselves
-import physicsnemo.cfd.evaluation.inference.wrappers  # noqa: F401
+
+import physicsnemo.cfd.evaluation.models.wrappers  # noqa: F401
 
 __all__ = [
     "CFDModel",
     "OutputLocation",
+    "log_inference",
     "register_model",
     "get_model_wrapper",
     "get_output_location_for_model",

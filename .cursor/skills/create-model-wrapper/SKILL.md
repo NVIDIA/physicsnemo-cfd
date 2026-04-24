@@ -15,10 +15,10 @@ Guide the user through adding a new CFD model to the benchmarking workflow by wr
 
 Before starting, read these files for context:
 
-- `physicsnemo/cfd/evaluation/inference/model_registry.py` — base class and registry
+- `physicsnemo/cfd/evaluation/models/model_registry.py` — base class and registry
 - `physicsnemo/cfd/evaluation/datasets/schema.py` — `CanonicalCase`, `predictions_dict`, `build_predictions_dict`
-- `physicsnemo/cfd/evaluation/inference/wrappers/surface_baseline.py` — simplest concrete wrapper
-- `physicsnemo/cfd/evaluation/inference/wrappers/__init__.py` — how wrappers are registered
+- `physicsnemo/cfd/evaluation/models/wrappers/surface_baseline.py` — simplest concrete wrapper
+- `physicsnemo/cfd/evaluation/models/wrappers/__init__.py` — how wrappers are registered
 - `physicsnemo/cfd/evaluation/common/io.py` — mesh loading and normalization stats helpers
 - `workflows/benchmarking_workflow/notebooks/adding_a_new_model.ipynb` — end-to-end tutorial
 
@@ -46,7 +46,7 @@ import torch
 import pyvista as pv
 from typing import Any, ClassVar
 
-from physicsnemo.cfd.evaluation.inference.model_registry import (
+from physicsnemo.cfd.evaluation.models.model_registry import (
     CFDModel, register_model, OutputLocation,
 )
 from physicsnemo.cfd.evaluation.datasets.schema import (
@@ -210,10 +210,10 @@ plotter.close()
 
 ## Step 6: Make permanent (optional)
 
-Save the wrapper to `physicsnemo/cfd/evaluation/inference/wrappers/my_model.py` and register in `wrappers/__init__.py`:
+Save the wrapper to `physicsnemo/cfd/evaluation/models/wrappers/my_model.py` and register in `wrappers/__init__.py`:
 
 ```python
-from physicsnemo.cfd.evaluation.inference.wrappers.my_model import MyModelWrapper
+from physicsnemo.cfd.evaluation.models.wrappers.my_model import MyModelWrapper
 register_model("my_model", MyModelWrapper)
 ```
 

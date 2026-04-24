@@ -14,11 +14,20 @@ _DEFAULT_ASSETS: dict[str, "AssetSpec"] = {}
 
 @dataclass(frozen=True)
 class AssetSpec:
-    """Paths relative to :attr:`package_root` passed to :class:`~physicsnemo.cfd.evaluation.assets.package.Package`."""
+    """Paths relative to :attr:`package_root` passed to :class:`~physicsnemo.cfd.evaluation.assets.package.Package`.
+
+    Parameters
+    ----------
+    extra_resolve_relpaths
+        Optional ``(load_kwarg_name, relpath_in_package)`` pairs resolved with the same
+        :class:`~physicsnemo.cfd.evaluation.assets.package.Package` as checkpoint/stats
+        (e.g. ``("domino_config", "…/config.yaml")`` for DoMINO).
+    """
 
     package_root: str
     checkpoint_relpath: str
     stats_relpath: str
+    extra_resolve_relpaths: tuple[tuple[str, str], ...] = ()
 
 
 def register_default_asset(model_name: str, spec: AssetSpec) -> None:

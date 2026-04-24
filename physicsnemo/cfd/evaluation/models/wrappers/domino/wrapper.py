@@ -29,10 +29,10 @@ from physicsnemo.models.domino.model import DoMINO
 
 from physicsnemo.cfd.evaluation.common.checkpoint_compat import trusted_torch_load_context
 from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, predictions_dict
-from physicsnemo.cfd.evaluation.inference.common_wrapper_utils.vtk_datapipe_io import (
+from physicsnemo.cfd.evaluation.models.common_wrapper_utils.vtk_datapipe_io import (
     run_id_from_case_id,
 )
-from physicsnemo.cfd.evaluation.inference.model_registry import (
+from physicsnemo.cfd.evaluation.models.model_registry import (
     CFDModel,
     ModelInput,
     OutputLocation,
@@ -40,7 +40,7 @@ from physicsnemo.cfd.evaluation.inference.model_registry import (
     Predictions,
 )
 from physicsnemo.cfd.evaluation.inference.progress import log_inference
-from physicsnemo.cfd.evaluation.inference.wrappers.domino.inference import (
+from physicsnemo.cfd.evaluation.models.wrappers.domino.inference import (
     build_domin_surface_datadict,
     build_domin_volume_datadict,
     domino_count_output_features,
@@ -48,7 +48,7 @@ from physicsnemo.cfd.evaluation.inference.wrappers.domino.inference import (
     domino_volume_predictions_to_canonical,
     domino_volume_test_step,
 )
-from physicsnemo.cfd.evaluation.inference.wrappers.domino.scaling import load_scaling_factors_tensors
+from physicsnemo.cfd.evaluation.models.wrappers.domino.scaling import load_scaling_factors_tensors
 from physicsnemo.utils import load_checkpoint
 
 

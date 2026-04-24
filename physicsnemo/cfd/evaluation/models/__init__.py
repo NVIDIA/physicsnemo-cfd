@@ -14,22 +14,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Shared helpers for inference model wrappers (VTK/STL, datapipe tensors, etc.)."""
+"""Registered CFD model wrappers and :class:`CFDModel` registry."""
 
-from physicsnemo.cfd.evaluation.inference.common_wrapper_utils.vtk_datapipe_io import (
-    build_surface_data_dict,
-    build_volume_data_dict,
-    read_stl_geometry,
-    read_surface_from_vtp,
-    read_volume_from_vtu,
-    run_id_from_case_id,
+from physicsnemo.cfd.evaluation.models.model_registry import (
+    CFDModel,
+    OutputLocation,
+    get_inference_domain_for_model,
+    get_model_wrapper,
+    get_output_location_for_model,
+    list_models,
+    register_model,
 )
 
+# Ensure wrappers register themselves on import
+import physicsnemo.cfd.evaluation.models.wrappers  # noqa: F401
+
 __all__ = [
-    "build_surface_data_dict",
-    "build_volume_data_dict",
-    "read_stl_geometry",
-    "read_surface_from_vtp",
-    "read_volume_from_vtu",
-    "run_id_from_case_id",
+    "CFDModel",
+    "OutputLocation",
+    "register_model",
+    "get_model_wrapper",
+    "get_output_location_for_model",
+    "get_inference_domain_for_model",
+    "list_models",
 ]
