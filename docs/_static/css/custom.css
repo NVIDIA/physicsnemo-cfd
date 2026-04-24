@@ -1,0 +1,60 @@
+/* NVIDIA PhysicsNeMo green accent overrides for nvidia_sphinx_theme (pydata-based) */
+
+:root {
+    --pst-color-primary: #76b900;
+    --pst-color-primary-highlight: #6dac00;
+}
+
+/* API class/function signature headers */
+html .bd-content dl[class]:not(.option-list):not(.field-list):not(.footnote):not(.glossary):not(.simple) > dt {
+    background-color: #76b900;
+    color: #ffffff;
+    border-top: solid 3px #6dac00;
+    padding: 6px 8px;
+}
+
+html .bd-content dl.function dt.sig-object .sig-prename,
+html .bd-content dl.class dt.sig-object .sig-prename {
+    color: #ffffff !important;
+    font-style: italic !important;
+}
+
+html .bd-content dl.function dt.sig-object .sig-name,
+html .bd-content dl.class dt.sig-object .sig-name {
+    color: #ffffff !important;
+    font-weight: bold !important;
+}
+
+/* Subclass / method / attribute headers in nested blocks */
+html .bd-content dd dl.class dt.sig-object .sig-name,
+html .bd-content dd dl.method dt.sig-object .sig-name,
+html .bd-content dd dl.attribute dt.sig-object .sig-name,
+html .bd-content dd dl.property dt.sig-object .sig-name {
+    color: #555 !important;
+    font-weight: bold !important;
+}
+
+/* Parameter type classifiers */
+.bd-content dl:not(.docutils) dt span.classifier {
+    margin: 0px 1px;
+    color: #76b900;
+    font-style: italic;
+}
+
+/* Links inside signature headers */
+dl:not(.docutils) dt a,
+dl:not(.docutils) dt > a:visited {
+    color: #d8d8d8;
+}
+dl:not(.docutils) dt a:hover,
+dl:not(.docutils) dt > a:visited:hover {
+    color: #7f86eb;
+}
+
+/* Note admonition boxes */
+.bd-content .admonition.note > .admonition-title {
+    background-color: #76b900;
+}
+.bd-content .admonition.note {
+    border-color: #76b900;
+}

@@ -50,6 +50,15 @@ gpu = [
 all = [
     "nvidia-physicsnemo-cfd[dev,gpu,evaluation-hf]",
 ]
+docs = [
+    "sphinx>=6.0.0",
+    "myst-parser>=0.18.0",
+    "sphinx-autodoc-typehints>=1.24.0",
+    "sphinx-design",
+    "sphinx-togglebutton>=0.3.0",
+    "sphinx-favicon>=1.0.1",
+    "nvidia-sphinx-theme",
+]
 
 [tool.setuptools.dynamic]
 version = {attr = "physicsnemo.cfd.__version__"}

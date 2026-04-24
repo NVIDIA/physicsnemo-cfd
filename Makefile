@@ -32,4 +32,9 @@ pytest:
 coverage:
 	echo "Not implemented"
 
+docs:
+	uv pip install -e ".[docs]"
+	$(MAKE) -C docs clean
+	$(MAKE) -C docs html
+
 all-ci: setup-ci black interrogate lint license install pytest doctest coverage
