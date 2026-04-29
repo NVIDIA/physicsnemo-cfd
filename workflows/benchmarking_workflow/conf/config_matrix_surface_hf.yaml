@@ -1,0 +1,80 @@
+# Matrix surface benchmark using HF-hosted checkpoints.
+# Checkpoint and stats paths are omitted — the engine resolves them from the
+# per-model HF package roots in ``builtin_packages.py``.
+#
+# Run:
+#   python main.py --config-name=config_matrix_surface_hf
+#
+# Requires: huggingface-cli login (or HF_TOKEN env var) for private repos.
+
+## TODO: Remove this after testing
+
+defaults:
+  - _self_
+
+hydra:
+  run:
+    dir: ${run.output_dir}
+  output_subdir: hydra
+  job:
+    chdir: false
+
+case_id: [run_1, run_11]
+
+run:
+  device: "cuda:0"
+  output_dir: "benchmark_results_matrix_surface_hf"
+  seed: 42
+  batch_size: 1
+  save_inference_mesh: false
+  metrics_cache:
+    enabled: true
+    path: ${run.output_dir}/metrics_cache
+
+benchmark:
+  mode: matrix
+  models:
+    - name: geotransolver
+      inference_domain: surface
+      kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
+    - name: transolver
+      inference_domain: surface
+      kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
+    - name: xmgn
+      inference_domain: surface
+      kwargs: { "max_points": 250000, "interpolation_k": 4 }
+    - name: fignet
+      inference_domain: surface
+      kwargs: { "max_points": 250000, "interpolation_k": 4 }
+    - name: domino
+      inference_domain: surface
+      kwargs: {}
+  datasets:
+    - name: drivaerml
+      root: "/lustre/fsw/coreai_modulus_cae/datasets/drivaer_aws/drivaer_data_finetune"
+      split: null
+      kwargs: { align_ground_truth_to_model: true, inference_domain: surface }
+  reproducibility:
+    log_env: true
+    save_artifacts: true
+
+output:
+  surface_interpolate_point_to_cell_for_metrics: true
+  surface_metrics_idw_k: 5
+  mesh_field_names:
+    pressure: "pMeanTrimPred"
+    shear_stress: "wallShearStressMeanTrimPred"
+
+metrics:
+  - l2_pressure
+  - l2_shear_stress
+  - l2_pressure_area_weighted
+  - drag
+  - lift
+
+reports:
+  enabled: false
+  save_comparison_meshes: false
+  comparison_mesh_subdir: comparison_meshes
+  visual_case_ids: [run_1, run_11]
+  visuals: []
