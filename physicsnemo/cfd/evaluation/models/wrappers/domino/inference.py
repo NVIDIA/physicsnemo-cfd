@@ -268,8 +268,15 @@ def build_domin_volume_datadict(
     vtu_path: str,
     tag: int,
     device: torch.device,
+    *,
+    reference_mesh: pv.DataSet | None = None,
 ) -> dict[str, torch.Tensor]:
-    """Build batched (leading dim 1) volume ``data_dict`` like domino ``test.py`` (volume-only)."""
+    """Build batched (leading dim 1) volume ``data_dict`` like domino ``test.py`` (volume-only).
+
+    ``reference_mesh`` (e.g. :attr:`CanonicalCase.reference_geometry`) skips a redundant
+    ``pv.read(vtu_path)`` when the adapter already loaded the VTU. The model is evaluated at
+    mesh points (matches the convention of all benchmark volume wrappers and point-located GT).
+    """
     if cfg.model.model_type != "volume":
         raise ValueError(
             f"build_domin_volume_datadict requires model.model_type 'volume', got {cfg.model.model_type!r}"
@@ -359,16 +366,21 @@ def build_domin_volume_datadict(
         np.array(global_params_values_list, dtype=np.float32)
     ).to(device)
 
-    # Evaluate DoMINO at VTU cell centers to match GeoTransolver / Transolver volume wrappers
-    # and the cell-located reference fields shipped with DrivAer-style VTUs (``*MeanTrim`` are
-    # written on cells). The model is coordinate-conditioned, so feeding cell centers produces
-    # predictions sized to ``mesh.n_cells`` directly — no point-to-cell interpolation downstream.
-    volume_mesh_pv = pv.read(vtu_path)
-    if hasattr(volume_mesh_pv, "cast_to_unstructured_grid"):
+    # Evaluate DoMINO at VTU vertex coordinates so produced predictions line up with point-
+    # located GT used for L2 metrics. DoMINO is coordinate-conditioned: feeding ``mesh.points``
+    # → predictions sized to ``mesh.n_points`` (no post-hoc interpolation needed downstream).
+    if reference_mesh is not None:
+        volume_mesh_pv = reference_mesh
+    else:
+        volume_mesh_pv = pv.read(vtu_path)
+    if hasattr(volume_mesh_pv, "cast_to_unstructured_grid") and not isinstance(
+        volume_mesh_pv, pv.UnstructuredGrid
+    ):
         volume_mesh_pv = volume_mesh_pv.cast_to_unstructured_grid()
-    volume_coordinates_np = np.asarray(
-        volume_mesh_pv.cell_centers().points, dtype=np.float32
-    )
+    volume_coordinates_np = np.asarray(volume_mesh_pv.points, dtype=np.float32)
+    # Drop our local handle so the only owner is the caller-managed ``reference_geometry`` (if any);
+    # otherwise the pv.read result becomes unreachable and gets GC'd before the heavy SDF / grid work.
+    del volume_mesh_pv
     # ``volume_fields`` is only used in ``domino_volume_test_step`` to allocate ``prediction_vol``
     # via ``zeros_like``; build a zero placeholder shaped (n_cells, n_features) where
     # ``n_features`` matches the total feature count from ``variables.volume.solution``.

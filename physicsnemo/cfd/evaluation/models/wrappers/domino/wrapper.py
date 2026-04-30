@@ -297,7 +297,12 @@ class DominoWrapper(CFDModel):
 
         if self._inference_mode == "volume":
             data_dict = build_domin_volume_datadict(
-                self._cfg, run_dir, case.mesh_path, tag, dev
+                self._cfg,
+                run_dir,
+                case.mesh_path,
+                tag,
+                dev,
+                reference_mesh=case.reference_geometry,
             )
             return {
                 "data_dict": data_dict,

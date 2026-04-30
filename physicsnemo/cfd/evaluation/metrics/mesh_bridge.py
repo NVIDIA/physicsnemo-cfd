@@ -184,9 +184,13 @@ def build_comparison_mesh(
         is often cell-centered (``pMean`` on cells).
     """
     if mesh_override is not None:
-        mesh = mesh_override.copy(deep=True)
+        # Shallow copy gives independent ``point_data`` / ``cell_data`` containers while sharing
+        # the underlying geometry — attaching GT / pred arrays here does not mutate the caller's
+        # ``reference_geometry``, and it avoids doubling peak RAM on large volume meshes.
+        mesh = mesh_override.copy(deep=False)
     else:
-        mesh = pv.read(case.mesh_path).copy(deep=True)
+        # Fresh read; no second consumer, no need to copy.
+        mesh = pv.read(case.mesh_path)
     gt = case.ground_truth or {}
 
     if case.inference_domain == "surface":

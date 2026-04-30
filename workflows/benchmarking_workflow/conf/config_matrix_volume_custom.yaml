@@ -75,7 +75,8 @@ benchmark:
   datasets:
     - name: drivaerml
       root: "/data/drivaerml"
-      kwargs: { align_ground_truth_to_model: true, inference_domain: volume }
+      # Volume wrappers always evaluate at mesh points (use ``gt_data_type: point`` for volume).
+      kwargs: { gt_data_type: point, inference_domain: volume }
   # When true: writes full os.environ → env.json (may leak HF/AWS tokens). Prefer false for shared runs.
   reproducibility:
     log_env: false

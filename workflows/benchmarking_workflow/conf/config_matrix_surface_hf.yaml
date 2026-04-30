@@ -55,7 +55,7 @@ benchmark:
       kwargs: { "max_points": 250000, "interpolation_k": 4 }
   datasets:
     - name: drivaerml
-      root: "/lustre/fsw/portfolios/coreai/users/ktangsali/drivaerml"
+      root: "/code/drivaerml"
       kwargs: { align_ground_truth_to_model: true, inference_domain: surface }
   # When true: writes full os.environ → env.json (may leak HF/AWS tokens). Prefer false for shared runs.
   reproducibility:

@@ -105,7 +105,12 @@ def read_volume_from_vtu(
     *,
     mesh: pv.DataSet | None = None,
 ) -> dict[str, torch.Tensor]:
-    """Read VTU volume mesh: cell centers and dummy ``volume_fields`` (inference_on_vtk layout).
+    """Read VTU volume mesh: sample at vertex coordinates and emit a zero-initialized
+    ``volume_fields`` placeholder (inference_on_vtk layout).
+
+    Volume models in this benchmark evaluate at mesh points (matches point-located GT in
+    DrivAerML VTUs and the output convention of all volume wrappers); set
+    ``dataset.kwargs.gt_data_type: point`` so the adapter extracts GT at points too.
 
     Parameters
     ----------
@@ -114,12 +119,12 @@ def read_volume_from_vtu(
     """
     if mesh is None:
         mesh = pv.read(vtu_path)
-    volume_mesh_centers = torch.from_numpy(np.asarray(mesh.cell_centers().points)).to(
+    volume_mesh_centers = torch.from_numpy(np.asarray(mesh.points)).to(
         device=device, dtype=torch.float32
     )
-    num_cells = volume_mesh_centers.shape[0]
+    num_samples = volume_mesh_centers.shape[0]
     volume_fields = torch.zeros(
-        (num_cells, n_output_fields), device=device, dtype=torch.float32
+        (num_samples, n_output_fields), device=device, dtype=torch.float32
     )
     return {
         "volume_mesh_centers": volume_mesh_centers,
@@ -167,12 +172,17 @@ def build_volume_data_dict(
 
     STL resolution matches :func:`build_surface_data_dict` — ``drivaer_<run_idx>.stl``,
     ``drivaer_<run_idx>_single_solid.stl``, then ``*_single_solid.stl``, then any ``*.stl``.
+
+    Model evaluation locations are mesh points (see :func:`read_volume_from_vtu`).
     """
     stl_path = _find_stl_in_dir(run_dir, run_idx)
     data_dict = read_stl_geometry(str(stl_path), device)
     data_dict.update(
         read_volume_from_vtu(
-            vtu_path, device, n_output_fields=n_output_fields, mesh=reference_mesh
+            vtu_path,
+            device,
+            n_output_fields=n_output_fields,
+            mesh=reference_mesh,
         )
     )
     data_dict["air_density"] = torch.tensor([air_density], device=device, dtype=torch.float32)

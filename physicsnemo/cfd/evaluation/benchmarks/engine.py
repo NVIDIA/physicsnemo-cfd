@@ -48,6 +48,7 @@ rank 0 only. Inference uses ``str(dm.device)`` per rank when ``DistributedManage
 
 from __future__ import annotations
 
+import gc
 import json
 import math
 import os
@@ -55,6 +56,8 @@ import sys
 import traceback
 from pathlib import Path
 from typing import Any
+
+import torch
 
 
 class BenchmarkPolicyError(RuntimeError):
@@ -410,6 +413,7 @@ def _run_single(
     reports: ReportsConfig | None = None,
     allow_skip_mismatch: bool = False,
     shard: tuple[int, int] | None = None,
+    case_cache: dict[tuple, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Run one model on one dataset: load cases, infer, compute metrics, aggregate means.
@@ -441,6 +445,12 @@ def _run_single(
         If True, return a skipped result when surface/volume domains disagree.
     shard : tuple of (int, int) or None, optional
         If set, ``(rank, world_size)`` — keep only ``cases[rank::world_size]`` for distributed runs.
+    case_cache : dict, optional
+        Shared mutable mapping keyed by ``(dataset_name, dataset_root, resolved_dkwargs, case_id)``.
+        When provided (matrix mode), ``adapter.load_case(cid)`` is called once per unique key
+        across all models in the matrix; subsequent invocations reuse the cached
+        :class:`~physicsnemo.cfd.evaluation.datasets.schema.CanonicalCase` (and its
+        ``reference_geometry``) instead of re-reading the VTU/VTP from disk.
 
     Returns
     -------
@@ -477,6 +487,13 @@ def _run_single(
 
     dkwargs = resolve_dataset_kwargs_for_model(dataset_config.kwargs, model_config.name)
     adapter = adapter_class(root=dataset_config.root, **dkwargs)
+    # Stable key fragment shared by all cases of this (model, dataset) — appended with cid
+    # below to look up / populate the matrix-level case cache.
+    case_cache_dataset_key: tuple[Any, ...] = (
+        dataset_config.name,
+        dataset_config.root,
+        json.dumps(dkwargs, sort_keys=True, default=str),
+    )
     log_dataset(
         dataset_config.name,
         f"Listing cases under root {dataset_config.root!r}…",
@@ -590,11 +607,21 @@ def _run_single(
                 **load_kw,
             )
 
-        log_dataset(
-            dataset_config.name,
-            f"Reading case {cid!r}…",
-        )
-        case = adapter.load_case(cid)
+        case_key = (*case_cache_dataset_key, cid)
+        if case_cache is not None and case_key in case_cache:
+            case = case_cache[case_key]
+            log_dataset(
+                dataset_config.name,
+                f"Reusing cached case {cid!r} (skipping VTU/VTP read).",
+            )
+        else:
+            log_dataset(
+                dataset_config.name,
+                f"Reading case {cid!r}…",
+            )
+            case = adapter.load_case(cid)
+            if case_cache is not None:
+                case_cache[case_key] = case
         seed_inference_rng(run_config.seed, cid)
         model_input = wrapper.prepare_inputs(case)
         raw = wrapper.predict(model_input)
@@ -825,8 +852,18 @@ def run_benchmark(
     else:
         models = config.benchmark.models or [config.model]
         datasets = config.benchmark.datasets or [config.dataset]
+        # Single read per (dataset, dkwargs, case_id) across all models. Volume VTUs are
+        # tens of GiB; without this, each model's adapter re-reads the same file and the
+        # in-flight read coexists in RAM with the previous model's retained ``mesh_ctx``.
+        matrix_case_cache: dict[tuple, Any] = {}
         for m_cfg in models:
             for d_cfg in datasets:
+                # Free residual wrapper / dataset state from the previous matrix iteration so the
+                # next model starts clean (Python refs in mesh_ctx etc. can otherwise hold model
+                # weights and per-case tensors alive on host RAM and the device).
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
                 res, mesh_ctx = _run_single(
                     m_cfg,
                     d_cfg,
@@ -839,9 +876,11 @@ def run_benchmark(
                     reports=config.reports,
                     allow_skip_mismatch=True,
                     shard=shard,
+                    case_cache=matrix_case_cache,
                 )
                 results.append(res)
                 meshes_by_run.append(mesh_ctx)
+        matrix_case_cache.clear()
 
     if dm is not None and dm.world_size > 1 and config.run.distributed:
         results, meshes_by_run = gather_merge_benchmark_outputs(dm, results, meshes_by_run)
