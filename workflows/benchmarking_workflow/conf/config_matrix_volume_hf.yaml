@@ -40,15 +40,15 @@ run:
 benchmark:
   mode: matrix
   models:
-    - name: domino_volume
-      inference_domain: volume
-      kwargs: {}
     - name: geotransolver_volume
       inference_domain: volume
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
     - name: transolver_volume
       inference_domain: volume
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
+    - name: domino_volume
+      inference_domain: volume
+      kwargs: {}
   datasets:
     - name: drivaerml
       root: "/data/drivaerml"
