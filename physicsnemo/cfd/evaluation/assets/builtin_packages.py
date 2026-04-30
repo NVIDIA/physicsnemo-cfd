@@ -22,11 +22,23 @@ from __future__ import annotations
 from physicsnemo.cfd.evaluation.assets.registry import AssetSpec, register_default_asset
 
 # Per-model package roots (``hf://``, ``s3://``, ``file://``, or absolute directory).
-GEOTRANSOLVER_PACKAGE_ROOT = "hf://nvidia/geotransolver_drivaerml@main"
-TRANSOLVER_PACKAGE_ROOT = "hf://nvidia/transolver_drivaerml@main"
-XMGN_PACKAGE_ROOT = "hf://nvidia/xmgn_drivaerml_surface@main"
-FIGNET_PACKAGE_ROOT = "hf://nvidia/figconvnet_drivaerml_surface@main"
-DOMINO_PACKAGE_ROOT = "hf://nvidia/domino_drivaerml@main"
+# Revisions are pinned to specific commits so benchmark runs are reproducible across uploads
+# to ``main``. Update these SHAs deliberately when you intend to upgrade to a newer checkpoint.
+GEOTRANSOLVER_PACKAGE_ROOT = (
+    "hf://nvidia/geotransolver_drivaerml@ddda24db315f6fca8d67c76f3da511ea4d9da86e"
+)
+TRANSOLVER_PACKAGE_ROOT = (
+    "hf://nvidia/transolver_drivaerml@96477aeb86d24c26ccf0797bca1b3851268017d0"
+)
+XMGN_PACKAGE_ROOT = (
+    "hf://nvidia/xmgn_drivaerml_surface@33909568711c0f60bd5fa6f8809e6d51c117f821"
+)
+FIGNET_PACKAGE_ROOT = (
+    "hf://nvidia/figconvnet_drivaerml_surface@49afb15f873c31134896f2e81fa8a3bff9c54790"
+)
+DOMINO_PACKAGE_ROOT = (
+    "hf://nvidia/domino_drivaerml@35b1bf1edafdaa2600d16182825890cd51c07427"
+)
 
 # Backward-compatible alias (GeoTransolver root).
 BENCHMARK_CHECKPOINTS_HF_ROOT = GEOTRANSOLVER_PACKAGE_ROOT
