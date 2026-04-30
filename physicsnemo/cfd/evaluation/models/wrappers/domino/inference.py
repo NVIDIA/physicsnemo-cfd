@@ -658,7 +658,19 @@ def domino_volume_predictions_to_canonical(
     arr = pred.cpu().numpy().astype(np.float32)
 
     canonical_kw: dict[str, np.ndarray] = {}
+    canonical_first_field: dict[str, str] = {}
     extra: dict[str, np.ndarray] = {}
+
+    def _put_canonical(key: str, value: np.ndarray, field_name: str) -> None:
+        if key in canonical_kw:
+            raise ValueError(
+                "two ``variables.volume.solution`` fields map to the same canonical output "
+                f"{key!r}: {canonical_first_field[key]!r} and {field_name!r}. "
+                "Rename fields so substring heuristics classify at most one field per canonical quantity."
+            )
+        canonical_first_field[key] = field_name
+        canonical_kw[key] = value
+
     offset = 0
     for name, typ in cfg.variables.volume.solution.items():
         kind = _volume_solution_field_kind(name, typ)
@@ -666,16 +678,16 @@ def domino_volume_predictions_to_canonical(
             chunk = arr[:, offset : offset + 3]
             offset += 3
             if kind == "velocity_vector":
-                canonical_kw["velocity"] = chunk
+                _put_canonical("velocity", chunk, name)
             else:
                 extra[name] = chunk
         else:
             chunk = arr[:, offset]
             offset += 1
             if kind == "pressure_scalar":
-                canonical_kw["pressure"] = chunk
+                _put_canonical("pressure", chunk, name)
             elif kind == "nut_scalar":
-                canonical_kw["turbulent_viscosity"] = chunk
+                _put_canonical("turbulent_viscosity", chunk, name)
             else:
                 extra[name] = chunk
 
