@@ -16,11 +16,45 @@
 
 """kNN-based interpolation from prediction points to full mesh."""
 
-from typing import Union
+from typing import Final, Union
 
 import numpy as np
 import torch
 from sklearn.neighbors import NearestNeighbors
+
+# Targets that coincide with (or duplicate) a neighbor use that neighbor exactly; tolerant to FP noise.
+_COINCIDENT_ATOL: Final[float] = 1e-12
+
+
+def _combine_field_neighbors_idw(
+    distances: np.ndarray,
+    field_neighbors: np.ndarray,
+    *,
+    epsilon: float = 1e-8,
+    coincident_atol: float = _COINCIDENT_ATOL,
+) -> np.ndarray:
+    """Weighted kNN interpolation from stacked neighbor field values.
+
+    If any neighbor distance is at or below ``coincident_atol``, that target row uses the
+    **first** such neighbor's value exactly (columns are nearest-first from kNN). Otherwise
+    inverse-distance weights ``1/(d+epsilon)`` are normalized per row.
+    """
+    coincident = distances <= coincident_atol
+    has = coincident.any(axis=1)
+    first_j = np.argmax(coincident, axis=1)
+    m_ix = np.where(has)[0]
+
+    weights = 1.0 / (distances + epsilon)
+    norm_w = weights / np.sum(weights, axis=1, keepdims=True)
+    if field_neighbors.ndim == 2:
+        out = np.sum(norm_w * field_neighbors, axis=1)
+        if m_ix.size:
+            out[m_ix] = field_neighbors[m_ix, first_j[m_ix]]
+        return out
+    out = np.sum(norm_w[:, :, np.newaxis] * field_neighbors, axis=1)
+    if m_ix.size:
+        out[m_ix] = field_neighbors[m_ix, first_j[m_ix]]
+    return out
 
 
 def interpolate_to_mesh(
@@ -31,6 +65,10 @@ def interpolate_to_mesh(
     k: int = 4,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Interpolate pressure and WSS from prediction points to full mesh via weighted kNN.
+
+    When ``k>1``, neighbors are inverse-distance weighted. If a target lies within
+    ``1e-12`` of a source point (typical duplicate / exact hit), that neighbor's value
+    is used exactly instead of relying on ``epsilon`` in ``1/(d+epsilon)``.
 
     Args:
         mesh_points: Target coordinates [M, 3].
@@ -64,11 +102,6 @@ def interpolate_to_mesh(
         p_mesh = pressure_pred[indices]
         wss_mesh = wss_pred[indices]
     else:
-        epsilon = 1e-8
-        weights = 1.0 / (distances + epsilon)
-        norm_weights = weights / np.sum(weights, axis=1, keepdims=True)
-        p_mesh = np.sum(norm_weights * pressure_pred[indices], axis=1)
-        wss_mesh = np.sum(
-            norm_weights[:, :, np.newaxis] * wss_pred[indices], axis=1
-        )
+        p_mesh = _combine_field_neighbors_idw(distances, pressure_pred[indices])
+        wss_mesh = _combine_field_neighbors_idw(distances, wss_pred[indices])
     return p_mesh.astype(np.float32), wss_mesh.astype(np.float32)

@@ -1051,17 +1051,102 @@ def get_visible_point_indices(
     return idxs
 
 
-def plot_projections_hexbin(meshes, field, direction, grid_size=50):
-    """Helper function to plot HexBin plots across multiple meshes"""
+def _parse_hexbin_direction(direction: str) -> tuple[str, bool]:
+    """Return (canonical_plane, has_leading_minus) with plane one of XY, YZ, ZX, XZ."""
+    s = direction.strip()
+    negative = False
+    if s.startswith("-") or s.startswith("−"):  # ASCII and unicode minus (YAML / copy-paste)
+        negative = True
+        s = s[1:].strip()
+    plane = "".join(s.split()).upper()
+    valid = frozenset(("XY", "YZ", "ZX", "XZ"))
+    if plane not in valid:
+        raise ValueError(
+            f"Unknown plot_projections_hexbin direction {direction!r}; "
+            f"expected one of {sorted(valid)}, optional leading '-' for axis display flip."
+        )
+    return plane, negative
 
-    # Aggregate results
+
+def _world_indices_for_plane(plane: str) -> tuple[int, int]:
+    """Map world X,Y,Z column indices onto matplotlib horizontal vs vertical axes."""
+    # Horizontal then vertical coordinate (matches deprecated bench_example projection stacking).
+    if plane == "XY":
+        return 0, 1
+    if plane == "YZ":
+        return 1, 2
+    if plane == "ZX":
+        return 2, 0
+    # XZ: same geometric plane as ZX with horizontal=X, vertical=Z (swap order from ZX listing).
+    return 0, 2
+
+
+def _matplotlib_inverts(plane: str, negative_prefix: bool) -> tuple[bool, bool]:
+    """Legacy mirror rules when direction has a leading '-' (matplotlib axis inversion)."""
+    if not negative_prefix:
+        return False, False
+    if plane in ("YZ", "ZX", "XZ"):
+        return False, True
+    if plane == "XY":
+        return True, False
+    return False, False
+
+
+def _axes_labels_world(plane: str) -> tuple[str, str]:
+    if plane == "XY":
+        return "X", "Y"
+    if plane == "YZ":
+        return "Y", "Z"
+    if plane == "ZX":
+        return "Z", "X"
+    return "X", "Z"
+
+
+def plot_projections_hexbin(meshes, field, direction, grid_size=50, *, coordinate_layout="world"):
+    """Aggregate HexBin plots (mean | std dev) across meshes for a planar projection.
+
+    Parameters
+    ----------
+    meshes : sequence of pyvista DataSet
+    field : str
+        Point-array name plotted as hexbin intensities (``mean`` / ``std``).
+    direction : str
+        Viewing plane using world axes: ``XY``, ``YZ``, ``ZX``, or ``XZ``, optionally prefixed
+        with ``-`` to mirror the plot (matplotlib invert left/right vs up/down convention matches
+        the historical bench presets).
+    grid_size : int
+        Passed to matplotlib ``hexbin``.
+    coordinate_layout : {"world", "embedding"}
+        ``world`` (default): take the two planar coordinates from each mesh vertex using
+        ``direction`` — use this when ``mesh.points`` are full Cartesian (x,y,z) columns.
+
+        ``embedding``: use mesh columns ``0`` and ``1`` as the already-projected planar axes with
+        the third coordinate unused (VTK from ``deprecated/bench_example`` projections). In that
+        mode ``direction`` selects axis labels / mirroring only, not numeric column slicing.
+    """
+    plane, neg = _parse_hexbin_direction(direction)
+    invert_xaxis, invert_yaxis = _matplotlib_inverts(plane, neg)
+
+    xh, yv = _axes_labels_world(plane)
+
+    # Aggregate points and field scalars along the projected plane
     x = []
     y = []
     field_arr = []
 
     for mesh in meshes:
-        x.append(mesh.points[:, 0])
-        y.append(mesh.points[:, 1])
+        pts = mesh.points
+        if coordinate_layout == "embedding":
+            x.append(pts[:, 0])
+            y.append(pts[:, 1])
+        elif coordinate_layout == "world":
+            ix, iy = _world_indices_for_plane(plane)
+            x.append(pts[:, ix])
+            y.append(pts[:, iy])
+        else:
+            raise ValueError(
+                f"coordinate_layout must be 'world' or 'embedding'; got {coordinate_layout!r}"
+            )
         field_arr.append(mesh.point_data[field])
 
     x = np.concatenate(x)
@@ -1077,10 +1162,12 @@ def plot_projections_hexbin(meshes, field, direction, grid_size=50):
     cb = fig.colorbar(hb, ax=ax)
     cb.set_label("Mean")
     ax.set_aspect("equal", adjustable="datalim")
+    ax.set_xlabel(xh)
+    ax.set_ylabel(yv)
 
-    if direction in ["-YZ", "-ZX"]:
+    if invert_yaxis:
         ax.invert_yaxis()
-    elif direction in ["-XY"]:
+    if invert_xaxis:
         ax.invert_xaxis()
 
     ax = axs[1]
@@ -1090,10 +1177,12 @@ def plot_projections_hexbin(meshes, field, direction, grid_size=50):
     cb = fig.colorbar(hb, ax=ax)
     cb.set_label("StdDev")
     ax.set_aspect("equal", adjustable="datalim")
+    ax.set_xlabel(xh)
+    ax.set_ylabel(yv)
 
-    if direction in ["-YZ", "-ZX"]:
+    if invert_yaxis:
         ax.invert_yaxis()
-    elif direction in ["-XY"]:
+    if invert_xaxis:
         ax.invert_xaxis()
 
     plt.tight_layout()

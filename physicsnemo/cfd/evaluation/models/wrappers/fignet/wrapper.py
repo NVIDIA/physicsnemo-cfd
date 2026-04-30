@@ -26,9 +26,11 @@ from physicsnemo.models.figconvnet import FIGConvUNet
 from physicsnemo.models.figconvnet.components.reductions import REDUCTION_TYPES
 from physicsnemo.models.figconvnet.geometries import GridFeaturesMemoryFormat
 
-from physicsnemo.cfd.evaluation.common.io import load_global_stats, load_mesh
+from physicsnemo.cfd.evaluation.common.checkpoint_compat import trusted_torch_load_context
+from physicsnemo.cfd.evaluation.common.io import load_global_stats, load_surface_mesh
 from physicsnemo.cfd.evaluation.common.interpolation import interpolate_to_mesh
-from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, predictions_dict
+from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, build_predictions_dict
+from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
 from physicsnemo.cfd.evaluation.models.model_registry import (
     CFDModel,
     ModelInput,
@@ -37,6 +39,18 @@ from physicsnemo.cfd.evaluation.models.model_registry import (
     Predictions,
 )
 from physicsnemo.cfd.evaluation.inference.progress import log_inference
+
+_DEFAULT_MLP_CHANNELS = (512, 512)
+
+_DEFAULT_RESOLUTION_MEMORY_FORMAT_PAIRS = (
+    (GridFeaturesMemoryFormat.b_xc_y_z, (2, 128, 128)),
+    (GridFeaturesMemoryFormat.b_yc_x_z, (128, 2, 128)),
+    (GridFeaturesMemoryFormat.b_zc_x_y, (128, 128, 2)),
+)
+
+_DEFAULT_COMMUNICATION_TYPES = ("sum",)
+
+_DEFAULT_REDUCTIONS = ("mean",)
 
 
 class FIGConvUNetDrivAerML(FIGConvUNet):
@@ -51,28 +65,34 @@ class FIGConvUNetDrivAerML(FIGConvUNet):
         num_levels: int = 3,
         num_down_blocks: Union[int, List[int]] = 1,
         num_up_blocks: Union[int, List[int]] = 1,
-        mlp_channels: List[int] = [512, 512],
+        mlp_channels: Optional[List[int]] = None,
         aabb_max: Tuple[float, float, float] = (2.5, 1.5, 1.0),
         aabb_min: Tuple[float, float, float] = (-2.5, -1.5, -1.0),
         voxel_size: Optional[float] = None,
-        resolution_memory_format_pairs: List[
-            Tuple[GridFeaturesMemoryFormat, Tuple[int, int, int]]
-        ] = [
-            (GridFeaturesMemoryFormat.b_xc_y_z, (2, 128, 128)),
-            (GridFeaturesMemoryFormat.b_yc_x_z, (128, 2, 128)),
-            (GridFeaturesMemoryFormat.b_zc_x_y, (128, 128, 2)),
-        ],
+        resolution_memory_format_pairs: Optional[
+            List[Tuple[GridFeaturesMemoryFormat, Tuple[int, int, int]]]
+        ] = None,
         use_rel_pos: bool = True,
         use_rel_pos_encode: bool = True,
         pos_encode_dim: int = 32,
-        communication_types: List[Literal["mul", "sum"]] = ["sum"],
+        communication_types: Optional[List[Literal["mul", "sum"]]] = None,
         to_point_sample_method: Literal["graphconv", "interp"] = "graphconv",
         neighbor_search_type: Literal["knn", "radius"] = "knn",
         knn_k: int = 16,
-        reductions: List[REDUCTION_TYPES] = ["mean"],
+        reductions: Optional[List[REDUCTION_TYPES]] = None,
         pooling_type: Literal["attention", "max", "mean"] = "max",
         pooling_layers: Optional[List[int]] = None,
     ):
+        if mlp_channels is None:
+            mlp_channels = list(_DEFAULT_MLP_CHANNELS)
+        if resolution_memory_format_pairs is None:
+            resolution_memory_format_pairs = [
+                (mf, dims) for mf, dims in _DEFAULT_RESOLUTION_MEMORY_FORMAT_PAIRS
+            ]
+        if communication_types is None:
+            communication_types = list(_DEFAULT_COMMUNICATION_TYPES)
+        if reductions is None:
+            reductions = list(_DEFAULT_REDUCTIONS)
         super().__init__(
             in_channels=hidden_channels[0],
             out_channels=out_channels,
@@ -150,10 +170,9 @@ class FIGNetWrapper(CFDModel):
             ],
             use_rel_pos_encode=True,
         )
-        checkpoint = torch.load(checkpoint_path, weights_only=False)
-        # HF-hosted FiGNet checkpoints ship the raw state dict (no ``"model"`` wrapper key);
-        # local training checkpoints follow the same flat layout post-rebuild.
-        model.load_state_dict(checkpoint, strict=False)
+        with trusted_torch_load_context():
+            checkpoint = torch.load(checkpoint_path, weights_only=False)
+            model.load_state_dict(checkpoint["model"], strict=True)
         model = model.to(device)
         model.eval()
         self._model = model
@@ -167,7 +186,7 @@ class FIGNetWrapper(CFDModel):
             "fignet",
             f"Reading mesh (case {case.case_id}): {case.mesh_path}",
         )
-        mesh = load_mesh(case.mesh_path)
+        mesh = load_surface_mesh(case.mesh_path)
         mesh = mesh.compute_normals()
         mesh = mesh.compute_cell_sizes()
         coords = torch.from_numpy(mesh.cell_centers().points).to(
@@ -181,8 +200,6 @@ class FIGNetWrapper(CFDModel):
         vertices = (coords - self._stats["mean"]["coordinates"]) / self._stats["std"][
             "coordinates"
         ]
-        self._last_mesh = mesh
-        self._last_coords_denorm = coords
         return {
             "mesh": mesh,
             "vertices": vertices,
@@ -194,41 +211,33 @@ class FIGNetWrapper(CFDModel):
             raise RuntimeError("FIGNetWrapper: call load() first")
         log_inference("fignet", "Running forward pass (predicting fields)…")
         with torch.inference_mode():
-            pred, _ = self._model(model_input["vertices"])
+            with cuda_bf16_autocast(self._device):
+                pred, _ = self._model(model_input["vertices"])
         return pred
 
-    def decode_outputs(self, raw_output: RawOutput, case: CanonicalCase) -> Predictions:
+    def decode_outputs(
+        self,
+        raw_output: RawOutput,
+        case: CanonicalCase,
+        model_input: Optional[ModelInput] = None,
+    ) -> Predictions:
         if self._stats is None:
             raise RuntimeError("FIGNetWrapper: call load() first")
         log_inference(
             "fignet",
             "Decoding outputs (denormalize + interpolate to mesh cells)…",
         )
-        # model_input was prepare_inputs output; we need mesh and coords_denorm from there.
-        # We don't have it in decode_outputs - we only have case. So we must either pass
-        # model_input through to decode_outputs or re-load mesh in decode_outputs.
-        # Plan says: decode_outputs(raw_output, case). So we need mesh in case or re-load.
-        # CanonicalCase has mesh_path, not mesh object. So we re-load mesh here to get
-        # cell centers for interpolation target. We have raw_output (pred) and stats;
-        # we need pred_coords (where pred was computed) - that's not in case.
-        # So the design has a gap: decode_outputs doesn't receive the model_input that
-        # had coords_denorm. Options: (1) Change API to decode_outputs(raw_output, case, model_input)
-        # or (2) Have prepare_inputs return a ModelInput that we pass to predict and then
-        # the engine passes the same model_input to decode_outputs. Plan says decode_outputs(raw_output, case).
-        # So we need to stash coords_denorm and mesh somewhere. Easiest: have decode_outputs
-        # accept optional model_input (for interpolation). Or stash in raw_output by
-        # having predict return a dict { "pred": tensor, "model_input": model_input }.
-        # That would require the engine to pass model_input to decode_outputs. Let me
-        # re-read the plan. "decode_outputs(raw_output: RawOutput, case: CanonicalCase) -> Predictions"
-        # So we can't change the signature. Then the only way is to re-run prepare_inputs in
-        # decode_outputs to get mesh and coords_denorm again (wasteful but correct), or
-        # store the last model_input on self (stateful). I'll store last model_input on self
-        # so decode_outputs can use it (we're single-threaded per model).
-        mesh = getattr(self, "_last_mesh", None)
-        coords_denorm = getattr(self, "_last_coords_denorm", None)
+        mesh = model_input.get("mesh") if model_input else None
+        coords_denorm = model_input.get("coords_denorm") if model_input else None
+
+        if self._max_points is not None and (mesh is None or coords_denorm is None):
+            raise ValueError(
+                "FIGNetWrapper.decode_outputs requires the same model_input dict returned by prepare_inputs "
+                "(keys 'mesh', 'coords_denorm') when max_points is set; subsampled field length does not "
+                "match reloading the surface mesh alone."
+            )
         if mesh is None or coords_denorm is None:
-            # Fallback: reload from case (will not have subsampled coords; wrong for subsampled run)
-            mesh = load_mesh(case.mesh_path)
+            mesh = load_surface_mesh(case.mesh_path)
             mesh = mesh.compute_normals()
             mesh = mesh.compute_cell_sizes()
             coords_denorm = torch.from_numpy(mesh.cell_centers().points).to(
@@ -245,4 +254,4 @@ class FIGNetWrapper(CFDModel):
             wss[0],
             k=self._interpolation_k,
         )
-        return predictions_dict(p_mesh, wss_mesh)
+        return build_predictions_dict(pressure=p_mesh, shear_stress=wss_mesh)

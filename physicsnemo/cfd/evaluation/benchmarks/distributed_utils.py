@@ -23,6 +23,7 @@ from typing import Any
 
 import torch.distributed as dist
 
+from physicsnemo.cfd.evaluation.common.natural_sort import natural_sort_key
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 
 
@@ -67,7 +68,7 @@ def merge_benchmark_result_shards(shards: list[dict[str, Any]]) -> dict[str, Any
     Combine per-rank benchmark ``dict``s for the same model×dataset into one result.
 
     Recomputes aggregate ``metrics`` from the union of ``per_case`` rows (mean over cases,
-    ignoring NaNs per key). Sorts ``per_case`` by ``case_id``.
+    ignoring NaNs per key). Sorts ``per_case`` by ``case_id`` (natural / alphanumeric).
     """
     if not shards:
         return {}
@@ -87,7 +88,7 @@ def merge_benchmark_result_shards(shards: list[dict[str, Any]]) -> dict[str, Any
     per_case: list[dict[str, Any]] = []
     for s in active:
         per_case.extend(s.get("per_case") or [])
-    per_case.sort(key=lambda r: str(r.get("case_id", "")))
+    per_case.sort(key=lambda r: natural_sort_key(r.get("case_id")))
     all_metric_values: dict[str, list[float]] = {}
     for row in per_case:
         for k, v in (row.get("metrics") or {}).items():
@@ -96,11 +97,16 @@ def merge_benchmark_result_shards(shards: list[dict[str, Any]]) -> dict[str, Any
     for mname, values in all_metric_values.items():
         valid = [v for v in values if v == v]
         metrics_summary[mname] = sum(valid) / len(valid) if valid else float("nan")
-    case_ids = sorted({str(r["case_id"]) for r in per_case if r.get("case_id") is not None})
+    case_ids_raw = [
+        str(r["case_id"])
+        for r in per_case
+        if r.get("case_id") is not None
+    ]
+    case_ids_no_dup = sorted(set(case_ids_raw), key=natural_sort_key)
     return {
         "model": model,
         "dataset": dataset,
-        "cases": case_ids,
+        "cases": case_ids_no_dup,
         "metrics": metrics_summary,
         "per_case": per_case,
     }

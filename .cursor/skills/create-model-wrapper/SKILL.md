@@ -16,7 +16,7 @@ Guide the user through adding a new CFD model to the benchmarking workflow by wr
 Before starting, read these files for context:
 
 - `physicsnemo/cfd/evaluation/models/model_registry.py` — base class and registry
-- `physicsnemo/cfd/evaluation/datasets/schema.py` — `CanonicalCase`, `predictions_dict`, `build_predictions_dict`
+- `physicsnemo/cfd/evaluation/datasets/schema.py` — `CanonicalCase`, `build_predictions_dict`
 - `physicsnemo/cfd/evaluation/models/wrappers/surface_baseline.py` — simplest concrete wrapper
 - `physicsnemo/cfd/evaluation/models/wrappers/__init__.py` — how wrappers are registered
 - `physicsnemo/cfd/evaluation/common/io.py` — mesh loading and normalization stats helpers
@@ -34,9 +34,9 @@ Every wrapper must set two class variables and implement four methods:
 | `load(checkpoint_path, stats_path, device, **kwargs)` | Load weights and stats; return `self` |
 | `prepare_inputs(case: CanonicalCase)` | Convert canonical case into model-specific tensors/graphs |
 | `predict(model_input)` | Run forward pass; return raw output |
-| `decode_outputs(raw_output, case)` | Denormalize and map to canonical predictions dict |
+| `decode_outputs(raw_output, case, model_input=None)` | Denormalize and map to canonical predictions dict |
 
-The engine calls `load` once, then `prepare_inputs → predict → decode_outputs` per case.
+The engine calls `load` once, then `prepare_inputs → predict → decode_outputs(raw, case, model_input)` per case (`model_input` is the dict from `prepare_inputs`; use when decode must mirror inference geometry).
 
 ## Step 1: Write the wrapper class
 
@@ -50,7 +50,7 @@ from physicsnemo.cfd.evaluation.models.model_registry import (
     CFDModel, register_model, OutputLocation,
 )
 from physicsnemo.cfd.evaluation.datasets.schema import (
-    CanonicalCase, InferenceDomain, predictions_dict,
+    CanonicalCase, InferenceDomain, build_predictions_dict,
 )
 from physicsnemo.cfd.evaluation.inference.progress import log_inference
 
@@ -92,17 +92,12 @@ class MyModelWrapper(CFDModel):
             raw_output = self._model(model_input)
         return raw_output
 
-    def decode_outputs(self, raw_output, case):
-        # Denormalize if needed, then return canonical dict
-        # For surface models:
-        return predictions_dict(
+    def decode_outputs(self, raw_output, case, model_input=None):
+        # Denormalize if needed. Surface: pressure + shear_stress; volume: add velocity, turbulent_viscosity.
+        return build_predictions_dict(
             pressure=raw_output["pressure"].cpu().numpy(),
             shear_stress=raw_output["shear_stress"].cpu().numpy(),
         )
-        # For volume models, use build_predictions_dict:
-        # return build_predictions_dict(
-        #     pressure=..., velocity=..., turbulent_viscosity=...
-        # )
 ```
 
 ### Key implementation considerations
@@ -151,7 +146,7 @@ wrapper = MyModelWrapper()
 wrapper.load(checkpoint_path="checkpoint.pt", stats_path="global_stats.json", device="cuda:0")
 model_input = wrapper.prepare_inputs(case)
 raw_output = wrapper.predict(model_input)
-predictions = wrapper.decode_outputs(raw_output, case)
+predictions = wrapper.decode_outputs(raw_output, case, model_input)
 
 assert "pressure" in predictions
 assert predictions["pressure"].shape[0] > 0

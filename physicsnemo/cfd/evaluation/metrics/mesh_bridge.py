@@ -18,18 +18,30 @@ from physicsnemo.cfd.postprocessing_tools.interpolation.interpolate_mesh_to_pc i
 )
 
 
-def _infer_surface_preference(mesh: pv.PolyData, gt: dict[str, Any], mesh_type: str) -> str:
+def _infer_surface_preference(
+    mesh: pv.PolyData,
+    gt: dict[str, Any],
+    mesh_type: str,
+    predictions: dict[str, Any] | None,
+) -> str:
     """
     Choose point vs cell attachment for surface fields.
 
-    Prefer ``mesh_type`` from the dataset adapter, but validate against array length:
-    ``point_data_to_cell_data`` is *not* applied here, so ``mesh.n_cells`` / ``mesh.n_points``
-    match the VTK used when GT was extracted. If ``mesh_type`` disagrees with GT length
-    (e.g. point-sized GT but a cell model was registered), infer from topology.
+    Prefer locating arrays in ``ground_truth``, then ``predictions``, and validate against
+    ``mesh.n_points`` / ``mesh.n_cells``.
     """
-    ref = gt.get("pressure")
-    if ref is None:
-        ref = gt.get("shear_stress")
+
+    preds = predictions or {}
+
+    def _collect_ref_from(*sources: dict[str, Any]) -> Any:
+        for d in sources:
+            for key in ("pressure", "shear_stress"):
+                ref = d.get(key)
+                if ref is not None:
+                    return ref
+        return None
+
+    ref = _collect_ref_from(gt, preds)
     if ref is not None:
         a = np.asarray(ref)
         n = int(a.shape[0]) if a.ndim >= 2 else int(a.size)
@@ -38,11 +50,28 @@ def _infer_surface_preference(mesh: pv.PolyData, gt: dict[str, Any], mesh_type: 
                 return "point"
             if n == mesh.n_cells:
                 return "cell"
-        elif mesh_type in ("point", "cell"):
+            raise ValueError(
+                f"surface field sample count ({n}) matches neither mesh.n_points ({mesh.n_points}) "
+                f"nor mesh.n_cells ({mesh.n_cells}); check GT / prediction dof layout."
+            )
+        # Ambiguous topology; trust adapter only when dof is explicitly given.
+        if mesh_type in ("point", "cell"):
             return mesh_type
+        raise ValueError(
+            "surface mesh has identical point/cell topology counts while mesh_type is 'unknown'; "
+            "cannot infer dof. Set CanonicalCase.mesh_type to 'point' or 'cell', or gt_data_type "
+            "so extracted GT includes a dof location."
+        )
+
+    # No usable pressure/shear tensors in GT or predictions.
     if mesh_type in ("point", "cell"):
         return mesh_type
-    return "cell"
+    raise ValueError(
+        "Cannot infer surface point vs cell dof: mesh_type is 'unknown' while ground_truth has "
+        "no usable pressure/shear arrays and predictions lack those tensors. "
+        "Provide GT on point or cell dofs, predictions with field arrays, "
+        "or adapter mesh_type 'point' / 'cell'."
+    )
 
 
 def _infer_volume_preference(
@@ -142,11 +171,13 @@ def build_comparison_mesh(
     -------
     mesh
         PyVista dataset.
-    dtype
+        dtype
         ``\"cell\"`` or ``\"point\"`` for ``compute_l2_errors`` / ``compute_drag_and_lift``.
-        For **surface**, inferred from GT array length vs ``mesh.n_points`` / ``mesh.n_cells`` when
-        unambiguous, otherwise ``case.mesh_type`` (default ``cell``). If
-        ``output.surface_interpolate_point_to_cell_for_metrics`` is true and the mesh used point
+        For **surface**, inferred from GT and/or prediction array lengths vs ``mesh.n_points`` /
+        ``mesh.n_cells`` when unambiguous. If :attr:`~physicsnemo.cfd.evaluation.datasets.schema.CanonicalCase.mesh_type`
+        is ``\"unknown\"`` and fields are missing, an error is raised instead of defaulting to cell.
+        For **volume**, comparison meshes use **point** dofs (typical unstructured volume layout).
+        If ``output.surface_interpolate_point_to_cell_for_metrics`` is true and the mesh used point
         dofs, fields are IDW-interpolated to cell centers and the returned dtype is ``\"cell\"``.
         For **volume**, inferred the same way from GT / predictions vs topology; VTU reference data
         is often cell-centered (``pMean`` on cells).
@@ -165,7 +196,7 @@ def build_comparison_mesh(
             mesh = mesh.extract_surface()
         # Do not call point_data_to_cell_data here: it can change n_cells vs the mesh the
         # adapter used when extracting GT, causing "expected N cell values, got ..." mismatches.
-        preference = _infer_surface_preference(mesh, gt, case.mesh_type)
+        preference = _infer_surface_preference(mesh, gt, case.mesh_type, predictions)
     elif case.inference_domain == "volume":
         preference = _infer_volume_preference(mesh, gt, predictions, case.mesh_type)
         gt_map = output.ground_truth_volume_mesh_field_names
@@ -205,3 +236,23 @@ def build_comparison_mesh(
         preference = "cell"
 
     return mesh, preference
+
+
+def resolve_comparison_mesh_for_metric(
+    predictions: dict[str, Any],
+    *,
+    case: Any,
+    comparison_mesh: Any,
+    metric_dtype: str | None,
+    output: Any,
+) -> tuple[Any, str] | tuple[None, None]:
+    """Reuse the benchmark engine's comparison mesh or build one from ``case`` + ``output``.
+
+    When the caller already merged mesh + dof label (benchmark path), forwards
+    ``(comparison_mesh, metric_dtype)``. Otherwise calls :func:`build_comparison_mesh`.
+    """
+    if comparison_mesh is not None and metric_dtype is not None:
+        return comparison_mesh, metric_dtype
+    if case is not None and output is not None:
+        return build_comparison_mesh(case, predictions, output)
+    return None, None

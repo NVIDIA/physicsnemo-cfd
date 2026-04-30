@@ -16,6 +16,7 @@
 
 """Load reference fields from VTK: surface VTP (pressure / WSS) and volume VTU (pressure / velocity / νₜ)."""
 
+import logging
 from typing import Literal
 
 import numpy as np
@@ -58,6 +59,8 @@ DEFAULT_VOLUME_VELOCITY_NAMES = (
 )
 # Volume pressure uses the same canonical key ``pressure`` as surface (domain disambiguates).
 DEFAULT_VOLUME_PRESSURE_NAMES = DEFAULT_PRESSURE_NAMES
+
+logger = logging.getLogger(__name__)
 
 
 def _find_array(
@@ -146,7 +149,8 @@ def resample_cell_ground_truth_to_points(
 
     try:
         m_pt = m.cell_data_to_point_data(pass_cell_data=True)
-    except Exception:
+    except TypeError:
+        # Older PyVista or builds where ``pass_cell_data`` is not a supported keyword.
         m_pt = m.cell_data_to_point_data()
 
     out: dict[str, np.ndarray] = {}
@@ -186,8 +190,8 @@ def extract_pressure_wss_from_mesh(
 
     ``data_type``:
 
-    - ``auto``: tries **cell** first, then **point** (legacy behavior).
-    - ``cell``: cell first, then point (same as today for two-pass).
+    - ``auto`` / ``cell``: try **cell** first, then **point** (same order; ``cell`` is a
+      named alias for callers who want to align vocabulary with volume extraction).
     - ``point``: **point** first. If only cell reference fields exist, they are resampled to
       points (``cell_data_to_point_data``) so array lengths match ``mesh.n_points`` — required
       for point-based models vs metrics.
@@ -196,33 +200,35 @@ def extract_pressure_wss_from_mesh(
         (ground_truth_dict_or_none, location_or_none). ``location`` is ``"point"`` or
         ``"cell"`` describing where the returned arrays live (after any resampling).
     """
-    if data_type == "point":
-        pt = _extract_fields_at_location(mesh, "point", pressure_names, shear_names)
-        if pt:
-            return (pt, "point")
-        cell_gt = _extract_fields_at_location(mesh, "cell", pressure_names, shear_names)
-        if cell_gt:
-            try:
-                pt_resampled = resample_cell_ground_truth_to_points(mesh, cell_gt)
-            except Exception:
-                pt_resampled = {}
-            if pt_resampled:
-                return (pt_resampled, "point")
-        return (None, None)
-
-    if data_type == "cell":
-        order: list[Literal["cell", "point"]] = ["cell", "point"]
-    else:
-        order = ["cell", "point"]
-
-    for loc_name in order:
-        out = _extract_fields_at_location(
-            mesh, loc_name, pressure_names, shear_names
-        )
-        if out:
-            return (out, loc_name)
-
-    return (None, None)
+    match data_type:
+        case "point":
+            pt = _extract_fields_at_location(mesh, "point", pressure_names, shear_names)
+            if pt:
+                return (pt, "point")
+            cell_gt = _extract_fields_at_location(mesh, "cell", pressure_names, shear_names)
+            if cell_gt:
+                try:
+                    pt_resampled = resample_cell_ground_truth_to_points(mesh, cell_gt)
+                except (ValueError, TypeError, OSError, RuntimeError) as exc:
+                    logger.warning(
+                        "Cell-only ground truth resampling to points failed (%s); "
+                        "surface GT unavailable for point alignment.",
+                        type(exc).__name__,
+                        exc_info=True,
+                    )
+                    return (None, None)
+                if pt_resampled:
+                    return (pt_resampled, "point")
+            return (None, None)
+        case "auto" | "cell":
+            order: list[Literal["cell", "point"]] = ["cell", "point"]
+            for loc_name in order:
+                out = _extract_fields_at_location(
+                    mesh, loc_name, pressure_names, shear_names
+                )
+                if out:
+                    return (out, loc_name)
+            return (None, None)
 
 
 def _scalar_field_to_1d(arr: np.ndarray, n: int) -> np.ndarray | None:
@@ -287,6 +293,10 @@ def extract_volume_fields_from_mesh(
     the inference domain disambiguates surface vs volume).
 
     Uses defaults when a name tuple is ``None``. Pass ``()`` to skip reading that field group.
+
+    When ``data_type`` is ``"auto"`` or ``"point"``, **point** is probed before **cell**
+    (typical VTU nodal dofs). ``"point"`` is a named alias for the same order. Use
+    ``gt_data_type: cell`` to force cell-centered lookup first.
     """
     p_names = (
         DEFAULT_VOLUME_PRESSURE_NAMES if pressure_names is None else pressure_names
@@ -298,12 +308,11 @@ def extract_volume_fields_from_mesh(
     )
     vel_names = DEFAULT_VOLUME_VELOCITY_NAMES if velocity_names is None else velocity_names
 
-    if data_type == "point":
-        order: list[Literal["cell", "point"]] = ["point", "cell"]
-    elif data_type == "cell":
-        order = ["cell", "point"]
-    else:
-        order = ["cell", "point"]
+    match data_type:
+        case "cell":
+            order: list[Literal["cell", "point"]] = ["cell", "point"]
+        case "auto" | "point":
+            order = ["point", "cell"]
 
     for loc_name in order:
         got = _extract_volume_at_location(mesh, loc_name, nut_names, vel_names, p_names)

@@ -175,14 +175,10 @@ Stubs that do not load weights (e.g. **`surface_baseline`**, **`volume_baseline`
 Optional Hub analytics: the engine performs a best-effort resolve of **`config.json`** inside HF-backed packages (ignored if missing). **`ngc://`** roots are not implemented yet (constructor/`resolve` will raise **`NotImplementedError`**).
 
 Before opening a pull request that changes **`physicsnemo/cfd/evaluation/`** or
-**`workflows/benchmarking_workflow/`**, run the CI test subset:
+**`workflows/benchmarking_workflow/`**, run **`test/ci_tests/`** (everything under that folder):
 
 ```bash
-pytest -q test/ci_tests/test_distributed_utils.py \
-  test/ci_tests/test_metrics_cache.py \
-  test/ci_tests/test_model_assets.py \
-  test/ci_tests/test_benchmark_workflow.py \
-  test/ci_tests/test_evaluation.py
+pytest -q test/ci_tests/
 ```
 
 The **`test_evaluation.py`** module may skip entirely if `physicsnemo.utils.sdf` is
@@ -197,8 +193,9 @@ non-zero when **`run.fail_on_all_skipped`** or **`run.fail_on_any_metric_nan`** 
 See **`workflows/benchmarking_workflow/README.md`** for automation-oriented runs.
 
 **Continuous integration:** [`.github/workflows/ci-tests.yml`](.github/workflows/ci-tests.yml)
-runs the pytest command above on push and pull requests. If your team uses additional
-infrastructure (for example Blossom CI), use the same tests there when possible.
+and [`.gitlab-ci.yml`](.gitlab-ci.yml) run the same **`pytest`** path on push/pull request
+(or merge request to **`main`**). Additional hosts should use **`pytest`** on **`test/ci_tests/`**
+so regressions cannot slip past one CI but not another.
 
 Update [`CHANGELOG.md`](CHANGELOG.md) for user-visible changes to evaluation or benchmark
 behavior and configuration.

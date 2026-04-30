@@ -29,14 +29,17 @@ import numpy as np
 import pyvista as pv
 import torch
 
+from physicsnemo.cfd.postprocessing_tools.metrics.l2_errors import triangulate_surface_mesh
+
 
 def read_stl_geometry(stl_path: str, device: torch.device) -> dict[str, torch.Tensor]:
     """Read STL and return stl_coordinates, stl_faces, stl_centers for SDF/center of mass."""
-    mesh = pv.read(stl_path)
+    mesh_raw = pv.read(stl_path)
+    mesh = triangulate_surface_mesh(mesh_raw)
     stl_coordinates = torch.from_numpy(np.asarray(mesh.points)).to(
         device=device, dtype=torch.float32
     )
-    faces = mesh.faces.reshape(-1, 4)[:, 1:]
+    faces = np.asarray(mesh.regular_faces, dtype=np.int64)
     stl_faces = torch.from_numpy(faces.flatten()).to(device=device, dtype=torch.int32)
     stl_centers = torch.from_numpy(np.asarray(mesh.cell_centers().points)).to(
         device=device, dtype=torch.float32
@@ -51,8 +54,15 @@ def read_stl_geometry(stl_path: str, device: torch.device) -> dict[str, torch.Te
 def read_surface_from_vtp(
     vtp_path: str, device: torch.device, n_output_fields: int = 4
 ) -> dict[str, torch.Tensor]:
-    """Read VTP surface: cell centers, normals, areas, dummy surface_fields."""
+    """Read VTP surface: cell centers, normals, areas, dummy surface_fields.
+
+    When VTK cell normals are absent (``.cell_normals is None``), computes them via
+    :meth:`~pyvista.PolyData.compute_normals` with ``cell_normals=True``,
+    ``point_normals=False`` — same idea as XMGN when point ``Normals`` are missing.
+    """
     mesh = pv.read(vtp_path)
+    if mesh.cell_normals is None:
+        mesh = mesh.compute_normals(cell_normals=True, point_normals=False)
     surface_mesh_centers = torch.from_numpy(np.asarray(mesh.cell_centers().points)).to(
         device=device, dtype=torch.float32
     )
@@ -94,18 +104,27 @@ def read_volume_from_vtu(
 
 
 def _find_stl_in_dir(run_dir: Path, run_idx: int) -> Path:
-    """Find an STL file in *run_dir* using progressively looser name patterns."""
-    candidates = [
-        run_dir / f"drivaer_{run_idx}.stl",
-        run_dir / f"drivaer_{run_idx}_single_solid.stl",
-    ]
-    for p in candidates:
-        if p.exists():
+    """Resolve one STL geometry in *run_dir* for this run index.
+
+    Shared by :func:`build_surface_data_dict` and :func:`build_volume_data_dict` so the
+    same directory with multiple naming conventions yields the **same** STL for surface
+    and volume. Explicit ``drivaer_*`` names first; then sorted globs for determinism.
+
+    Order: ``drivaer_{run_idx}_single_solid.stl`` → ``drivaer_{run_idx}.stl`` → first
+    sorted ``*_single_solid.stl`` → first sorted ``*.stl``.
+    """
+    run_dir = Path(run_dir)
+    for stem in (
+        f"drivaer_{run_idx}_single_solid",
+        f"drivaer_{run_idx}",
+    ):
+        p = run_dir / f"{stem}.stl"
+        if p.is_file():
             return p
     for pattern in ("*_single_solid.stl", "*.stl"):
-        globs = list(run_dir.glob(pattern))
-        if globs:
-            return globs[0]
+        for candidate in sorted(run_dir.glob(pattern)):
+            if candidate.is_file():
+                return candidate
     raise FileNotFoundError(f"No STL file found in {run_dir} for run_idx {run_idx}")
 
 
@@ -153,10 +172,33 @@ def build_surface_data_dict(
 
 
 def run_id_from_case_id(case_id: str) -> int:
-    """Parse run index from case_id (e.g. 'run_1' -> 1)."""
-    if case_id.startswith("run_"):
-        return int(case_id.split("_")[1])
+    """Parse run index from *case_id* (``run_<n>`` or decimal *n*, e.g. ``'run_3'``, ``'3'``).
+
+    Raises
+    ------
+    ValueError
+        If *case_id* is empty, not ``run_<integer>``, and not a decimal integer string.
+        Used to choose ``drivaer_<n>*.stl`` in the case directory; invalid IDs must not
+        fall back to run index 1.
+    """
+    s = str(case_id).strip()
+    if not s:
+        raise ValueError("case_id is empty")
+
+    if s.startswith("run_"):
+        suffix = s[4:]
+        if not suffix:
+            raise ValueError(f"invalid run_* case_id (missing index): {case_id!r}")
+        try:
+            return int(suffix)
+        except ValueError as e:
+            raise ValueError(
+                f"invalid run_* case_id (expected run_<integer>, got {case_id!r})"
+            ) from e
+
     try:
-        return int(case_id)
-    except ValueError:
-        return 1
+        return int(s)
+    except ValueError as e:
+        raise ValueError(
+            f"case_id must be 'run_<n>' or a decimal integer (got {case_id!r})"
+        ) from e

@@ -17,13 +17,12 @@
 """
 Command-line entrypoint for benchmark runs.
 
-Loads YAML/JSON config, applies overrides, and calls ``run_benchmark``.
+Loads YAML/JSON config, applies overrides, and calls ``run_benchmark_cli``.
 """
 
 import argparse
-import sys
 
-from physicsnemo.cfd.evaluation.benchmarks.engine import BenchmarkPolicyError, run_benchmark
+from physicsnemo.cfd.evaluation.benchmarks.engine import run_benchmark_cli
 from physicsnemo.cfd.evaluation.config import load_config
 
 
@@ -58,11 +57,7 @@ def main() -> None:
     args = parser.parse_args()
     overrides = _parse_overrides(getattr(args, "overrides", []))
     config = load_config(args.config, overrides, base=args.base_config)
-    try:
-        results = run_benchmark(config, case_id=args.case_id)
-    except BenchmarkPolicyError as exc:
-        print(str(exc), file=sys.stderr)
-        sys.exit(1)
+    results = run_benchmark_cli(config, case_id=args.case_id)
     print(f"Completed {len(results)} run(s). Results in {config.run.output_dir}")
 
 

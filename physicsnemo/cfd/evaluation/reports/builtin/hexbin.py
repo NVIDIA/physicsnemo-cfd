@@ -16,6 +16,7 @@ from physicsnemo.cfd.postprocessing_tools.visualization.utils import plot_projec
 from physicsnemo.cfd.evaluation.config import Config
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.reports.registry import register_visual
+from physicsnemo.cfd.evaluation.reports.visual_filenames import benchmark_visual_png
 
 
 def projections_hexbin(
@@ -28,17 +29,29 @@ def projections_hexbin(
     field: str = "p_error",
     direction: str = "XY",
     grid_size: int = 50,
+    coordinate_layout: str = "world",
     **_kwargs: Any,
 ) -> None:
-    """Aggregate hexbin over multiple meshes (paths on disk). *results* / *context* unused."""
+    """Aggregate hexbin over multiple meshes (paths on disk). *results* / *context* unused.
+
+    ``coordinate_layout`` selects how mesh vertex columns map to the plane (see
+    ``plot_projections_hexbin``): ``world`` for Cartesian (x,y,z) comparison meshes,
+    ``embedding`` when columns 0-1 hold pre-projected axes (legacy VTK).
+    """
     del context, results, config
     if not mesh_paths:
         raise ValueError("projections_hexbin requires non-empty ``mesh_paths`` (list of VTK paths).")
     meshes = [pv.read(p) for p in mesh_paths]
-    fig = plot_projections_hexbin(meshes, field, direction, grid_size=grid_size)
+    fig = plot_projections_hexbin(
+        meshes,
+        field,
+        direction,
+        grid_size=grid_size,
+        coordinate_layout=coordinate_layout,
+    )
     out = Path(output_dir) / "visuals"
     out.mkdir(parents=True, exist_ok=True)
-    safe = f"hexbin_{field}_{direction}.png".replace("/", "_")
+    safe = benchmark_visual_png("hexbin", field, direction)
     out_png = out / safe
     fig.savefig(str(out_png), bbox_inches="tight", dpi=300)
     plt.close(fig)

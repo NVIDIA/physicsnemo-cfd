@@ -18,15 +18,15 @@
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Optional
 
 import numpy as np
 
-from physicsnemo.cfd.evaluation.common.io import load_mesh
+from physicsnemo.cfd.evaluation.common.io import load_surface_mesh
 from physicsnemo.cfd.evaluation.datasets.schema import (
     CanonicalCase,
     InferenceDomain,
-    predictions_dict,
+    build_predictions_dict,
 )
 from physicsnemo.cfd.evaluation.models.model_registry import (
     CFDModel,
@@ -78,13 +78,18 @@ class SurfaceBaselineWrapper(CFDModel):
         log_inference("surface_baseline", "Running forward pass (no-op for baseline)…")
         return None
 
-    def decode_outputs(self, raw_output: RawOutput, case: CanonicalCase) -> Predictions:
+    def decode_outputs(
+        self,
+        raw_output: RawOutput,
+        case: CanonicalCase,
+        model_input: Optional[ModelInput] = None,
+    ) -> Predictions:
         log_inference(
             "surface_baseline",
             f"Reading surface mesh and building baseline fields: {case.mesh_path}",
         )
-        mesh = load_mesh(case.mesh_path)
+        mesh = load_surface_mesh(case.mesh_path)
         n = mesh.n_cells if self.output_location == "cell" else mesh.n_points
         p = np.zeros((n,), dtype=np.float32)
         wss = np.zeros((n, 3), dtype=np.float32)
-        return predictions_dict(p, wss)
+        return build_predictions_dict(pressure=p, shear_stress=wss)

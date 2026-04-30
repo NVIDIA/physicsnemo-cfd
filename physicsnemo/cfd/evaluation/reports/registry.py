@@ -34,7 +34,7 @@ def list_visuals() -> list[str]:
 
 
 def normalize_visuals_config(
-    visuals: list[str] | list[dict[str, Any]],
+    visuals: list[str | dict[str, Any]],
 ) -> list[tuple[str, dict[str, Any]]]:
     """Return list of (visual_name, kwargs) from YAML (same rules as metrics)."""
     out: list[tuple[str, dict[str, Any]]] = []

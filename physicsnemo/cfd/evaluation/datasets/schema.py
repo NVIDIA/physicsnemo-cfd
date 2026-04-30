@@ -26,6 +26,32 @@ import numpy as np
 # Surface vs volume inference (which manifold the case uses). Combined surface+volume is deferred.
 InferenceDomain = Literal["surface", "volume"]
 
+_VALID_INFERENCE_DOMAINS = frozenset({"surface", "volume"})
+
+
+def normalize_inference_domain_str(value: str, *, parameter: str = "inference_domain") -> InferenceDomain:
+    """Return ``surface`` or ``volume`` after strip/lowercase; raise on typos."""
+    normalized = value.strip().lower()
+    if normalized not in _VALID_INFERENCE_DOMAINS:
+        raise ValueError(
+            f"{parameter} must be 'surface' or 'volume'; got {value!r}"
+        )
+    return normalized  # type: ignore[return-value]
+
+
+def coerce_inference_domain_or_default(
+    raw: Any,
+    *,
+    default: InferenceDomain,
+    parameter: str,
+) -> InferenceDomain:
+    """Treat ``None`` as *default*; otherwise validate strings (reject ``None`` sentinel typos separately)."""
+    if raw is None:
+        return default
+    if isinstance(raw, str):
+        return normalize_inference_domain_str(raw, parameter=parameter)
+    raise ValueError(f"{parameter} must be 'surface', 'volume', or null (got {raw!r})")
+
 
 @dataclass
 class CanonicalCase:
@@ -33,18 +59,19 @@ class CanonicalCase:
 
     ``mesh_path`` is the primary mesh: surface ``.vtp`` when ``inference_domain`` is
     ``surface``, or volume ``.vtu`` when ``inference_domain`` is ``volume``.
+    Decode-time model outputs for metrics should follow :func:`build_predictions_dict` keys/shape.
     """
 
     case_id: str
     mesh_path: str
-    mesh_type: str  # "point" | "cell" — interpretation of field locations
+    mesh_type: str  # "point" | "cell" — field dof; "unknown" when GT extractor did not set location
     ground_truth: dict[str, Any] | None = None  # surface: pressure, shear_stress; volume: pressure, velocity, …
     metadata: dict[str, Any] = field(default_factory=dict)
     inference_domain: InferenceDomain = "surface"
 
     def __post_init__(self) -> None:
-        if self.mesh_type not in ("point", "cell"):
-            raise ValueError("mesh_type must be 'point' or 'cell'")
+        if self.mesh_type not in ("point", "cell", "unknown"):
+            raise ValueError("mesh_type must be 'point', 'cell', or 'unknown'")
         if self.inference_domain not in ("surface", "volume"):
             raise ValueError("inference_domain must be 'surface' or 'volume'")
 
@@ -55,14 +82,6 @@ class CanonicalCase:
         return self.ground_truth.get(key, default)
 
 
-def predictions_dict(pressure: np.ndarray, shear_stress: np.ndarray) -> dict[str, np.ndarray]:
-    """Build canonical predictions dict from pressure and WSS arrays (surface models)."""
-    return {
-        "pressure": np.asarray(pressure, dtype=np.float32),
-        "shear_stress": np.asarray(shear_stress, dtype=np.float32),
-    }
-
-
 def build_predictions_dict(
     *,
     pressure: np.ndarray | None = None,
@@ -71,11 +90,14 @@ def build_predictions_dict(
     turbulent_viscosity: np.ndarray | None = None,
     **extra: np.ndarray,
 ) -> dict[str, np.ndarray]:
-    """Build predictions dict from optional canonical fields (omit None / missing).
+    """Build canonical ``decode_outputs`` payloads: numpy arrays as ``float32`` under canonical keys.
 
-    Both surface and volume models use ``pressure`` as the canonical key for
-    pressure predictions.  The domain (surface vs volume) is determined by the
-    case's ``inference_domain``, not the dict key.
+    **Use this helper everywhere** in wrapper :meth:`~physicsnemo.cfd.evaluation.models.model_registry.CFDModel.decode_outputs`
+    (prefer keyword arguments over ad-hoc ``{...}`` dicts) so dtypes and keys stay consistent.
+
+    Surface wrappers typically pass ``pressure`` and ``shear_stress``; volume wrappers add
+    ``velocity`` and ``turbulent_viscosity``. Omit any argument or pass ``None`` to skip keys.
+    Extra keyword arrays are normalized the same way (e.g. custom fields).
     """
     out: dict[str, np.ndarray] = {}
     if pressure is not None:

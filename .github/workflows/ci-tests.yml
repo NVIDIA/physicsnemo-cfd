@@ -26,9 +26,4 @@ jobs:
           pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Run CI tests
-        run: |
-          pytest -q test/ci_tests/test_distributed_utils.py \
-            test/ci_tests/test_metrics_cache.py \
-            test/ci_tests/test_model_assets.py \
-            test/ci_tests/test_benchmark_workflow.py \
-            test/ci_tests/test_evaluation.py
+        run: pytest -q test/ci_tests/

@@ -32,8 +32,9 @@ from physicsnemo.cfd.evaluation.datasets.schema import (
     CanonicalCase,
     InferenceDomain,
     build_predictions_dict,
-    predictions_dict,
+    coerce_inference_domain_or_default,
 )
+from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
 from physicsnemo.cfd.evaluation.models.model_registry import (
     CFDModel,
     ModelInput,
@@ -133,7 +134,8 @@ def _surface_datapipe_static_kw() -> dict[str, Any]:
         include_geometry=True,
         translational_invariance=True,
         scale_invariance=True,
-        reference_scale=[12.0, 4.5, 3.25]
+        reference_scale=[12.0, 4.5, 3.25],
+        return_mesh_features=True,
     )
 
 
@@ -154,12 +156,23 @@ def _volume_datapipe_static_kw() -> dict[str, Any]:
 class GeoTransolverWrapper(CFDModel):
     """GeoTransolver: VTP+STL (surface) or VTU+STL (volume) via ``inference_domain`` in load kwargs."""
 
-    INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "surface"
+    INFERENCE_DOMAIN: ClassVar[InferenceDomain | None] = None
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
 
     @property
     def output_location(self) -> OutputLocation:
         return self.OUTPUT_LOCATION
+
+    @classmethod
+    def inference_domain_from_kwargs(
+        cls, kwargs: dict[str, Any]
+    ) -> InferenceDomain | None:
+        """Align benchmark routing with :meth:`load` (default surface when omitted)."""
+        return coerce_inference_domain_or_default(
+            kwargs.get("inference_domain"),
+            default="surface",
+            parameter="model.kwargs.inference_domain",
+        )
 
     def __init__(self) -> None:
         self._model: Optional[GeoTransolver] = None
@@ -189,7 +202,11 @@ class GeoTransolverWrapper(CFDModel):
             )
         kw = dict(kwargs)
         dom = kw.pop("inference_domain", None)
-        self._inference_mode = dom if dom in ("surface", "volume") else "surface"
+        self._inference_mode = coerce_inference_domain_or_default(
+            dom,
+            default="surface",
+            parameter="model.kwargs.inference_domain",
+        )
 
         self._device = device
         self._air_density = float(kw.get("air_density", 1.205))
@@ -250,17 +267,23 @@ class GeoTransolverWrapper(CFDModel):
             dev = torch.device(self._device)
             dp.config.reference_scale = dp.config.reference_scale.to(dev)
 
-    def _make_datapipe_surface(self, geometry_sampling: int) -> TransolverDataPipe:
+    # Both paths merge `_surface_datapipe_static_kw` / `_volume_datapipe_static_kw` with
+    # ``user_kw`` from ``load()`` (``self._datapipe_user_kw`` / ``model.kwargs.*`` datapipes keys).
+    # Keep surface and volume symmetric so overrides like ``include_sdf`` apply to either mode.
+
+    def _make_datapipe_surface(
+        self, geometry_sampling: int, user_kw: dict[str, Any]
+    ) -> TransolverDataPipe:
+        merged = {**_surface_datapipe_static_kw(), **user_kw}
+        merged["geometry_sampling"] = geometry_sampling
         dp = TransolverDataPipe(
             input_path=None,
             model_type="surface",
-            resolution=None,
+            resolution=self._datapipe_resolution,
             surface_factors=self._surface_factors,
             volume_factors=None,
             scaling_type="mean_std_scaling",
-            return_mesh_features=True,
-            geometry_sampling=geometry_sampling,
-            **_surface_datapipe_static_kw(),
+            **merged,
         )
         self._move_reference_scale_to_device(dp)
         return dp
@@ -273,7 +296,7 @@ class GeoTransolverWrapper(CFDModel):
         dp = TransolverDataPipe(
             input_path=None,
             model_type="volume",
-            resolution=None,
+            resolution=self._datapipe_resolution,
             surface_factors=None,
             volume_factors=self._volume_factors,
             scaling_type="mean_std_scaling",
@@ -322,8 +345,9 @@ class GeoTransolverWrapper(CFDModel):
             n_surf = int(data_dict["surface_mesh_centers"].shape[0])
             safe_geo = min(self._geometry_sampling_requested, n_stl, n_surf)
             safe_geo = max(1, safe_geo)
+            user_kw = self._datapipe_user_kw
             if self._datapipe is None or self._datapipe_geometry_effective != safe_geo:
-                self._datapipe = self._make_datapipe_surface(safe_geo)
+                self._datapipe = self._make_datapipe_surface(safe_geo, user_kw)
                 self._datapipe_geometry_effective = safe_geo
 
         batch = self._datapipe(data_dict)
@@ -344,33 +368,23 @@ class GeoTransolverWrapper(CFDModel):
         use_full_fx = "geometry" in batch
 
         with torch.no_grad():
-            for index_block in index_blocks:
-                local_embeddings = batch["embeddings"][:, index_block]
-                local_fields = batch["fields"][:, index_block]
-                local_fx = fx_bn_c if use_full_fx else fx_bn_c[:, index_block]
-                local_batch = {
-                    "fx": local_fx,
-                    "embeddings": local_embeddings,
-                    "fields": local_fields,
-                }
-                if "geometry" in batch:
-                    local_batch["geometry"] = batch["geometry"]
-                if "air_density" in batch:
-                    local_batch["air_density"] = batch["air_density"]
-                if "stream_velocity" in batch:
-                    local_batch["stream_velocity"] = batch["stream_velocity"]
-                local_positions = local_embeddings[:, :, :3]
-                outputs = self._model(
-                    local_embedding=local_embeddings,
-                    local_positions=local_positions,
-                    global_embedding=local_fx,
-                    geometry=local_batch.get("geometry"),
-                )
-                preds_list.append(outputs)
-            predictions = torch.cat(preds_list, dim=1)
-            inverse_indices = torch.empty_like(indices)
-            inverse_indices[indices] = torch.arange(N, device=indices.device)
-            predictions = predictions[:, inverse_indices]
+            with cuda_bf16_autocast(self._device):
+                for index_block in index_blocks:
+                    local_embeddings = batch["embeddings"][:, index_block]
+                    local_fx = fx_bn_c if use_full_fx else fx_bn_c[:, index_block]
+                    local_positions = local_embeddings[:, :, :3]
+                    geometry_kw = batch["geometry"] if "geometry" in batch else None
+                    outputs = self._model(
+                        local_embedding=local_embeddings,
+                        local_positions=local_positions,
+                        global_embedding=local_fx,
+                        geometry=geometry_kw,
+                    )
+                    preds_list.append(outputs)
+                predictions = torch.cat(preds_list, dim=1)
+                inverse_indices = torch.empty_like(indices)
+                inverse_indices[indices] = torch.arange(N, device=indices.device)
+                predictions = predictions[:, inverse_indices]
         predictions = predictions.squeeze(0)
 
         if self._inference_mode == "volume":
@@ -390,7 +404,12 @@ class GeoTransolverWrapper(CFDModel):
         )
         return predictions
 
-    def decode_outputs(self, raw_output: RawOutput, case: CanonicalCase) -> Predictions:
+    def decode_outputs(
+        self,
+        raw_output: RawOutput,
+        case: CanonicalCase,
+        model_input: Optional[ModelInput] = None,
+    ) -> Predictions:
         pred = raw_output
         if pred.dim() == 3:
             pred = pred.squeeze(0)
@@ -416,4 +435,4 @@ class GeoTransolverWrapper(CFDModel):
         dynamic_pressure = self._air_density * (self._stream_velocity ** 2)
         pressure = (pred[:, 0] * dynamic_pressure).cpu().numpy().astype(np.float32)
         wss = (pred[:, 1:4] * dynamic_pressure).cpu().numpy().astype(np.float32)
-        return predictions_dict(pressure, wss)
+        return build_predictions_dict(pressure=pressure, shear_stress=wss)

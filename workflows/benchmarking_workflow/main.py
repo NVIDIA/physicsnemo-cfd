@@ -31,12 +31,10 @@ Default Hydra config is ``conf/config_surface.yaml``. Use
 
 from __future__ import annotations
 
-import sys
-
 import hydra
 from omegaconf import DictConfig
 
-from physicsnemo.cfd.evaluation.benchmarks.engine import BenchmarkPolicyError, run_benchmark
+from physicsnemo.cfd.evaluation.benchmarks.engine import run_benchmark_cli
 from physicsnemo.cfd.evaluation.benchmarks.hydra_utils import hydra_config_to_benchmark_dict
 from physicsnemo.cfd.evaluation.config import Config
 
@@ -54,11 +52,7 @@ def main(cfg: DictConfig) -> None:
     """
     raw, case_id = hydra_config_to_benchmark_dict(cfg)
     config = Config.from_dict(raw)
-    try:
-        results = run_benchmark(config, case_id=case_id)
-    except BenchmarkPolicyError as exc:
-        print(str(exc), file=sys.stderr)
-        sys.exit(1)
+    results = run_benchmark_cli(config, case_id=case_id)
     print(f"Completed {len(results)} run(s). Results in {config.run.output_dir}")
 
 

@@ -30,7 +30,7 @@ class AhmedAdapter(DatasetAdapter):
         if self.root.exists():
             pass  # optional: validate layout
 
-    def list_cases(self, split: str | None = None) -> list[str]:
+    def list_cases(self) -> list[str]:
         """Return case IDs when dataset is implemented."""
         if not self.root.exists():
             return []

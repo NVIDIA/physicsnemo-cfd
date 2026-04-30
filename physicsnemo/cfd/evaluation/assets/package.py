@@ -98,11 +98,24 @@ class Package:
         try:
             from huggingface_hub import hf_hub_download
             from huggingface_hub import snapshot_download
+            from huggingface_hub.errors import (
+                EntryNotFoundError,
+                LocalEntryNotFoundError,
+                RepositoryNotFoundError,
+                RevisionNotFoundError,
+            )
         except ImportError as e:
             raise ImportError(
                 "hf:// packages require huggingface_hub. Install: "
                 "pip install 'nvidia-physicsnemo-cfd[evaluation-hf]'"
             ) from e
+
+        _hf_fallback_errors = (
+            EntryNotFoundError,
+            LocalEntryNotFoundError,
+            RepositoryNotFoundError,
+            RevisionNotFoundError,
+        )
 
         repo_id, revision = _parse_hf_uri(self.root)
         cache_dir = self._hf_cache_dir()
@@ -114,20 +127,8 @@ class Package:
                 revision=revision,
                 cache_dir=cache_dir,
             )
-        except Exception as e:
-            msg = str(e).lower()
-            if not any(
-                t in msg
-                for t in (
-                    "404",
-                    "not found",
-                    "does not exist",
-                    "unable to find",
-                    "entry not found",
-                    "localentrynotfound",
-                )
-            ):
-                raise
+        except _hf_fallback_errors:
+            pass
 
         # Directory-style checkpoint: pull snapshot subset
         snap = snapshot_download(
@@ -166,10 +167,24 @@ class Package:
         if dest_file.is_file():
             return str(dest_file.resolve())
 
-        fs, rpath = fsspec.url_to_fs(full_remote)
-        if fs.isfile(rpath):
-            fs.get(rpath, str(dest_file))
-            return str(dest_file.resolve())
+        try:
+            import filelock
+        except ImportError as e:
+            raise ImportError(
+                "Concurrent-safe s3:// package caches require filelock. Install: "
+                "pip install 'nvidia-physicsnemo-cfd[evaluation-hf]'"
+            ) from e
+
+        lock_file = dest_file.with_suffix(".lock")
+
+        # Multi-rank jobs (torchrun): coordinate so only one writer creates dest_file bytes.
+        with filelock.FileLock(str(lock_file)):
+            if dest_file.is_file():
+                return str(dest_file.resolve())
+            fs, rpath = fsspec.url_to_fs(full_remote)
+            if fs.isfile(rpath):
+                fs.get(rpath, str(dest_file))
+                return str(dest_file.resolve())
         raise FileNotFoundError(f"s3 asset not found (file): {full_remote}")
 
 

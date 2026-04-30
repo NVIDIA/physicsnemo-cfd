@@ -28,7 +28,7 @@ hydra:
     chdir: false
 
 # Top-level: one id, list (shared by all matrix datasets), or null for per-dataset case_ids / all cases.
-case_id: [run_1, run_11]
+case_id: null
 
 run:
   device: "cuda:0"
@@ -51,11 +51,11 @@ benchmark:
   datasets:
     - name: "drivaerml"
       root: "/lustre/fsw/coreai_modulus_cae/datasets/drivaer_aws/drivaer_data_finetune"
-      split: null
       kwargs: { align_ground_truth_to_model: true, inference_domain: volume }
+  # When true: writes full os.environ → env.json (may leak HF/AWS tokens). Prefer false for shared runs.
   reproducibility:
-    log_env: true
-    save_artifacts: true
+    log_env: false
+    save_artifacts: false
 
 output:
   volume_mesh_field_names:
@@ -69,6 +69,7 @@ output:
   streamlines_vector_canonical: velocity
 
 metrics:
+  # drag / lift omitted: surface-only metrics (evaluation/metrics/builtin/forces.py). Do not add for volume.
   - l2_pressure
   - l2_turbulent_viscosity
   - l2_velocity
@@ -94,6 +95,7 @@ reports:
     - name: streamlines_comparison
       view: xy
     - name: aggregate_volume_errors
+      # Optional: fixed ROI; omit bounds to use union of comparison mesh extents instead.
       bounds: [-3.5, 8.5, -2.25, 2.25, -0.32, 3.00]
       voxel_size: 0.03
       canonical_keys: ["pressure", "velocity", "turbulent_viscosity"]

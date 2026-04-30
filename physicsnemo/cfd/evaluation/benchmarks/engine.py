@@ -30,7 +30,13 @@ meshes were saved.
 
 When ``run.metrics_cache`` is enabled, a valid cache entry skips per-case VTK
 load and inference for that case. The cache stores scalars only and does not
-replace mesh or visualization workflows.
+replace mesh or visualization workflows. The cache fingerprint includes
+``run.seed`` (influences subsampling / ``randperm`` RNG in model wrappers).
+
+When ``save_inference_mesh`` is enabled but exporting ``inference_<model>_<case>.vt[p|u]`` fails,
+the full traceback is logged and persisted for audit: ``per_case[]`` keys and ``benchmark_artifacts.json``
+(``inference_mesh_write_failures``, ``comparison_mesh_build_failures``, ``comparison_mesh_save_failures``)
+when reproducibility artifacts are saved.
 
 Multi-GPU: launch with ``torchrun`` (or any launcher that sets ``WORLD_SIZE`` /
 ``LOCAL_RANK``) so ``physicsnemo.distributed.DistributedManager`` initializes.
@@ -45,6 +51,8 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -81,11 +89,89 @@ from physicsnemo.cfd.evaluation.config import (
 from physicsnemo.cfd.evaluation.datasets import get_adapter
 from physicsnemo.cfd.evaluation.datasets.gt_alignment import resolve_dataset_kwargs_for_model
 from physicsnemo.cfd.evaluation.assets import resolve_model_assets
+from physicsnemo.cfd.evaluation.common.inference_seed import seed_inference_rng
+from physicsnemo.cfd.evaluation.common.natural_sort import natural_sorted
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
+from physicsnemo.cfd.evaluation.datasets.schema import normalize_inference_domain_str
 from physicsnemo.cfd.evaluation.models import get_model_wrapper
 from physicsnemo.cfd.evaluation.models.model_registry import get_inference_domain_for_model
 from physicsnemo.cfd.evaluation.metrics import get_metric
 from physicsnemo.cfd.evaluation.metrics.mesh_bridge import build_comparison_mesh
+
+# Recoverable VTK / NumPy / mesh_bridge failures. Avoid bare ``except Exception`` —
+# unexpected subclasses propagate so regressions are not mistaken for metric NaNs.
+_MESH_IO_BRIDGE_ERRORS: tuple[type[BaseException], ...] = (
+    OSError,
+    ValueError,
+    TypeError,
+    KeyError,
+    AttributeError,
+    RuntimeError,
+    MemoryError,
+)
+
+
+def _pyvista_metric_recovery_types() -> tuple[type[BaseException], ...]:
+    """Subclasses raised by PyVista during metric mesh operations ( VTK / IO )."""
+    try:
+        import pyvista as pv  # noqa: PLC0415
+    except ImportError:
+        return ()
+    names = (
+        "AmbiguousDataError",
+        "InvalidMeshError",
+        "MissingDataError",
+        "VTKExecutionError",
+        "VTKVersionError",
+        "PointSetCellOperationError",
+        "PyVistaAttributeError",
+        "PyVistaPipelineError",
+        "NotAllTrianglesError",
+    )
+    tt: list[type[BaseException]] = []
+    for name in names:
+        obj = getattr(pv, name, None)
+        if isinstance(obj, type) and issubclass(obj, BaseException):
+            tt.append(obj)
+    return tuple(tt)
+
+
+# Only while running the callable returned by ``get_metric`` — **not** lookup failures:
+# ``KeyError`` from :func:`~physicsnemo.cfd.evaluation.metrics.get_metric` propagates so
+# unregistered names / domain mismatches fail loudly.
+_METRIC_COMPUTE_RECOVERABLE: tuple[type[BaseException], ...] = (
+    ValueError,
+    TypeError,
+    KeyError,
+    AttributeError,
+    IndexError,
+    ArithmeticError,
+    OSError,
+    MemoryError,
+) + _pyvista_metric_recovery_types()
+
+
+def _audit_traceback_entries(
+    results: list[dict[str, Any]],
+    per_case_tb_key: str,
+) -> list[dict[str, Any]]:
+    """Collect non-empty traceback strings on ``per_case`` rows for ``benchmark_artifacts.json``."""
+    out: list[dict[str, Any]] = []
+    for r in results:
+        if r.get("skipped"):
+            continue
+        for row in r.get("per_case") or []:
+            tb = row.get(per_case_tb_key)
+            if isinstance(tb, str) and tb.strip():
+                out.append(
+                    {
+                        "model": r["model"],
+                        "dataset": r["dataset"],
+                        "case_id": row["case_id"],
+                        "traceback": tb,
+                    }
+                )
+    return out
 
 
 def _retain_comparison_mesh_for_visual_context(reports: ReportsConfig | None, case_id: str) -> bool:
@@ -112,7 +198,9 @@ def _retain_comparison_mesh_for_visual_context(reports: ReportsConfig | None, ca
     return case_id in allow
 
 
-def _normalize_metrics_config(metrics: list[str] | list[dict]) -> list[tuple[str, dict]]:
+def _normalize_metrics_config(
+    metrics: list[str | dict[str, Any]],
+) -> list[tuple[str, dict]]:
     """
     Normalize the ``metrics`` config section to ``(name, kwargs)`` pairs.
 
@@ -145,22 +233,20 @@ def _normalize_metrics_config(metrics: list[str] | list[dict]) -> list[tuple[str
 
 
 def _effective_inference_domain(model_config: ModelConfig) -> str:
-    """
-    Return ``surface`` or ``volume`` for this model, using registry default if unset.
+    """Resolve ``surface``/``volume`` for adapters, metrics, and cache (Hydra + wrappers)."""
+    kw = model_config.merged_kwargs_for_load()
+    dom_kw = kw.get("inference_domain")
+    if dom_kw is not None:
+        return dom_kw
 
-    Parameters
-    ----------
-    model_config : ModelConfig
-        Model configuration (optional ``inference_domain`` override).
+    cls = get_model_wrapper(model_config.name)
+    hinted = cls.inference_domain_from_kwargs(dict(kw))
+    if hinted is not None:
+        return normalize_inference_domain_str(
+            hinted if isinstance(hinted, str) else str(hinted),
+            parameter=f"{cls.__name__}.inference_domain_from_kwargs()",
+        )
 
-    Returns
-    -------
-    str
-        Either ``"surface"`` or ``"volume"``.
-    """
-    dom = model_config.inference_domain
-    if dom in ("surface", "volume"):
-        return dom
     return get_inference_domain_for_model(model_config.name)
 
 
@@ -175,7 +261,7 @@ def _save_inference_mesh_if_requested(
     predictions: dict[str, Any],
     output_dir: str,
     dataset_name: str,
-) -> None:
+) -> str | None:
     """
     Write ``inference_<model>_<case>.vtp`` or ``.vtu`` when requested.
 
@@ -202,9 +288,15 @@ def _save_inference_mesh_if_requested(
         Benchmark output directory.
     dataset_name : str
         Name used in log messages.
+
+    Returns
+    -------
+    str or None
+        ``None`` if writing was skipped or succeeded. On failure, a full traceback string
+        for logging and ``benchmark_artifacts.json`` / per-case results.
     """
     if not run_config.save_inference_mesh:
-        return
+        return None
     import pyvista as pv
 
     m_dom = case.inference_domain
@@ -231,8 +323,14 @@ def _save_inference_mesh_if_requested(
                 data_target[mesh_name] = predictions[canonical_key]
         mesh.save(str(out_path))
         log_dataset(dataset_name, f"Wrote inference mesh: {out_path}")
-    except Exception as ex:
-        log_dataset(dataset_name, f"Could not write inference mesh to {out_path}: {ex}")
+    except _MESH_IO_BRIDGE_ERRORS:
+        tb = traceback.format_exc()
+        log_dataset(
+            dataset_name,
+            f"Could not write inference mesh to {out_path}:\n{tb}",
+        )
+        return tb
+    return None
 
 
 def _call_metric(
@@ -313,7 +411,7 @@ def _run_single(
     model_config : ModelConfig
         Model name, checkpoint, and kwargs.
     dataset_config : DatasetConfig
-        Adapter name, root, split, and case list.
+        Adapter name, root, and case list.
     metric_names : list of tuple
         Normalized ``(metric_name, kwargs)`` pairs.
     device : str
@@ -370,9 +468,10 @@ def _run_single(
     adapter = adapter_class(root=dataset_config.root, **dkwargs)
     log_dataset(
         dataset_config.name,
-        f"Listing cases under root {dataset_config.root!r} (split={dataset_config.split!r})…",
+        f"Listing cases under root {dataset_config.root!r}…",
     )
-    cases = case_ids if case_ids is not None else adapter.list_cases(split=dataset_config.split)
+    cases = case_ids if case_ids is not None else adapter.list_cases()
+    cases = natural_sorted(cases)
     if shard is not None:
         rank, world_size = shard
         if world_size > 1:
@@ -412,14 +511,14 @@ def _run_single(
             model_checkpoint=fp_ck,
             model_stats_path=fp_st,
             model_kwargs=dict(model_config.kwargs),
-            model_inference_domain=model_config.inference_domain,
+            model_inference_domain=m_dom,
             model_asset_identity=asset_identity,
             dataset_name=dataset_config.name,
             dataset_root=dataset_config.root,
-            dataset_split=dataset_config.split,
             dataset_kwargs_resolved=dict(dkwargs),
             output_dict=output_config_to_fingerprint_dict(output_config),
             metric_specs=metric_names,
+            run_seed=run_config.seed,
         )
         log_dataset(
             dataset_config.name,
@@ -485,12 +584,13 @@ def _run_single(
             f"Reading case {cid!r}…",
         )
         case = adapter.load_case(cid)
+        seed_inference_rng(run_config.seed, cid)
         model_input = wrapper.prepare_inputs(case)
         raw = wrapper.predict(model_input)
-        predictions = wrapper.decode_outputs(raw, case)
+        predictions = wrapper.decode_outputs(raw, case, model_input)
         gt = case.ground_truth or {}
 
-        _save_inference_mesh_if_requested(
+        inference_mesh_err = _save_inference_mesh_if_requested(
             run_config=run_config,
             model_config=model_config,
             output_config=output_config,
@@ -504,20 +604,22 @@ def _run_single(
 
         comparison_mesh = None
         metric_dtype: str | None = None
+        comparison_mesh_build_err: str | None = None
         try:
             comparison_mesh, metric_dtype = build_comparison_mesh(case, predictions, output_config)
-        except Exception as ex:
+        except _MESH_IO_BRIDGE_ERRORS:
+            comparison_mesh_build_err = traceback.format_exc()
             log_dataset(
                 dataset_config.name,
-                f"Warning: comparison mesh not built for case {cid!r}: {ex}",
+                f"Warning: comparison mesh not built for case {cid!r}:\n{comparison_mesh_build_err}",
             )
 
         case_metrics: dict[str, float] = {}
         for mname, mkwargs in metric_names:
+            metric_fn = get_metric(mname, domain=m_dom)
             try:
-                fn = get_metric(mname, domain=m_dom)
                 out = _call_metric(
-                    fn,
+                    metric_fn,
                     gt,
                     predictions,
                     case=case,
@@ -534,11 +636,26 @@ def _run_single(
                 else:
                     case_metrics[mname] = float(out)
                     all_metric_values.setdefault(mname, []).append(float(out))
-            except Exception as e:
-                log_dataset(dataset_config.name, f"Metric {mname!r} failed for {cid!r}: {e}")
+            except _METRIC_COMPUTE_RECOVERABLE:
+                mtb = traceback.format_exc()
+                log_dataset(
+                    dataset_config.name,
+                    f"Metric {mname!r} recoverable failure for {cid!r} (NaN recorded):\n{mtb}",
+                )
                 case_metrics[mname] = float("nan")
                 all_metric_values.setdefault(mname, []).append(float("nan"))
+            except Exception:
+                mtb = traceback.format_exc()
+                log_dataset(
+                    dataset_config.name,
+                    f"Metric {mname!r} failed for {cid!r} (non-recoverable; re-raising):\n{mtb}",
+                )
+                raise
         row: dict[str, Any] = {"case_id": cid, "metrics": case_metrics}
+        if inference_mesh_err:
+            row["inference_mesh_write_error"] = inference_mesh_err
+        if comparison_mesh_build_err:
+            row["comparison_mesh_build_error"] = comparison_mesh_build_err
         if comparison_mesh is not None and metric_dtype is not None:
             row["metric_dtype"] = metric_dtype
             if reports:
@@ -550,11 +667,13 @@ def _run_single(
                     try:
                         comparison_mesh.save(str(cmp_p))
                         row["comparison_mesh_path"] = str(cmp_p.resolve())
-                    except Exception as ex:
+                    except _MESH_IO_BRIDGE_ERRORS:
+                        save_tb = traceback.format_exc()
                         log_dataset(
                             dataset_config.name,
-                            f"Could not save comparison mesh for {cid!r}: {ex}",
+                            f"Could not save comparison mesh for {cid!r}:\n{save_tb}",
                         )
+                        row["comparison_mesh_save_error"] = save_tb
                 if _retain_comparison_mesh_for_visual_context(reports, cid):
                     mesh_ctx[cid] = comparison_mesh
         per_case.append(row)
@@ -719,44 +838,75 @@ def run_benchmark(
         skipped = [r for r in results if r.get("skipped")]
         log_dataset("benchmark", f"Writing artifacts to {artifacts}…")
         with open(artifacts, "w") as f:
-            json.dump(
-                {
-                    "config": _config_to_dict(config),
-                    "results_summary": [
-                        {
-                            "model": r["model"],
-                            "dataset": r["dataset"],
-                            "metrics": r["metrics"],
-                            "skipped": r.get("skipped", False),
-                            "skip_reason": r.get("skip_reason"),
-                        }
-                        for r in results
-                    ],
-                    "skipped_runs": skipped,
-                },
-                f,
-                indent=2,
-            )
+            inference_failures = _audit_traceback_entries(results, "inference_mesh_write_error")
+            cmp_build_failures = _audit_traceback_entries(results, "comparison_mesh_build_error")
+            cmp_save_failures = _audit_traceback_entries(results, "comparison_mesh_save_error")
+            payload: dict[str, Any] = {
+                "config": _config_to_dict(config),
+                "results_summary": [
+                    {
+                        "model": r["model"],
+                        "dataset": r["dataset"],
+                        "metrics": r["metrics"],
+                        "skipped": r.get("skipped", False),
+                        "skip_reason": r.get("skip_reason"),
+                    }
+                    for r in results
+                ],
+                "skipped_runs": skipped,
+            }
+            if inference_failures:
+                payload["inference_mesh_write_failures"] = inference_failures
+            if cmp_build_failures:
+                payload["comparison_mesh_build_failures"] = cmp_build_failures
+            if cmp_save_failures:
+                payload["comparison_mesh_save_failures"] = cmp_save_failures
+            json.dump(payload, f, indent=2)
 
     if is_rank0:
         write_report(results, output_dir, formats=["json", "csv", "html"])
 
     if is_rank0 and config.reports.enabled and config.reports.visuals:
-        import physicsnemo.cfd.evaluation.reports  # noqa: F401 — register built-in visuals
+        if config.benchmark.mode != "single":
+            log_dataset(
+                "benchmark",
+                'Skipping reports.visuals: supported only when benchmark.mode is "single" (not matrix).',
+            )
+        else:
+            import physicsnemo.cfd.evaluation.reports  # noqa: F401 — register built-in visuals
 
-        from physicsnemo.cfd.evaluation.benchmarks.report_plugins import run_optional_report_plugins
+            from physicsnemo.cfd.evaluation.benchmarks.report_plugins import run_optional_report_plugins
 
-        log_dataset("benchmark", "Running reports.visuals from benchmark results…")
-        run_optional_report_plugins(
-            config,
-            results,
-            output_dir,
-            context={"comparison_meshes_by_run": meshes_by_run},
-        )
+            log_dataset("benchmark", "Running reports.visuals from benchmark results…")
+            run_optional_report_plugins(
+                config,
+                results,
+                output_dir,
+                context={"comparison_meshes_by_run": meshes_by_run},
+            )
 
     _enforce_benchmark_policy(config, results)
 
     return results
+
+
+def run_benchmark_cli(
+    config: Config,
+    *,
+    case_id: str | list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Run benchmarks for interactive / CLI callers.
+
+    Same as :func:`run_benchmark`, but catches :class:`BenchmarkPolicyError`,
+    prints the message to stderr, and terminates the process with exit code ``1``.
+    Libraries and tests should call :func:`run_benchmark` directly to handle or propagate
+    the exception.
+    """
+    try:
+        return run_benchmark(config, case_id=case_id)
+    except BenchmarkPolicyError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from None
 
 
 def _enforce_benchmark_policy(config: Config, results: list[dict[str, Any]]) -> None:
@@ -821,7 +971,6 @@ def _config_to_dict(c: Config) -> dict:
         "dataset": {
             "name": c.dataset.name,
             "root": c.dataset.root,
-            "split": c.dataset.split,
             "case_ids": c.dataset.case_ids,
             "kwargs": c.dataset.kwargs,
         },

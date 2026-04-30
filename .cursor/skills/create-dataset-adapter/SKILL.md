@@ -61,7 +61,7 @@ class MyDatasetAdapter(DatasetAdapter):
     def inference_domain_from_kwargs(cls, kwargs=None):
         return "surface"  # or "volume"
 
-    def list_cases(self, split=None):
+    def list_cases(self):
         # Return list of case ID strings
         ...
 

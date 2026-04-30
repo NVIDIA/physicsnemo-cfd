@@ -16,11 +16,18 @@
 
 """Config schema and loader for inference and benchmarking."""
 
+from __future__ import annotations
+
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from physicsnemo.cfd.evaluation.datasets.schema import normalize_inference_domain_str
+
+_LOG = logging.getLogger(__name__)
 
 
 def _strip_none_model_path_keys(m: dict[str, Any]) -> dict[str, Any]:
@@ -93,6 +100,7 @@ class MetricsCacheConfig:
 class RunConfig:
     device: str = "cuda:0"
     output_dir: str = "benchmark_results"
+    #: Base seed combined with ``case_id`` (SHA256) before each ``prepare_inputs → predict`` (:func:`~physicsnemo.cfd.evaluation.common.inference_seed.seed_inference_rng`).
     seed: int = 42
     batch_size: int = 1
     #: If False, inference CLI skips writing ``inference_<model>_<case>.vtp|vtu`` (comparison mesh / visuals unchanged).
@@ -118,7 +126,8 @@ class ModelConfig:
     checkpoint_relpath: str = ""
     stats_relpath: str = ""
     kwargs: dict[str, Any] = field(default_factory=dict)
-    # Optional override; otherwise taken from the registered wrapper's INFERENCE_DOMAIN.
+    # Optional surface/volume routing; omit to derive from wrappers (merged ``model.kwargs`` and
+    # optional :meth:`~physicsnemo.cfd.evaluation.models.model_registry.CFDModel.inference_domain_from_kwargs`).
     inference_domain: str | None = None
 
     def merged_kwargs_for_load(self) -> dict[str, Any]:
@@ -131,16 +140,33 @@ class ModelConfig:
             "_resolved_scaling_factors",
         ):
             kw.pop(k, None)
-        if self.inference_domain in ("surface", "volume"):
-            kw["inference_domain"] = self.inference_domain
+        if self.inference_domain is not None:
+            kw["inference_domain"] = normalize_inference_domain_str(
+                self.inference_domain,
+                parameter="model.inference_domain",
+            )
+        elif kw.get("inference_domain") is not None:
+            kw["inference_domain"] = normalize_inference_domain_str(
+                kw["inference_domain"],
+                parameter="model.kwargs.inference_domain",
+            )
         return kw
 
 
 @dataclass
 class DatasetConfig:
+    """Dataset adapter configuration for inference and benchmarks.
+
+    Benchmarks evaluate **every** case the adapter discovers under :attr:`root` (unless
+    narrowed by :attr:`case_ids` or CLI/Hydra ``case_id``). There is **no** train/validation
+    split in the engine; optional split CSVs shipped with the benchmarking workflow are
+    informational only. To scope work, set :attr:`case_ids` or override ``case_id``.
+    """
+
     name: str = "drivaerml"
+    #: Root directory passed to the adapter (e.g. DrivAerML ``run_*`` parents). All valid cases found here are used.
     root: str = ""
-    split: str | None = None
+    #: If set, only these case IDs are run; if ``None``, the adapter lists all cases under :attr:`root`.
     case_ids: list[str] | None = None
     kwargs: dict[str, Any] = field(default_factory=dict)
 
@@ -175,8 +201,8 @@ class ReportsConfig:
     #: omits ``case_ids`` (per-visual ``case_ids`` still overrides). Empty list ``[]`` retains no meshes in context
     #: (use ``save_comparison_meshes: true`` if PNGs must load from disk).
     visual_case_ids: list[str] | None = None
-    #: Visuals to run (same list style as ``metrics``): strings or ``{name: ..., ...kwargs}``.
-    visuals: list[str] | list[dict[str, Any]] = field(default_factory=list)
+    #: Visuals to run (same list style as ``metrics``): strings and/or ``{name: ..., ...kwargs}`` entries (may mix).
+    visuals: list[str | dict[str, Any]] = field(default_factory=list)
 
 
 # Canonical prediction keys used by wrappers; mesh array names are configurable per dataset/convention.
@@ -245,7 +271,8 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
     dataset: DatasetConfig = field(default_factory=DatasetConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
-    metrics: list[str] | list[dict[str, Any]] = field(default_factory=lambda: ["l2_pressure"])
+    #: Scalar metrics to compute: strings and/or ``{name: ..., ...kwargs}`` entries (YAML may mix both).
+    metrics: list[str | dict[str, Any]] = field(default_factory=lambda: ["l2_pressure"])
     benchmark: BenchmarkConfig = field(default_factory=BenchmarkConfig)
     reports: ReportsConfig = field(default_factory=ReportsConfig)
 
@@ -382,7 +409,14 @@ class Config:
         return cls.from_dict(merged)
 
     def apply_overrides(self, overrides: dict[str, Any]) -> None:
-        """Apply CLI-style overrides (e.g. run.device, model.checkpoint)."""
+        """Apply CLI-style overrides (e.g. run.device, model.checkpoint).
+
+        String values coerced to match existing field types; failures are logged so
+        typoed numbers/booleans are visible (value may remain a string and fail later).
+        """
+        known_bool_tokens = frozenset(
+            ("false", "0", "no", "off", "", "true", "1", "yes", "on")
+        )
         for key, value in overrides.items():
             if "." not in key:
                 continue
@@ -392,19 +426,47 @@ class Config:
                 obj = getattr(obj, part, None)
                 if obj is None:
                     break
-            if obj is not None:
-                attr = parts[-1]
-                current = getattr(obj, attr, None)
-                if isinstance(current, bool) and isinstance(value, str):
-                    value = value.lower() in ("true", "1", "yes")
-                elif isinstance(current, int) and isinstance(value, str) and value.isdigit():
-                    value = int(value)
-                elif isinstance(current, float) and isinstance(value, str):
-                    try:
-                        value = float(value)
-                    except ValueError:
-                        pass
-                setattr(obj, attr, value)
+            if obj is None:
+                continue
+            attr = parts[-1]
+            current = getattr(obj, attr, None)
+            if isinstance(current, bool) and isinstance(value, str):
+                s = value.strip().lower()
+                if s and s not in known_bool_tokens:
+                    _LOG.warning(
+                        "Config override %s: %r is not a known boolean token "
+                        "(true/1/yes/on, false/0/no/off); using fallback parsing.",
+                        key,
+                        value,
+                    )
+                value = _parse_bool(value, default=current)
+            elif (
+                isinstance(current, int)
+                and not isinstance(current, bool)
+                and isinstance(value, str)
+            ):
+                vs = value.strip()
+                try:
+                    value = int(vs, 10)
+                except ValueError:
+                    _LOG.warning(
+                        "Config override %s: could not parse %r as base-10 int; "
+                        "leaving the string (expected type int).",
+                        key,
+                        value,
+                    )
+            elif isinstance(current, float) and isinstance(value, str):
+                vs = value.strip()
+                try:
+                    value = float(vs)
+                except ValueError:
+                    _LOG.warning(
+                        "Config override %s: could not parse %r as float; "
+                        "leaving the string (expected type float).",
+                        key,
+                        value,
+                    )
+            setattr(obj, attr, value)
 
 
 def load_config(

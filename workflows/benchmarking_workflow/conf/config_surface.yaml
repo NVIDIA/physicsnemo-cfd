@@ -28,10 +28,10 @@ hydra:
     chdir: false
 
 # Top-level: one id, list (shared by all matrix datasets), or null for per-dataset case_ids / all cases.
-case_id: [run_1, run_11]
+case_id: null
 
 run:
-  device: "cuda:1"
+  device: "cuda:0"
   output_dir: "benchmark_results_surface"
   seed: 42
   batch_size: 1
@@ -51,11 +51,11 @@ benchmark:
   datasets:
     - name: "drivaerml"
       root: "/lustre/fsw/coreai_modulus_cae/datasets/drivaer_aws/drivaer_data_finetune"
-      split: null
       kwargs: { align_ground_truth_to_model: true, inference_domain: surface }
+  # When true: writes full os.environ → env.json (may leak HF/AWS tokens). Prefer false for shared runs.
   reproducibility:
-    log_env: true
-    save_artifacts: true
+    log_env: false
+    save_artifacts: false
 
 output:
   mesh_field_names:
@@ -93,6 +93,8 @@ reports:
       normalize_factor: 1.0
       true_line_kwargs: { label: Ground truth }
       pred_line_kwargs: { label: Prediction }
+    # DrivAer-class / benchmark-style centerline strips (y-slice + z-clip); tune z_clip /
+    # y_slice_origin for other geometries. Broader slicing options are planned for later.
     - name: line_plot_centerlines
       canonical_key: pressure
       plot_coord: x

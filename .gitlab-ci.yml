@@ -51,7 +51,7 @@ test:
     - pip install -e ".[dev]"
 
   script:
-    - python -m pytest test/ci_tests/test_evaluation.py -v --tb=short
+    - python -m pytest test/ci_tests/ -v --tb=short
 
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"

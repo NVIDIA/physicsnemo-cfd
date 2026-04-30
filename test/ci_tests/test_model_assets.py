@@ -156,7 +156,6 @@ def test_metrics_cache_fingerprint_asset_identity_changes_digest() -> None:
         model_asset_identity="package:hf://a/b@main|ck|st",
         dataset_name="d",
         dataset_root="/r",
-        dataset_split=None,
         dataset_kwargs_resolved={},
         output_dict={},
         metric_specs=[("l2_pressure", {})],

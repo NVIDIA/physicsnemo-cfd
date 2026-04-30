@@ -21,6 +21,7 @@ import pyvista as pv
 import torch
 from scipy.spatial import cKDTree
 
+from physicsnemo.cfd.evaluation.common.interpolation import _combine_field_neighbors_idw
 from physicsnemo.nn.functional.neighbors.knn import knn
 
 
@@ -57,14 +58,8 @@ def _interpolate(nbrs_surface, coords_target, field, device="cpu", batch_size=1_
     )
     if device == "cpu":
         distances, indices = nbrs_surface.query(coords_target, k=n_neighbors, workers=8)
-        epsilon = 1e-8
-        weights = 1 / (distances + epsilon)
-        weights_sum = np.sum(weights, axis=1, keepdims=True)
-        normalized_weights = weights / weights_sum
         field_neighbors = field[indices]
-        if len(field.shape) == 1:
-            return np.sum(normalized_weights * field_neighbors, axis=1)
-        return np.sum(normalized_weights[:, :, np.newaxis] * field_neighbors, axis=1)
+        return _combine_field_neighbors_idw(distances, field_neighbors)
     elif device == "gpu":
         import cupy as cp
 
@@ -112,6 +107,11 @@ def _idw_interpolate(
 ) -> np.ndarray:
     """Inverse-distance-weighted interpolation using PhysicsNeMo kNN.
 
+    Neighbors are inverse-distance weighted with a small ``epsilon`` to avoid division
+    by zero. If a target is within ``1e-12`` of a source (coincident point), that
+    neighbor's field value is returned exactly for that target (first such neighbor
+    if several are within tolerance).
+
     Parameters
     ----------
     source_points : torch.Tensor
@@ -133,15 +133,8 @@ def _idw_interpolate(
     indices_np = indices.cpu().numpy()
     distances_np = distances.cpu().numpy().astype(np.float64)
 
-    epsilon = 1e-8
-    weights = 1.0 / (distances_np + epsilon)
-    weights_sum = np.sum(weights, axis=1, keepdims=True)
-    normalized_weights = weights / weights_sum
-
     field_neighbors = field[indices_np]
-    if field.ndim == 1:
-        return np.sum(normalized_weights * field_neighbors, axis=1)
-    return np.sum(normalized_weights[:, :, np.newaxis] * field_neighbors, axis=1)
+    return _combine_field_neighbors_idw(distances_np, field_neighbors)
 
 
 def interpolate_mesh_to_pc(pc, mesh, fields_to_interpolate, mesh_dtype="cell", device="cpu"):

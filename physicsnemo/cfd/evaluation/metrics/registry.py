@@ -8,6 +8,7 @@ from physicsnemo.cfd.postprocessing_tools.metric_registry import (  # noqa: F401
     get_metric,
     list_metrics,
     register_metric,
+    unregister_metric,
 )
 
-__all__ = ["register_metric", "get_metric", "list_metrics"]
+__all__ = ["register_metric", "unregister_metric", "get_metric", "list_metrics"]

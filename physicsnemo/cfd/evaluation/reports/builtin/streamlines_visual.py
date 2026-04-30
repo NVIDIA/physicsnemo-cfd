@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,7 @@ from physicsnemo.cfd.evaluation.config import Config, OutputConfig
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.reports.context_helpers import get_comparison_mesh_for_case
 from physicsnemo.cfd.evaluation.reports.registry import register_visual
+from physicsnemo.cfd.evaluation.reports.visual_filenames import benchmark_visual_png
 
 
 def streamlines_comparison(
@@ -65,7 +67,7 @@ def streamlines_comparison(
                     continue
                 gt_name = output.ground_truth_volume_mesh_field_names[ck]
                 pred_name = output.volume_mesh_field_names[ck]
-                fname_suffix = "_streamlines.png"
+                fname_tag = "streamlines"
             elif md == "cell":
                 if ck not in output.ground_truth_mesh_field_names or ck not in output.mesh_field_names:
                     log_dataset(
@@ -76,7 +78,7 @@ def streamlines_comparison(
                     continue
                 gt_name = output.ground_truth_mesh_field_names[ck]
                 pred_name = output.mesh_field_names[ck]
-                fname_suffix = "_streamlines_surface.png"
+                fname_tag = "streamlines_surface"
             else:
                 log_dataset(
                     "benchmark",
@@ -93,14 +95,21 @@ def streamlines_comparison(
                 continue
             m1 = mesh.copy(deep=True)
             m2 = mesh.copy(deep=True)
+            # Volume metrics use point dof (md == "point"); integrate in 3-D. Surface (md == "cell"):
+            # PyVista surface-constrained streamline mode for boundary vector fields (e.g. wall shear).
+            surface_sl = md == "cell"
             try:
-                sl_true = compute_streamlines(m1, gt_name)
-                sl_pred = compute_streamlines(m2, pred_name)
-            except Exception as e:
-                log_dataset("benchmark", f"compute_streamlines failed for {cid!r}: {e}")
+                sl_true = compute_streamlines(m1, gt_name, surface_streamlines=surface_sl)
+                sl_pred = compute_streamlines(m2, pred_name, surface_streamlines=surface_sl)
+            except Exception:
+                log_dataset(
+                    "benchmark",
+                    f"compute_streamlines failed for case {cid!r} ({model=} {dataset=}):\n"
+                    f"{traceback.format_exc()}",
+                )
                 continue
             plotter = plot_streamlines(sl_true, sl_pred, geometry=mesh, view=view, **kwargs)
-            safe = f"{model}_{dataset}_{cid}{fname_suffix}".replace("/", "_")
+            safe = benchmark_visual_png(model, dataset, cid, fname_tag)
             plotter.screenshot(str(out / safe))
             plotter.close()
             log_dataset("benchmark", f"Wrote streamlines {out / safe}")

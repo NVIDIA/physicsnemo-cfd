@@ -25,16 +25,32 @@ import pyvista as pv
 import torch
 
 
-def load_global_stats(stats_path: str, device: str = "cpu") -> dict[str, Any]:
-    """Load normalization statistics from JSON (mean / std_dev keys).
+def _coerce_global_stats_dict(raw: dict[str, Any]) -> dict[str, Any]:
+    """Normalize parsed ``global_stats.json`` to canonical ``mean`` + ``std`` mapping keys.
 
-    Returns dict with "mean" and "std" (std_dev in file) as tensors on device.
+    On-disk JSON uses ``std_dev`` (training/export convention); in-memory callers use ``std``.
+    If ``std_dev`` is present it wins when both ``std`` and ``std_dev`` exist.
+    """
+    if "mean" not in raw:
+        raise KeyError("global_stats must contain 'mean'")
+    std_block = raw.get("std_dev")
+    if std_block is None:
+        std_block = raw.get("std")
+    if std_block is None:
+        raise KeyError("global_stats must contain 'std_dev' (preferred) or 'std'")
+    return {"mean": raw["mean"], "std": std_block}
+
+
+def load_global_stats(stats_path: str, device: str = "cpu") -> dict[str, Any]:
+    """Load normalization statistics from JSON.
+
+    File format uses ``mean`` and ``std_dev``; returned dict uses ``mean`` and ``std`` tensors.
     """
     path = Path(stats_path)
     if not path.exists():
         raise FileNotFoundError(f"Stats file not found: {stats_path}")
     with open(path, "r") as f:
-        data = json.load(f)
+        data = _coerce_global_stats_dict(json.load(f))
     return {
         "mean": {
             k: torch.tensor(v, device=device, dtype=torch.float32)
@@ -42,7 +58,7 @@ def load_global_stats(stats_path: str, device: str = "cpu") -> dict[str, Any]:
         },
         "std": {
             k: torch.tensor(v, device=device, dtype=torch.float32)
-            for k, v in data["std_dev"].items()
+            for k, v in data["std"].items()
         },
     }
 
@@ -53,20 +69,23 @@ def surface_factors_from_global_stats(
 ) -> dict[str, torch.Tensor]:
     """Build ``mean`` / ``std`` vectors for TransolverDataPipe from ``global_stats.json``.
 
-    Stacks pressure (1) and shear_stress (3) using ``mean`` / ``std_dev`` in the JSON
-    (same layout as ``surface_fields_normalization.npz`` from training).
+    Accepts parsed JSON (``mean`` / ``std_dev`` or canonical ``mean`` / ``std``).
+    Stacks pressure (1) and shear_stress (3); same layout as ``surface_fields_normalization.npz``
+    from training.
     """
-    mean_block = data.get("mean") or {}
-    std_block = data.get("std_dev") or {}
+    norm = _coerce_global_stats_dict(data)
+    mean_block = norm.get("mean") or {}
+    std_block = norm.get("std") or {}
     for k in ("pressure", "shear_stress"):
         if k not in mean_block or k not in std_block:
             have_m = sorted(mean_block.keys())
             have_s = sorted(std_block.keys())
             raise KeyError(
                 "Surface GeoTransolver/Transolver needs global_stats.json entries "
-                "mean/std_dev for 'pressure' and 'shear_stress'. "
+                "mean and std deviation for 'pressure' and 'shear_stress' (JSON keys "
+                "mean/std_dev). "
                 f"Missing or incomplete key {k!r}. "
-                f"mean keys: {have_m}, std_dev keys: {have_s}. "
+                f"mean keys: {have_m}, std keys: {have_s}. "
                 "If you only see velocity / pressure / turbulent_viscosity, "
                 "that is a volume stats file—use inference_domain: volume with a volume "
                 "checkpoint, or point stats_path at a surface-trained checkpoint directory."
@@ -93,10 +112,14 @@ def volume_factors_from_global_stats(
     **velocity (3)**, **pressure** (1), **turbulent_viscosity** (1).
 
     Uses keys ``velocity``, ``pressure`` (or legacy ``pressure_volume`` for backward
-    compatibility), and ``turbulent_viscosity`` under ``mean`` / ``std_dev``.
+    compatibility), and ``turbulent_viscosity`` under ``mean`` / ``std_dev`` (canonical
+    in-memory: ``mean`` / ``std``).
+
+    Accepts parsed JSON with ``mean`` / ``std_dev`` or canonical ``mean`` / ``std``.
     """
-    mean_block = data["mean"]
-    std_block = data["std_dev"]
+    norm = _coerce_global_stats_dict(data)
+    mean_block = norm["mean"]
+    std_block = norm["std"]
     pkey = "pressure" if "pressure" in mean_block else "pressure_volume"
     if pkey not in mean_block:
         raise KeyError(
@@ -185,12 +208,17 @@ def load_transolver_volume_factors(
     return None
 
 
-def load_mesh(mesh_path: str) -> pv.PolyData:
-    """Load a VTP (or other PyVista-readable) mesh from disk."""
+def load_surface_mesh(mesh_path: str) -> pv.PolyData:
+    """Load a surface mesh from disk as :class:`pyvista.PolyData`.
+
+    Expects formats that ``pyvista.read`` yields as ``PolyData`` (e.g. ``.vtp``, ``.stl``, ``.ply``).
+    Volume meshes (e.g. ``.vtu`` → ``UnstructuredGrid``) are rejected; use a volume-specific
+    helper when one exists for that path.
+    """
     path = Path(mesh_path)
     if not path.exists():
         raise FileNotFoundError(f"Mesh file not found: {mesh_path}")
     mesh = pv.read(str(path))
     if not isinstance(mesh, pv.PolyData):
-        raise TypeError(f"Expected PolyData, got {type(mesh)}")
+        raise TypeError(f"Expected PolyData for surface mesh, got {type(mesh)}")
     return mesh

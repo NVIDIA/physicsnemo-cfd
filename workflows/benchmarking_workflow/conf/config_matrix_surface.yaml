@@ -39,7 +39,7 @@ hydra:
 
 # null = use each dataset's ``case_ids`` below (or CLI ``case_id=run_1`` / list override).
 # case_id: null
-case_id: [run_1, run_11]
+case_id: null
 
 run:
   device: "cuda:0"
@@ -68,6 +68,7 @@ benchmark:
       inference_domain: surface
       checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/xmgn_drivaerml_surface_checkpoint/final_model_checkpoint.pth"
       stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/xmgn_drivaerml_surface_checkpoint/global_stats.json"
+      # If boundary VTP omits Normals, see xmgn wrapper doc: surface_auto_orient_normals / surface_flip_normals
       kwargs: { "max_points": 250000, "interpolation_k": 4 }
     - name: fignet_surface
       inference_domain: surface
@@ -79,21 +80,20 @@ benchmark:
       checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
       stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_surface_checkpoint/global_stats.json"
       kwargs: { "domino_config": "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_surface_checkpoint/config.yaml" }
-    # Uncomment when you have a Transolver surface checkpoint + stats next to it (same layout as training).
+    # Uncomment when you have a your custom model surface checkpoint + stats next to it (same layout as training).
     # - name: surface_baseline_model
     #   inference_domain: surface
     #   checkpoint: "/path/to/surface_baseline_model/checkpoint.0.501.pt"
     #   stats_path: "/path/to/surface_baseline_model/global_stats.json"
     #   kwargs: { }
   datasets:
-    # Same adapter twice with different ``case_ids`` illustrates a multi-dataset matrix without a second layout.
     - name: drivaerml
       root: "/lustre/fsw/coreai_modulus_cae/datasets/drivaer_aws/drivaer_data_finetune"
-      split: null
       kwargs: { align_ground_truth_to_model: true, inference_domain: surface }
+  # When true: writes full os.environ → env.json (may leak HF/AWS tokens). Prefer false for shared runs.
   reproducibility:
-    log_env: true
-    save_artifacts: true
+    log_env: false
+    save_artifacts: false
 
 output:
   surface_interpolate_point_to_cell_for_metrics: true

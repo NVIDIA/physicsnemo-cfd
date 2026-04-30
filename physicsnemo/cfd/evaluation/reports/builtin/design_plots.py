@@ -15,6 +15,7 @@ from physicsnemo.cfd.postprocessing_tools.visualization.utils import plot_design
 from physicsnemo.cfd.evaluation.config import Config
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.reports.registry import register_visual
+from physicsnemo.cfd.evaluation.reports.visual_filenames import benchmark_visual_png
 
 
 def _design_skip_hint(per_case: list[dict[str, Any]], pairs: list[dict[str, Any]]) -> str:
@@ -93,7 +94,7 @@ def design_scatter(
             )
             continue
         fig, _ = plot_design_scatter(true_data_dict, pred_data_dict, **kwargs)
-        safe = f"{model}_{dataset}_design_scatter.png".replace("/", "_")
+        safe = benchmark_visual_png(model, dataset, "design_scatter")
         fig.savefig(str(out / safe), bbox_inches="tight", dpi=150)
         plt.close(fig)
         log_dataset("benchmark", f"Wrote design scatter {out / safe}")
@@ -152,7 +153,7 @@ def design_trend(
             continue
         res = plot_design_trend(true_data_dict, pred_data_dict, idx_dict, **kwargs)
         fig = res[0]
-        safe = f"{model}_{dataset}_design_trend.png".replace("/", "_")
+        safe = benchmark_visual_png(model, dataset, "design_trend")
         fig.savefig(str(out / safe), bbox_inches="tight", dpi=150)
         plt.close(fig)
         log_dataset("benchmark", f"Wrote design trend {out / safe}")

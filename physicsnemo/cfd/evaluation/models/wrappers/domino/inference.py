@@ -18,10 +18,11 @@
 
 from __future__ import annotations
 
+import math
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Literal
 
 import numpy as np
 import pyvista as pv
@@ -44,6 +45,12 @@ from physicsnemo.models.domino.utils.vtk_file_utils import (
 from physicsnemo.nn.functional import knn, signed_distance_field
 
 from physicsnemo.cfd.evaluation.datasets.schema import build_predictions_dict
+from physicsnemo.cfd.evaluation.models.common_wrapper_utils.vtk_datapipe_io import (
+    _find_stl_in_dir,
+)
+from physicsnemo.cfd.postprocessing_tools.metrics.l2_errors import (
+    triangulate_surface_mesh,
+)
 
 
 def domino_count_output_features(cfg: DictConfig) -> tuple[int | None, int | None, int]:
@@ -71,20 +78,21 @@ def domino_count_output_features(cfg: DictConfig) -> tuple[int | None, int | Non
     return num_vol_vars, num_surf_vars, global_features
 
 
-def _find_stl(run_dir: Path, tag: int) -> Path:
-    """Resolve STL path using progressively looser name patterns."""
-    candidates = [
-        run_dir / f"drivaer_{tag}.stl",
-        run_dir / f"drivaer_{tag}_single_solid.stl",
-    ]
-    for p in candidates:
-        if p.exists():
-            return p
-    for pattern in ("*_single_solid.stl", "*.stl"):
-        globs = list(run_dir.glob(pattern))
-        if globs:
-            return globs[0]
-    raise FileNotFoundError(f"No STL found in {run_dir} for tag {tag}")
+def _volume_solution_field_kind(
+    name: str,
+    typ: str,
+) -> Literal["velocity_vector", "pressure_scalar", "nut_scalar", "other"]:
+    """Classify a ``variables.volume.solution`` field for canonical keys and physical scaling."""
+    nl = name.lower()
+    if typ == "vector":
+        if nl.startswith("u") or "velocity" in nl:
+            return "velocity_vector"
+        return "other"
+    if "nut" in nl or "turbulent" in nl or "viscosity" in nl:
+        return "nut_scalar"
+    if "pmean" in nl or nl.startswith("p_") or nl == "p":
+        return "pressure_scalar"
+    return "other"
 
 
 def build_domin_surface_datadict(
@@ -101,12 +109,12 @@ def build_domin_surface_datadict(
         )
 
     surface_variable_names = list(cfg.variables.surface.solution.keys())
-    stl_path = _find_stl(run_dir, tag)
+    stl_path = _find_stl_in_dir(run_dir, tag)
 
     reader = pv.get_reader(str(stl_path))
-    mesh_stl = reader.read()
+    mesh_stl = triangulate_surface_mesh(reader.read())
     stl_vertices = mesh_stl.points
-    stl_faces = np.array(mesh_stl.faces).reshape((-1, 4))[:, 1:]
+    stl_faces = np.asarray(mesh_stl.regular_faces, dtype=np.int64)
     mesh_indices_flattened = stl_faces.flatten()
     length_scale = np.array(
         np.amax(np.amax(stl_vertices, 0) - np.amin(stl_vertices, 0)),
@@ -268,12 +276,12 @@ def build_domin_volume_datadict(
         )
 
     volume_variable_names = list(cfg.variables.volume.solution.keys())
-    stl_path = _find_stl(run_dir, tag)
+    stl_path = _find_stl_in_dir(run_dir, tag)
 
     reader = pv.get_reader(str(stl_path))
-    mesh_stl = reader.read()
+    mesh_stl = triangulate_surface_mesh(reader.read())
     stl_vertices = mesh_stl.points
-    stl_faces = np.array(mesh_stl.faces).reshape((-1, 4))[:, 1:]
+    stl_faces = np.asarray(mesh_stl.regular_faces, dtype=np.int64)
     mesh_indices_flattened = stl_faces.flatten()
     length_scale = np.array(
         np.amax(np.amax(stl_vertices, 0) - np.amin(stl_vertices, 0)),
@@ -471,13 +479,12 @@ def domino_surface_test_step(
     surface_neighbors_areas = torch.unsqueeze(surface_neighbors_areas, -1)
 
     num_points = surface_mesh_centers.shape[1]
-    subdomain_points = int(np.floor(num_points / point_batch_size))
     target_surf = data_dict["surface_fields"]
     prediction_surf = torch.zeros_like(target_surf)
 
-    for p in range(subdomain_points + 1):
+    for p in range(math.ceil(num_points / point_batch_size)):
         start_idx = p * point_batch_size
-        end_idx = (p + 1) * point_batch_size
+        end_idx = min((p + 1) * point_batch_size, num_points)
         surface_mesh_centers_batch = surface_mesh_centers[:, start_idx:end_idx]
         surface_mesh_neighbors_batch = surface_mesh_neighbors[:, start_idx:end_idx]
         surface_normals_batch = surface_normals[:, start_idx:end_idx]
@@ -527,7 +534,12 @@ def domino_volume_test_step(
     _device: torch.device,
     point_batch_size: int,
 ) -> torch.Tensor:
-    """Volume branch of ``test_step`` in domino ``test.py`` (volume-only models)."""
+    """Volume branch of ``test_step`` in domino ``test.py`` (volume-only models).
+
+    After normalization undo, converts to physical units using ``variables.volume.solution`` field order:
+    velocity-like vectors × ``stream_velocity``, pressure scalar × ``stream_velocity² ρ``,
+    nut-like scalar × ``stream_velocity · length_scale`` (matching domino ``test.py`` heuristics per field name).
+    """
     length_scale = data_dict["length_scale"]
     global_params_values = data_dict["global_params_values"]
     global_params_reference = data_dict["global_params_reference"]
@@ -556,11 +568,10 @@ def domino_volume_test_step(
 
     prediction_vol = torch.zeros_like(target_vol)
     num_points = volume_mesh_centers.shape[1]
-    subdomain_points = int(np.floor(num_points / point_batch_size))
 
-    for si in range(subdomain_points + 1):
+    for si in range(math.ceil(num_points / point_batch_size)):
         start_idx = si * point_batch_size
-        end_idx = (si + 1) * point_batch_size
+        end_idx = min((si + 1) * point_batch_size, num_points)
         volume_mesh_centers_batch = volume_mesh_centers[:, start_idx:end_idx]
         sdf_nodes_batch = sdf_nodes[:, start_idx:end_idx]
         scaled_sdf_nodes_batch = []
@@ -605,18 +616,32 @@ def domino_volume_test_step(
     elif cfg.model.normalization == "mean_std_scaling":
         prediction_vol = unstandardize(prediction_vol, vol_factors[0], vol_factors[1])
 
-    # Physical scaling matches domino ``test.py`` (DrivAer: vel, pressure, nut order).
-    n_out = int(prediction_vol.shape[-1])
-    if n_out >= 3:
-        prediction_vol[:, :, :3] = prediction_vol[:, :, :3] * stream_velocity[0, 0]
-    if n_out >= 4:
-        prediction_vol[:, :, 3] = (
-            prediction_vol[:, :, 3] * stream_velocity[0, 0] ** 2.0 * air_density[0, 0]
+    # Physical scaling (domino ``test.py``): match ``variables.volume.solution`` order, not fixed indices.
+    sv = stream_velocity[0, 0]
+    rho = air_density[0, 0]
+    ell = length_scale[0]
+    offset_phys = 0
+    for name, typ in cfg.variables.volume.solution.items():
+        kind = _volume_solution_field_kind(name, typ)
+        if typ == "vector":
+            sl = slice(offset_phys, offset_phys + 3)
+            if kind == "velocity_vector":
+                prediction_vol[:, :, sl] *= sv
+            offset_phys += 3
+        else:
+            if kind == "pressure_scalar":
+                prediction_vol[:, :, offset_phys] *= sv**2.0 * rho
+            elif kind == "nut_scalar":
+                prediction_vol[:, :, offset_phys] *= sv * ell
+            offset_phys += 1
+
+    if offset_phys != prediction_vol.shape[-1]:
+        raise ValueError(
+            "volume physical scaling walk does not span model output channels; "
+            f"combined width from ``variables.volume.solution`` is {offset_phys}, "
+            f"tensor last dim is {prediction_vol.shape[-1]}."
         )
-    if n_out >= 5:
-        prediction_vol[:, :, 4] = (
-            prediction_vol[:, :, 4] * stream_velocity[0, 0] * length_scale[0]
-        )
+
     return prediction_vol
 
 
@@ -636,23 +661,30 @@ def domino_volume_predictions_to_canonical(
     extra: dict[str, np.ndarray] = {}
     offset = 0
     for name, typ in cfg.variables.volume.solution.items():
+        kind = _volume_solution_field_kind(name, typ)
         if typ == "vector":
             chunk = arr[:, offset : offset + 3]
             offset += 3
-            nl = name.lower()
-            if nl.startswith("u") or "velocity" in nl:
+            if kind == "velocity_vector":
                 canonical_kw["velocity"] = chunk
             else:
                 extra[name] = chunk
         else:
             chunk = arr[:, offset]
             offset += 1
-            nl = name.lower()
-            if "nut" in nl or "turbulent" in nl or "viscosity" in nl:
-                canonical_kw["turbulent_viscosity"] = chunk
-            elif "pmean" in nl or nl.startswith("p_") or nl == "p":
+            if kind == "pressure_scalar":
                 canonical_kw["pressure"] = chunk
+            elif kind == "nut_scalar":
+                canonical_kw["turbulent_viscosity"] = chunk
             else:
                 extra[name] = chunk
+
+    expected = arr.shape[-1]
+    if offset != expected:
+        raise ValueError(
+            f"volume solution channels ({expected}) do not match ``variables.volume.solution`` "
+            f"layout (combined width {offset}); check field names/order against model output "
+            f"so canonical maps do not overlap or omit slices."
+        )
 
     return build_predictions_dict(**canonical_kw, **extra)

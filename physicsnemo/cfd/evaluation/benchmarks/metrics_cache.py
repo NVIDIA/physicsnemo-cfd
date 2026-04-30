@@ -25,11 +25,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import numbers
+import os
+import uuid
 from pathlib import Path
 from typing import Any
 
-CACHE_FORMAT_VERSION = 1
+CACHE_FORMAT_VERSION = 2
+
+logger = logging.getLogger(__name__)
 
 
 def _canonical_fingerprint_path(path_str: str) -> str:
@@ -83,10 +88,10 @@ def metrics_cache_fingerprint(
     model_asset_identity: str | None = None,
     dataset_name: str,
     dataset_root: str,
-    dataset_split: str | None,
     dataset_kwargs_resolved: dict[str, Any],
     output_dict: dict[str, Any],
     metric_specs: list[tuple[str, dict[str, Any]]],
+    run_seed: int = 42,
 ) -> str:
     """
     Build a SHA-256 fingerprint for cache lookup and invalidation.
@@ -114,14 +119,14 @@ def metrics_cache_fingerprint(
         Registered dataset adapter name.
     dataset_root : str
         Dataset root directory.
-    dataset_split : str or None
-        Dataset split, if any.
     dataset_kwargs_resolved : dict
         Adapter kwargs after alignment for this model.
     output_dict : dict
         Serializable ``OutputConfig`` mapping (see ``output_config_to_fingerprint_dict``).
     metric_specs : list of tuple
         Normalized ``(metric_name, kwargs)`` pairs from the benchmark config.
+    run_seed : int, optional
+        ``run.seed`` from benchmark config — affects RNG in inference (subsampling, etc.).
 
     Returns
     -------
@@ -150,13 +155,13 @@ def metrics_cache_fingerprint(
         "dataset": {
             "name": dataset_name,
             "root": _canonical_fingerprint_path(dataset_root),
-            "split": dataset_split,
             "kwargs": _fingerprint_jsonify(
                 {k: dataset_kwargs_resolved[k] for k in sorted(dataset_kwargs_resolved.keys())}
             ),
         },
         "output": _fingerprint_jsonify(output_dict),
         "metrics": specs_serializable,
+        "run": {"seed": int(run_seed)},
     }
     return hashlib.sha256(_stable_json(payload).encode("utf-8")).hexdigest()
 
@@ -286,19 +291,47 @@ def read_metrics_cache(path: Path) -> dict[str, Any] | None:
     -------
     dict or None
         Parsed payload if the file exists and matches the expected schema; otherwise ``None``.
+        A missing file is a normal cache miss (no warning). An existing file that fails JSON
+        decode, IO, or schema validation logs a warning so corrupt cache dirs are visible.
     """
     if not path.is_file():
         return None
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError as exc:
+        logger.warning(
+            "Metrics cache unreadable JSON (will rebuild/replace): %s — %s",
+            path,
+            exc,
+        )
+        return None
+    except OSError as exc:
+        logger.warning(
+            "Metrics cache read failed (skipping cache hit): %s — %s",
+            path,
+            exc,
+        )
         return None
     if not isinstance(data, dict):
+        logger.warning(
+            "Metrics cache invalid payload (expected JSON object root; will rebuild): %s",
+            path,
+        )
         return None
     if data.get("cache_format_version") != CACHE_FORMAT_VERSION:
+        logger.warning(
+            "Metrics cache format mismatch (want version %s, got %s; will rebuild): %s",
+            CACHE_FORMAT_VERSION,
+            data.get("cache_format_version"),
+            path,
+        )
         return None
     if "fingerprint" not in data or "metrics" not in data:
+        logger.warning(
+            "Metrics cache missing required keys fingerprint/metrics (will rebuild): %s",
+            path,
+        )
         return None
     return data
 
@@ -347,7 +380,8 @@ def write_metrics_cache(
         "metric_dtype": metric_dtype,
         "comparison_mesh_path": comparison_mesh_path,
     }
-    tmp = path.with_suffix(".tmp.json")
+    uniq = uuid.uuid4().hex[:8]
+    tmp = path.with_suffix(f".tmp.{os.getpid()}.{uniq}.json")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
     tmp.replace(path)

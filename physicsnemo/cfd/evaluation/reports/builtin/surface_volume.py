@@ -16,6 +16,7 @@ from physicsnemo.cfd.evaluation.config import Config, OutputConfig
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.reports.context_helpers import get_comparison_mesh_for_case
 from physicsnemo.cfd.evaluation.reports.registry import register_visual
+from physicsnemo.cfd.evaluation.reports.visual_filenames import benchmark_visual_png
 
 
 def field_comparison_surface(
@@ -70,7 +71,7 @@ def field_comparison_surface(
                 dtype=dtype,
                 **kwargs,
             )
-            safe = f"{model}_{dataset}_{cid}_field_comparison.png".replace("/", "_")
+            safe = benchmark_visual_png(model, dataset, cid, "field_comparison")
             plotter.screenshot(str(vis_dir / safe))
             plotter.close()
 
@@ -119,7 +120,7 @@ def plot_fields_volume(
                 dtype=dtype,
                 **kwargs,
             )
-            safe = f"{model}_{dataset}_{cid}_plot_fields.png".replace("/", "_")
+            safe = benchmark_visual_png(model, dataset, cid, "plot_fields")
             plotter.screenshot(str(vis_dir / safe))
             plotter.close()
 

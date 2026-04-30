@@ -19,8 +19,8 @@ import numpy as np
 import vtk
 
 
-def compute_streamlines(data, field):
-    """Compute streamlines
+def compute_streamlines(data, field, *, surface_streamlines: bool = True):
+    """Compute streamlines through the mesh.
 
     Parameters
     ----------
@@ -28,11 +28,14 @@ def compute_streamlines(data, field):
         PyVista Dataset
     field :
         Field (str) to use while computing the streamlines.
+    surface_streamlines :
+        Passed to PyVista ``streamlines_from_source``. Use ``True`` for surface/boundary-aligned
+        integration (e.g. wall shear on PolyData); ``False`` for full 3-D volume vector fields.
 
     Returns
     -------
-    _type_
-        Streamlines (PyVista Dataset)
+    pyvista.DataSet
+        Streamlines from ``streamlines_from_source``.
     """
 
     # Convert cell data to point data to create streamlines more robustly
@@ -53,7 +56,7 @@ def compute_streamlines(data, field):
         max_length=10,  # Control how long the streamlines are
         integration_direction="both",
         terminal_speed=1e-12,
-        surface_streamlines=True,
+        surface_streamlines=surface_streamlines,
     )
 
     return streamlines

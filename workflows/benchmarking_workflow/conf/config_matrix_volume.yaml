@@ -66,7 +66,7 @@ benchmark:
       checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_volume_checkpoint/checkpoint.0.501.pt"
       stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_volume_checkpoint/global_stats.json"
       kwargs: { "domino_config": "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_volume_checkpoint/config.yaml" }
-    # Uncomment when you have a Transolver surface checkpoint + stats next to it (same layout as training).
+    # Uncomment when you have your custom model volume checkpoint + stats next to it (same layout as training).
     # - name: volume_baseline_model
     #   inference_domain: volume
     #   checkpoint: "/path/to/volume_baseline_model/checkpoint.0.501.pt"
@@ -75,11 +75,11 @@ benchmark:
   datasets:
     - name: drivaerml
       root: "/lustre/fsw/coreai_modulus_cae/datasets/drivaer_aws/drivaer_data_finetune"
-      split: null
       kwargs: { align_ground_truth_to_model: true, inference_domain: volume }
+  # When true: writes full os.environ → env.json (may leak HF/AWS tokens). Prefer false for shared runs.
   reproducibility:
-    log_env: true
-    save_artifacts: true
+    log_env: false
+    save_artifacts: false
 
 output:
   volume_mesh_field_names:
@@ -93,6 +93,8 @@ output:
   streamlines_vector_canonical: velocity
 
 metrics:
+  # drag / lift omitted: registered only for domain=surface (forces.py). Listing them with
+  # inference_domain: volume causes KeyError in get_metric(...) → swallowed as NaNs.
   - l2_pressure
   - l2_turbulent_viscosity
   - l2_velocity

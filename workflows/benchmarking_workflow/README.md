@@ -1,6 +1,12 @@
 # Model evaluation and benchmarking
 
-This workflow runs **metrics**, tabular outputs (JSON/CSV/HTML), optional **PNG visuals**, and optional VTK using **[Hydra](https://hydra.cc/)** and **OmegaConf** — the same pattern as **`workflows/domino_design_sensitivities/`**. It ties together model inference, built-in metrics, and artifacts for analysis.
+This workflow is an **opinionated**, **config-driven** benchmark entry point for **PhysicsNeMo-CFD**: **[Hydra](https://hydra.cc/)** and **OmegaConf** wire model inference, built-in metrics, tabular artifacts (JSON/CSV/HTML), optional **PNG visuals**, and optional VTK. It follows the same pattern as **`workflows/domino_design_sensitivities/`**. Defaults assume **DrivAerML-style** run layouts and evaluation components shipped under **`physicsnemo.cfd.evaluation`**. Nothing here is unique to that stack—you **can extend** wrappers, adapters, metrics, reports, and Hydra compositions as needed (see [**Custom models, datasets, and metrics**](#custom-models-datasets-and-metrics)).
+
+### How to use this README (goal-oriented)
+
+1. **Run the benchmark as configured** — install, set **`benchmark.datasets[].root`** and model paths (or overrides), run **`python main.py`** with **`config_surface`** or **`config_volume`**, confirm outputs under **`run.output_dir`**.
+2. **Stay in YAML / Hydra first** — change **`conf/*.yaml`** or pass **Hydra overrides** for models, **`case_id`**, metrics, outputs, metrics cache, and exit policy; avoid Python changes until defaults are insufficient.
+3. **Extend when needed** — add **`CFDModel`** wrappers, **`DatasetAdapter`** implementations, **`register_metric`** / **`register_visual`**, or custom configs for integrations the stock workflow does not cover.
 
 **Contributing:** see the repository **[CONTRIBUTING.md](../../CONTRIBUTING.md)** for pull requests, tests, and sign-off requirements.
 
@@ -23,7 +29,7 @@ Then use the commands below **from this directory** (`workflows/benchmarking_wor
 
 ## Quick start
 
-1. **Prerequisites:** Python 3.10+, NVIDIA GPU for full inference runs, checkpoints and dataset on disk or mounted volume.
+1. **Prerequisites:** Python 3.10+, NVIDIA GPU for full inference runs, checkpoints and dataset on disk or mounted volume. (For a concise **goal-oriented** path through docs and config, see the [introduction](#model-evaluation-and-benchmarking) above.)
 2. **Assets:** Download benchmark checkpoints and the **DrivAerML** evaluation tree (see [DrivAerML dataset: download and directory layout](#drivaerml-dataset-download-and-directory-layout)); **NGC** may mirror these later (see [Benchmark assets on NGC](#benchmark-assets-on-ngc-coming-soon)). Point `model.checkpoint`, `stats_path`, and `dataset.root` in `conf/*.yaml` at local paths, or use [Hydra overrides](#paths-without-ngc-hydra-overrides).
 3. **Configure:** Edit `conf/config_surface.yaml` (default), `config_volume.yaml`, or matrix configs under `conf/`.
 4. **Run:**
@@ -179,7 +185,7 @@ After the tree is on disk, use the fixed 90/10 split files under [`drivaer_ml_fi
 
 ## Notebooks (exploration, not batch production)
 
-The **`notebooks/`** directory (`surface_benchmarking.ipynb`, `volume_benchmarking.ipynb`, etc.) is for **interactive analysis**, plots, and exploring metrics. For **repeatable, automatable, config-driven** benchmarking (including CI-style runs), use **`main.py`** with **`conf/`** so every run is logged and reproducible.
+The **`notebooks/`** directory (`surface_benchmarking.ipynb`, `volume_benchmarking.ipynb`, **`adding_a_new_model.ipynb`**, etc.) supports **interactive** exploration and onboarding; **`main.py`** + **`conf/`** remains the recommendation for **logged, repeatable** benchmark runs aligned with CI and matrix configs.
 
 ---
 
@@ -213,7 +219,7 @@ The flat CLI **`python -m physicsnemo.cfd.evaluation.benchmarks.run`** applies t
 | ------- | -------- |
 | **run** | `device`, `output_dir`, `seed`, `batch_size`, **`save_inference_mesh`**, **`distributed`**, **`fail_on_all_skipped`**, **`fail_on_any_metric_nan`**, optional **`metrics_cache`** |
 | **model** / **benchmark.models** | `name`, `checkpoint`, `stats_path`, optional **`package`** (`hf://org/repo@rev`, `s3://…`, or local dir), **`checkpoint_relpath`** / **`stats_relpath`** (paths inside the package), `inference_domain`, `kwargs` |
-| **dataset** / **benchmark.datasets** | `name`, `root`, `split`, optional `case_ids` (`null` = all), `kwargs` |
+| **dataset** / **benchmark.datasets** | `name`, `root`, optional `case_ids` (`null` = all cases from `adapter.list_cases()`), `kwargs` |
 | **output** | VTK field name maps; **`streamlines_vector_canonical`** (volume); optional **`surface_interpolate_point_to_cell_for_metrics`** (kNN-IDW point → cell for XmGN/FiGNet-style surfaces so drag/lift/L2 use **`metric_dtype: cell`**), plus **`surface_metrics_idw_k`**, **`surface_metrics_idw_device`** |
 | **metrics** | Metric names or `{ name: ..., ...kwargs }` |
 | **reports** | Optional PNG pipeline |
@@ -221,7 +227,7 @@ The flat CLI **`python -m physicsnemo.cfd.evaluation.benchmarks.run`** applies t
 
 **`case_id`:** optional top-level Hydra key: `null` uses each dataset's `case_ids` (or all adapter cases); a **string** runs one case on every dataset; a **list** runs those cases in matrix mode.
 
-**`benchmark.reproducibility.log_env`:** when `true`, writes **full `os.environ`** to `env.json` under `run.output_dir` — avoid in shared CI or when secrets may be present. Default in code is `false`; example configs may set `true` for local debugging.
+**`benchmark.reproducibility.log_env`:** when `true`, writes **full `os.environ`** to `env.json` under `run.output_dir` — avoid in shared CI or when HF/AWS/other secrets may be present (default **`false`** in code and **in all example YAMLs under `conf/`**). Enable only deliberately for short-lived local debugging.
 
 **Metrics cache:** `run.metrics_cache.enabled` stores per-case scalars; delete the cache directory for a full recompute. Plots and meshes are not cached.
 
@@ -234,7 +240,7 @@ The flat CLI **`python -m physicsnemo.cfd.evaluation.benchmarks.run`** applies t
 ### Custom models
 
 1. Subclass **`CFDModel`** (`physicsnemo.cfd.evaluation.models.model_registry`) under `physicsnemo/cfd/evaluation/models/wrappers/`.
-2. Implement `INFERENCE_DOMAIN`, `OUTPUT_LOCATION`, `load`, `prepare_inputs`, `predict`, `decode_outputs`.
+2. Implement `INFERENCE_DOMAIN`, `OUTPUT_LOCATION`, `load`, `prepare_inputs`, `predict`, `decode_outputs(raw_output, case, model_input=None)` (the engine passes the same `model_input` returned by `prepare_inputs`).
 3. **`register_model("my_model", MyWrapper)`** in `wrappers/__init__.py`.
 
 ### Custom datasets
@@ -255,7 +261,9 @@ Schema: **`physicsnemo.cfd.evaluation.datasets.schema`** — **`CanonicalCase`**
 
 ## Metrics
 
-Registered names (or dicts with `name` + kwargs). Examples match **`conf/config_surface.yaml`** / **`config_volume.yaml`**:
+Registered names (or dicts with `name` + kwargs). **`conf/config_surface.yaml`** and **`conf/config_volume.yaml`** use different subsets — **`drag`** and **`lift`** are registered for **`domain="surface"`** only (`evaluation/metrics/builtin/forces.py`). Do **not** list **`drag`** / **`lift`** under volume benchmarks: **`get_metric`** has no volume entry, and the benchmark would record NaNs without a loud error.
+
+**Surface example:**
 
 ```yaml
 metrics:
@@ -265,18 +273,34 @@ metrics:
   - lift
 ```
 
+**Volume example** (`config_volume.yaml` / `config_matrix_volume.yaml`):
+
+```yaml
+metrics:
+  - l2_pressure
+  - l2_turbulent_viscosity
+  - l2_velocity
+  - continuity_residual_l2
+  - momentum_residual_l2
+```
+
 | Name | Meaning |
 | ---- | ------- |
 | `l2_pressure`, `l2_shear_stress` | Surface L2 |
 | `l2_pressure_area_weighted` | Area-weighted L2 pressure |
-| `drag`, `lift` | Coefficient errors (expands to `drag_error`, etc.) |
+| `drag`, `lift` | Coefficient errors (surface inference only); expands to `drag_error`, etc. |
+| `l2_pressure`, `l2_velocity`, `l2_turbulent_viscosity` (volume) | Volume-field L2 (see **`l2.py`**, `domain="volume"`) |
 | `continuity_residual_l2`, `momentum_residual_l2` | Volume residuals (volume configs) |
 
 ---
 
 ## Reports and plots
 
-When **`reports.enabled`** and **`reports.visuals`** are set, PNGs are written under `{run.output_dir}/visuals/`. Comparison VTK exists if **`reports.save_comparison_meshes: true`**. Headless servers may need **xvfb** (see **`setup.sh`** for an example `apt` line — optional).
+When **`reports.enabled`** and **`reports.visuals`** are set, PNGs are written under `{run.output_dir}/visuals/`. Comparison VTK exists if **`reports.save_comparison_meshes: true`**.
+
+**Benchmark mode:** `reports.visuals` run only when **`benchmark.mode`** is **`"single"`** (one model × one dataset). **`"matrix"`** runs skip visuals so filenames and multi-run aggregation stay well-defined — use **`"single"`** or a dedicated config for plots.
+
+**`aggregate_volume_errors`** writes per-run files such as **`{model}_{dataset}_aggregate_resampled_volume.vtk`** and **`{model}_{dataset}_aggregate_volume_*_slice.png`** (sanitized names). Headless servers may need **xvfb** (see **`setup.sh`** for an example `apt` line — optional).
 
 | Name | Role |
 | ---- | ---- |

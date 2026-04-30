@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Optional
 
 import numpy as np
 import pyvista as pv
@@ -39,10 +39,14 @@ from physicsnemo.cfd.evaluation.inference.progress import log_inference
 
 
 class VolumeBaselineWrapper(CFDModel):
-    """No trained weights: zeros for ``pressure`` and ``turbulent_viscosity`` on the volume mesh."""
+    """No trained weights: zeros for ``pressure``, ``velocity``, and ``turbulent_viscosity`` on the volume mesh.
+
+    ``OUTPUT_LOCATION`` is ``point`` so array lengths match :func:`~physicsnemo.cfd.evaluation.metrics.mesh_bridge.build_comparison_mesh`
+    for volume (it attaches fields on mesh points, not cells).
+    """
 
     INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "volume"
-    OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
+    OUTPUT_LOCATION: ClassVar[OutputLocation] = "point"
     REQUIRES_REMOTE_ASSETS: ClassVar[bool] = False
 
     @property
@@ -73,7 +77,12 @@ class VolumeBaselineWrapper(CFDModel):
         log_inference("volume_baseline", "Running forward pass (no-op for baseline)…")
         return None
 
-    def decode_outputs(self, raw_output: RawOutput, case: CanonicalCase) -> Predictions:
+    def decode_outputs(
+        self,
+        raw_output: RawOutput,
+        case: CanonicalCase,
+        model_input: Optional[ModelInput] = None,
+    ) -> Predictions:
         log_inference(
             "volume_baseline",
             f"Reading volume mesh and building baseline fields: {case.mesh_path}",
@@ -82,7 +91,7 @@ class VolumeBaselineWrapper(CFDModel):
         if hasattr(mesh, "cast_to_unstructured_grid"):
             mesh = mesh.cast_to_unstructured_grid()
         n = mesh.n_cells if self.output_location == "cell" else mesh.n_points
-        return build_predictions_dict(
-            pressure=np.zeros((n,), dtype=np.float32),
-            turbulent_viscosity=np.zeros((n,), dtype=np.float32),
-        )
+        p = np.zeros((n,), dtype=np.float32)
+        v = np.zeros((n, 3), dtype=np.float32)
+        nut = np.zeros((n,), dtype=np.float32)
+        return build_predictions_dict(pressure=p, velocity=v, turbulent_viscosity=nut)

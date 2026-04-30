@@ -520,17 +520,32 @@ if __name__ == "__main__":
     fig.savefig(f"./{output_dir}/bottom_centerline.png")
 
     if args.plot_aggregate_surface_errors:
-        fig = plot_projections_hexbin(pos_xy_projections, "p_error", "XY")
+        fig = plot_projections_hexbin(pos_xy_projections, "p_error", "XY", coordinate_layout="embedding")
         fig.savefig(f"./{output_dir}/hexbin_p_error_XY.png", dpi=300)
-        fig = plot_projections_hexbin(pos_xy_projections, "wallShearStress_error", "XY")
+        fig = plot_projections_hexbin(
+            pos_xy_projections,
+            "wallShearStress_error",
+            "XY",
+            coordinate_layout="embedding",
+        )
         fig.savefig(f"./{output_dir}/hexbin_wallShearStress_error_XY.png", dpi=300)
-        fig = plot_projections_hexbin(pos_yz_projections, "p_error", "YZ")
+        fig = plot_projections_hexbin(pos_yz_projections, "p_error", "YZ", coordinate_layout="embedding")
         fig.savefig(f"./{output_dir}/hexbin_p_error_YZ.png", dpi=300)
-        fig = plot_projections_hexbin(pos_yz_projections, "wallShearStress_error", "YZ")
+        fig = plot_projections_hexbin(
+            pos_yz_projections,
+            "wallShearStress_error",
+            "YZ",
+            coordinate_layout="embedding",
+        )
         fig.savefig(f"./{output_dir}/hexbin_wallShearStress_error_YZ.png", dpi=300)
-        fig = plot_projections_hexbin(pos_zx_projections, "p_error", "ZX")
+        fig = plot_projections_hexbin(pos_zx_projections, "p_error", "ZX", coordinate_layout="embedding")
         fig.savefig(f"./{output_dir}/hexbin_p_error_ZX.png", dpi=300)
-        fig = plot_projections_hexbin(pos_zx_projections, "wallShearStress_error", "ZX")
+        fig = plot_projections_hexbin(
+            pos_zx_projections,
+            "wallShearStress_error",
+            "ZX",
+            coordinate_layout="embedding",
+        )
         fig.savefig(f"./{output_dir}/hexbin_wallShearStress_error_ZX.png", dpi=300)
 
     for key, value in mean_l2_errors.items():

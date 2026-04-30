@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["BenchmarkPolicyError", "run_benchmark", "write_report"]
+__all__ = ["BenchmarkPolicyError", "run_benchmark", "run_benchmark_cli", "write_report"]
 
 
 def __getattr__(name: str) -> Any:
@@ -34,7 +34,10 @@ def __getattr__(name: str) -> Any:
     if name == "run_benchmark":
         from physicsnemo.cfd.evaluation.benchmarks.engine import run_benchmark
 
-        return run_benchmark
+    if name == "run_benchmark_cli":
+        from physicsnemo.cfd.evaluation.benchmarks.engine import run_benchmark_cli
+
+        return run_benchmark_cli
     if name == "write_report":
         from physicsnemo.cfd.evaluation.benchmarks.report import write_report
 

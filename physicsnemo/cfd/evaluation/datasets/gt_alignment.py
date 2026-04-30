@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from physicsnemo.cfd.evaluation.config import _parse_bool
 from physicsnemo.cfd.evaluation.models.model_registry import get_output_location_for_model
 
 # Keys used only for resolution; stripped before passing kwargs to dataset adapters.
@@ -32,6 +33,9 @@ def resolve_dataset_kwargs_for_model(
 ) -> dict[str, Any]:
     """Return a copy of ``dataset_kwargs`` with effective ``gt_data_type`` when requested.
 
+    Raises ``ValueError`` if ``split`` appears in kwargs (benchmarks iterate all cases under
+    ``dataset.root``, optionally narrowed via ``dataset.case_ids``).
+
     **Precedence**
 
     - Explicit ``gt_data_type`` / ``gt_prefer`` of ``cell`` or ``point`` always wins.
@@ -43,9 +47,14 @@ def resolve_dataset_kwargs_for_model(
     Alignment keys are removed from the returned dict so adapters only see concrete
     ``auto`` | ``cell`` | ``point``.
     """
+    if dataset_kwargs.get("split") is not None:
+        raise ValueError(
+            "dataset.kwargs.split is not supported — evaluation uses all cases under dataset.root "
+            "(or dataset.case_ids / case_id overrides). Remove 'split' from dataset kwargs."
+        )
     kw = dict(dataset_kwargs)
     gt_raw = kw.get("gt_data_type", kw.get("gt_prefer", "auto"))
-    align = bool(kw.get("align_ground_truth_to_model", False))
+    align = _parse_bool(kw.get("align_ground_truth_to_model"), default=False)
 
     explicit = {"cell", "point"}
     if isinstance(gt_raw, str) and gt_raw.lower() in explicit:

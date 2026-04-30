@@ -24,6 +24,11 @@ def register_metric(name: str, fn: MetricFn, *, domain: str | None = None) -> No
     _REGISTRY[(name, domain)] = fn
 
 
+def unregister_metric(name: str, *, domain: str | None = None) -> None:
+    """Remove a metric entry (e.g. test teardown). No-op if the key is missing."""
+    _REGISTRY.pop((name, domain), None)
+
+
 def get_metric(name: str, *, domain: str | None = None) -> MetricFn:
     """Resolve a metric function by name, preferring a domain-specific variant.
 

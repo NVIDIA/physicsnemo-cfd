@@ -2,7 +2,20 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Line plot visual wrapping ``physicsnemo.cfd.postprocessing_tools.visualization.utils.plot_line``."""
+"""Line plot visuals wrapping ``physicsnemo.cfd.postprocessing_tools.visualization.utils.plot_line``.
+
+Registered names:
+
+- ``line_plot`` (and aliases) — field vs coordinate on cell-centered mesh samples; not tied to a
+  particular vehicle geometry.
+
+- ``line_plot_centerlines`` — preset **DrivAer / legacy benchmark-style** extraction (``y`` slice,
+  split at ``z = z_clip``); defaults assume a vehicle-near-origin frame. Tune ``y_slice_origin``
+  and ``z_clip`` under ``reports.visuals`` for other setups, or add a distinct visual once we
+  generalize slice/clip beyond this recipe (planned for later).
+
+See ``line_plot_centerlines`` and ``bench_style_surface_centerlines`` docstrings for details.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +30,7 @@ from physicsnemo.cfd.evaluation.config import Config, OutputConfig
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.reports.context_helpers import get_comparison_mesh_for_case
 from physicsnemo.cfd.evaluation.reports.registry import register_visual
+from physicsnemo.cfd.evaluation.reports.visual_filenames import benchmark_visual_png
 
 
 def _resolve_gt_pred_fields(output: OutputConfig, canonical_key: str) -> tuple[str, str]:
@@ -60,10 +74,18 @@ def bench_style_surface_centerlines(
     y_slice_origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
     z_clip: float = 0.4,
 ) -> tuple[pv.PolyData, pv.PolyData]:
-    """DrivAer-style top/bottom strips: ``y`` slice at ``y_slice_origin``, split at ``z = z_clip``.
+    """Top/bottom PolyData strips for **DrivAer-class / benchmark car** setups.
 
-    Matches ``workflows/deprecated/bench_example/utils.py`` (surface): top = ``z`` above the clip plane,
-    bottom = below.
+    Procedure: slice with plane normal ``y`` through ``y_slice_origin``, then clip at ``z = z_clip``
+    (``top``: ``z`` above the plane, ``bottom``: below). Default origin ``(0, 0, 0)`` and
+    ``z_clip`` match typical car-centered coordinates from those workflows.
+
+    Matches ``workflows/deprecated/bench_example/utils.py`` (surface).
+
+    Non-automotive or differently oriented geometries may need explicit ``y_slice_origin`` /
+    ``z_clip`` (passed from ``line_plot_centerlines`` → ``reports.visuals`` kwargs). Arbitrary slice
+    normals or other extraction schemes are **not** implemented here yet; fuller generalization is
+    left for future work.
     """
     slice_y = mesh.slice(normal="y", origin=y_slice_origin)
     slice_y = _combine_if_multiblock(slice_y)
@@ -104,12 +126,17 @@ def line_plot_centerlines(
     z_clip: float = 0.4,
     **kwargs: Any,
 ) -> None:
-    """GT vs pred line plots on **top** and **bottom** surface centerline strips (legacy bench_example style).
+    """GT vs pred line plots on **top** and **bottom** surface strips (**DrivAer-style preset**).
 
-    Geometry: slice with normal ``y`` through ``y_slice_origin`` (default origin), then clip at
-    ``z = z_clip`` to separate upper (``top``) and lower (``bottom``) surface lines along the vehicle.
+    This visual uses the legacy benchmark recipe: slice with normal ``y`` through
+    ``y_slice_origin``, then clip at ``z = z_clip`` to separate roof/waist-relevant halves for
+    vehicle geometries in a car-centered frame. Defaults are tuned for that use case; other
+    geometries typically need adjusted ``y_slice_origin`` / ``z_clip`` in YAML (passed as kwargs
+    from ``reports.visuals``).
 
-    Surface (``metric_dtype`` cell) comparison meshes only. Writes two PNGs per case:
+    Arbitrary slicing strategies are out of scope for now; richer generalization is deferred.
+
+    Requires surface (``metric_dtype`` ``cell``) comparison meshes. Writes two PNGs per case:
     ``*_line_centerline_top_*`` and ``*_line_centerline_bottom_*``.
     """
     out = Path(output_dir) / "visuals"
@@ -179,10 +206,13 @@ def line_plot_centerlines(
                     flip=flip,
                     **kwargs,
                 )
-                safe = (
-                    f"{model}_{dataset}_{cid}_line_centerline_{label}_{canonical_key}_{plot_coord}.png".replace(
-                        "/", "_"
-                    )
+                safe = benchmark_visual_png(
+                    model,
+                    dataset,
+                    cid,
+                    f"line_centerline_{label}",
+                    canonical_key,
+                    plot_coord,
                 )
                 out_png = out / safe
                 fig.savefig(str(out_png), bbox_inches="tight", dpi=150)
@@ -207,10 +237,11 @@ def line_plot(
 ) -> None:
     """GT vs pred line plot along ``plot_coord`` using cell-centered samples of the comparison mesh.
 
+    Not DrivAer-specific: no fixed slice/clipping—the full comparison mesh is reduced to cell
+    centers (or points when there are no cells) and passed to ``plot_line`` sorted by ``plot_coord``.
+
     Resolves VTK array names from ``output.ground_truth_mesh_field_names`` and
-    ``output.mesh_field_names`` for ``canonical_key`` (surface defaults). The mesh is reduced to
-    cell centers (or points if there are no cells), then passed to ``plot_line`` as a **single**
-    polyline-like dataset (values vs sorted ``plot_coord``).
+    ``output.mesh_field_names`` for ``canonical_key`` (surface defaults).
 
     Extra ``**kwargs`` are forwarded to ``plot_line`` (e.g. ``true_line_kwargs``, ``pred_line_kwargs``,
     ``xlabel``, ``ylabel``, ``title_kwargs``).
@@ -255,9 +286,7 @@ def line_plot(
                 flip=flip,
                 **kwargs,
             )
-            safe = f"{model}_{dataset}_{cid}_line_{canonical_key}_{plot_coord}.png".replace(
-                "/", "_"
-            )
+            safe = benchmark_visual_png(model, dataset, cid, "line", canonical_key, plot_coord)
             out_png = vis_dir / safe
             fig.savefig(str(out_png), bbox_inches="tight", dpi=150)
             plt.close(fig)

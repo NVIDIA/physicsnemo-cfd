@@ -16,10 +16,10 @@
 
 """MeshGraphNet (xmgn) model wrapper for DrivAerML-style inference."""
 
-import os
-os.environ.setdefault("PHYSICSNEMO_FORCE_TE", "False")
+from contextlib import contextmanager, nullcontext
+from typing import Any, ClassVar, Iterator, Optional
 
-from typing import Any, ClassVar, Optional
+import os
 
 import numpy as np
 import torch
@@ -28,9 +28,11 @@ from torch_geometric.data import Data as PyGData
 
 from physicsnemo.models.meshgraphnet import MeshGraphNet
 
-from physicsnemo.cfd.evaluation.common.io import load_global_stats, load_mesh
+from physicsnemo.cfd.evaluation.common.checkpoint_compat import trusted_torch_load_context
+from physicsnemo.cfd.evaluation.common.io import load_global_stats, load_surface_mesh
 from physicsnemo.cfd.evaluation.common.interpolation import interpolate_to_mesh
-from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, predictions_dict
+from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, build_predictions_dict
+from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
 from physicsnemo.cfd.evaluation.models.model_registry import (
     CFDModel,
     ModelInput,
@@ -39,6 +41,22 @@ from physicsnemo.cfd.evaluation.models.model_registry import (
     Predictions,
 )
 from physicsnemo.cfd.evaluation.inference.progress import log_inference
+
+_PHYSICSNEMO_FORCE_TE_KEY = "PHYSICSNEMO_FORCE_TE"
+
+
+@contextmanager
+def _temporary_physicnemo_force_te(value: str) -> Iterator[None]:
+    """Set ``PHYSICSNEMO_FORCE_TE`` during MeshGraphNet load only; restore previous value afterward."""
+    previous = os.environ.get(_PHYSICSNEMO_FORCE_TE_KEY)
+    os.environ[_PHYSICSNEMO_FORCE_TE_KEY] = value
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(_PHYSICSNEMO_FORCE_TE_KEY, None)
+        else:
+            os.environ[_PHYSICSNEMO_FORCE_TE_KEY] = previous
 
 
 def _build_pyg_graph(
@@ -89,7 +107,22 @@ def _prepare_node_features(
 
 
 class XMGNWrapper(CFDModel):
-    """Wrapper for MeshGraphNet: mesh points + PyG graph, pressure + WSS output."""
+    """Wrapper for MeshGraphNet: mesh points + PyG graph, pressure + WSS output.
+
+    **Model kwargs (``load()`` / YAML ``model.kwargs``)**
+
+    MeshGraphNet consumes point normals only when boundary VTPs omit ``Normals``; they are computed with
+    :meth:`pyvista.PolyData.compute_normals`.
+
+    ``surface_flip_normals`` (bool, default ``False``)
+        Pass-through ``flip_normals``. Legacy DrivAerML meshes that matched training with VTK's flip heuristic
+        can set ``true`` explicitly.
+    ``surface_auto_orient_normals`` (bool, default ``True``)
+        Prefer outward orientation for watertight bodies instead of blindly flipping normals.
+    ``physicnemo_force_te`` (str, bool, or ``None``, default ``"False"``)
+        Sets ``PHYSICSNEMO_FORCE_TE`` **only during** ``load()`` (prior value restored afterward).
+        Use ``physicnemo_force_te: null`` / ``None`` to avoid changing this env from the wrapper—set it in the shell instead.
+    """
 
     INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "surface"
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "point"
@@ -105,6 +138,8 @@ class XMGNWrapper(CFDModel):
         self._max_points: Optional[int] = None
         self._node_degree: int = 6
         self._interpolation_k: int = 5
+        self._surface_flip_normals: bool = False
+        self._surface_auto_orient_normals: bool = True
 
     def load(
         self,
@@ -117,29 +152,47 @@ class XMGNWrapper(CFDModel):
         self._max_points = kwargs.get("max_points")
         self._node_degree = kwargs.get("node_degree", 6)
         self._interpolation_k = kwargs.get("interpolation_k", 5)
+        self._surface_flip_normals = bool(kwargs.get("surface_flip_normals", False))
+        self._surface_auto_orient_normals = bool(kwargs.get("surface_auto_orient_normals", True))
+        raw_te = kwargs.get("physicnemo_force_te", "False")
+        te_normalized: Optional[str]
+        if raw_te is None:
+            te_normalized = None
+        else:
+            te_normalized = str(raw_te)
+
         log_inference("xmgn", f"Loading normalization stats from {stats_path}")
         self._stats = load_global_stats(stats_path, device)
         log_inference("xmgn", f"Loading checkpoint from {checkpoint_path}")
-        model = MeshGraphNet(
-            input_dim_nodes=24,
-            input_dim_edges=4,
-            output_dim=4,
-            processor_size=15,
-            aggregation="sum",
-            hidden_dim_node_encoder=512,
-            hidden_dim_edge_encoder=512,
-            hidden_dim_node_decoder=512,
-            mlp_activation_fn="silu",
-            do_concat_trick=True,
-            num_processor_checkpoint_segments=3,
-            norm_type="LayerNorm",
-        ).to(device)
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-        state_dict = checkpoint["model_state_dict"]
-        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
-        model.load_state_dict(state_dict)
-        model.eval()
-        self._model = model
+
+        te_ctx = (
+            nullcontext()
+            if te_normalized is None
+            else _temporary_physicnemo_force_te(te_normalized)
+        )
+        with te_ctx:
+            model = MeshGraphNet(
+                input_dim_nodes=24,
+                input_dim_edges=4,
+                output_dim=4,
+                processor_size=15,
+                aggregation="sum",
+                hidden_dim_node_encoder=512,
+                hidden_dim_edge_encoder=512,
+                hidden_dim_node_decoder=512,
+                mlp_activation_fn="silu",
+                do_concat_trick=True,
+                num_processor_checkpoint_segments=3,
+                norm_type="LayerNorm",
+            ).to(device)
+            with trusted_torch_load_context():
+                checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+                state_dict = checkpoint["model_state_dict"]
+                state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+                model.load_state_dict(state_dict)
+            model.eval()
+            self._model = model
+
         log_inference("xmgn", "Checkpoint loaded; model ready for inference.")
         return self
 
@@ -150,9 +203,14 @@ class XMGNWrapper(CFDModel):
             "xmgn",
             f"Reading mesh (case {case.case_id}): {case.mesh_path}",
         )
-        mesh = load_mesh(case.mesh_path)
+        mesh = load_surface_mesh(case.mesh_path)
         if "Normals" not in mesh.point_data:
-            mesh = mesh.compute_normals(point_normals=True, cell_normals=False, flip_normals=True)
+            mesh = mesh.compute_normals(
+                point_normals=True,
+                cell_normals=False,
+                flip_normals=self._surface_flip_normals,
+                auto_orient_normals=self._surface_auto_orient_normals,
+            )
         points = np.array(mesh.points)
         normals = np.array(mesh.point_data["Normals"])
         n_total = len(points)
@@ -164,12 +222,12 @@ class XMGNWrapper(CFDModel):
             points, normals, self._node_degree
         )
         ndata = _prepare_node_features(coords, normals_t, self._stats, self._device)
-        self._last_mesh = mesh
-        self._last_pred_coords = points
         return {
             "graph": graph,
             "ndata": ndata,
             "edata": edge_features,
+            "mesh": mesh,
+            "pred_coords": points,
         }
 
     def predict(self, model_input: ModelInput) -> RawOutput:
@@ -180,11 +238,16 @@ class XMGNWrapper(CFDModel):
         edata = model_input["edata"].to(self._device)
         edata_norm = (edata - self._stats["mean"]["x"]) / self._stats["std"]["x"]
         with torch.inference_mode():
-            with torch.autocast("cuda", enabled=True, dtype=torch.bfloat16):
+            with cuda_bf16_autocast(self._device):
                 pred = self._model(model_input["ndata"], edata_norm, graph)
         return pred
 
-    def decode_outputs(self, raw_output: RawOutput, case: CanonicalCase) -> Predictions:
+    def decode_outputs(
+        self,
+        raw_output: RawOutput,
+        case: CanonicalCase,
+        model_input: Optional[ModelInput] = None,
+    ) -> Predictions:
         if self._stats is None:
             raise RuntimeError("XMGNWrapper: call load() first")
         log_inference(
@@ -194,10 +257,18 @@ class XMGNWrapper(CFDModel):
         pred = raw_output
         pressure = pred[:, 0:1] * self._stats["std"]["pressure"] + self._stats["mean"]["pressure"]
         wss = pred[:, 1:] * self._stats["std"]["shear_stress"] + self._stats["mean"]["shear_stress"]
-        mesh = getattr(self, "_last_mesh", None)
-        pred_coords = getattr(self, "_last_pred_coords", None)
+        mesh = model_input.get("mesh") if model_input else None
+        pred_coords = model_input.get("pred_coords") if model_input else None
+
+        # With subsampling (max_points), pred row count ≠ full mesh.points; reloading mesh here misaligns.
+        if self._max_points is not None and (mesh is None or pred_coords is None):
+            raise ValueError(
+                "XMGNWrapper.decode_outputs requires the same model_input dict returned by prepare_inputs "
+                "(keys 'mesh', 'pred_coords') when max_points is set; subsampled field length does not "
+                "match reloading the surface mesh alone."
+            )
         if mesh is None or pred_coords is None:
-            mesh = load_mesh(case.mesh_path)
+            mesh = load_surface_mesh(case.mesh_path)
             pred_coords = np.array(mesh.points)
         target_points = np.array(mesh.points)
         p_mesh, wss_mesh = interpolate_to_mesh(
@@ -207,4 +278,4 @@ class XMGNWrapper(CFDModel):
             wss,
             k=self._interpolation_k,
         )
-        return predictions_dict(p_mesh, wss_mesh)
+        return build_predictions_dict(pressure=p_mesh, shear_stress=wss_mesh)

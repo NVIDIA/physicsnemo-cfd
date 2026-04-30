@@ -16,31 +16,16 @@ Use the ``*_true`` / ``*_pred`` keys with ``design_scatter`` / ``design_trend`` 
 
 from __future__ import annotations
 
+import logging
+import traceback
 from typing import Any
 
 from physicsnemo.cfd.postprocessing_tools.metric_registry import register_metric
 from physicsnemo.cfd.postprocessing_tools.metrics.aero_forces import compute_drag_and_lift
-from physicsnemo.cfd.evaluation.metrics.mesh_bridge import build_comparison_mesh
+from physicsnemo.cfd.evaluation.metrics.mesh_bridge import resolve_comparison_mesh_for_metric
+from physicsnemo.cfd.evaluation.metrics.metric_exceptions import RECOVERABLE_MESH_METRIC_ERRORS
 
-
-def _resolve_mesh(
-    predictions: dict[str, Any],
-    *,
-    case: Any,
-    comparison_mesh: Any,
-    metric_dtype: str | None,
-    output: Any,
-) -> tuple[Any, str] | tuple[None, None]:
-    if comparison_mesh is not None and metric_dtype is not None:
-        return comparison_mesh, metric_dtype
-    if case is not None and output is not None:
-        return build_comparison_mesh(case, predictions, output)
-    return None, None
-
-
-def _scalar_drag_lift_error(ground_truth: dict, predictions: dict, key: str) -> float:
-    rel, _, _ = _scalar_drag_lift_triplet(ground_truth, predictions, key)
-    return rel
+_LOG = logging.getLogger(__name__)
 
 
 def _scalar_drag_lift_triplet(
@@ -83,7 +68,7 @@ def drag_error(
     drag_direction: list[float] | None = None,
     **_: object,
 ) -> dict[str, float]:
-    mesh, dtype = _resolve_mesh(
+    mesh, dtype = resolve_comparison_mesh_for_metric(
         predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
     )
     dd = drag_direction if drag_direction is not None else [1.0, 0.0, 0.0]
@@ -112,7 +97,11 @@ def drag_error(
             dtype=dtype,
         )
         return _rel_and_pair(float(cd_gt), float(cd_pr))
-    except Exception:
+    except RECOVERABLE_MESH_METRIC_ERRORS:
+        _LOG.warning(
+            "compute_drag_and_lift failed for drag_error; using scalar drag/lift metadata if present:\n%s",
+            traceback.format_exc(),
+        )
         rel, gt, pr = _scalar_drag_lift_triplet(ground_truth, predictions, "drag")
         return {"error": rel, "true": gt, "pred": pr}
 
@@ -129,7 +118,7 @@ def lift_error(
     lift_direction: list[float] | None = None,
     **_: object,
 ) -> dict[str, float]:
-    mesh, dtype = _resolve_mesh(
+    mesh, dtype = resolve_comparison_mesh_for_metric(
         predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
     )
     ld = lift_direction if lift_direction is not None else [0.0, 0.0, 1.0]
@@ -160,7 +149,11 @@ def lift_error(
             dtype=dtype,
         )
         return _rel_and_pair(float(cl_gt), float(cl_pr))
-    except Exception:
+    except RECOVERABLE_MESH_METRIC_ERRORS:
+        _LOG.warning(
+            "compute_drag_and_lift failed for lift_error; using scalar drag/lift metadata if present:\n%s",
+            traceback.format_exc(),
+        )
         rel, gt, pr = _scalar_drag_lift_triplet(ground_truth, predictions, "lift")
         return {"error": rel, "true": gt, "pred": pr}
 

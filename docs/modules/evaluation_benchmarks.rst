@@ -12,5 +12,6 @@ PhysicsNeMo CFD Benchmark Engine
    :toctree: generated/benchmarks/
 
    run_benchmark
+   run_benchmark_cli
    write_report
    BenchmarkPolicyError

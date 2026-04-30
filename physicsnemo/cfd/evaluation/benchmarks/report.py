@@ -21,11 +21,40 @@ Writes ``benchmark_results.{json,csv,html}`` under the run output directory.
 """
 
 import csv
+import html
 import json
+import math
 from pathlib import Path
 from typing import Any
 
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
+
+
+def _sanitize_for_strict_json(obj: Any) -> Any:
+    """Recursively replace NaN/Inf floats with None for RFC 8259–valid JSON."""
+    if isinstance(obj, float):
+        return None if (math.isnan(obj) or math.isinf(obj)) else obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_strict_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_strict_json(x) for x in obj]
+    if isinstance(obj, tuple):
+        return tuple(_sanitize_for_strict_json(x) for x in obj)
+    return obj
+
+
+def _fmt_html_metric_value(value: Any) -> str:
+    """Format a metric cell for HTML; escape textual output."""
+
+    if isinstance(value, bool):
+        return html.escape(str(value))
+    if isinstance(value, int):
+        return f"{value:.6g}"
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return html.escape(str(value))
+        return f"{value:.6g}"
+    return html.escape(str(value))
 
 
 def write_report(
@@ -73,8 +102,9 @@ def _write_json(results: list[dict], output_dir: Path) -> None:
     """Write ``benchmark_results.json``."""
     path = output_dir / "benchmark_results.json"
     log_dataset("benchmark", f"Writing {path}…")
+    payload = _sanitize_for_strict_json(results)
     with open(path, "w") as f:
-        json.dump(results, f, indent=2)
+        json.dump(payload, f, indent=2, allow_nan=False)
 
 
 def _write_csv(results: list[dict], output_dir: Path) -> None:
@@ -124,32 +154,35 @@ def _write_html(results: list[dict], output_dir: Path) -> None:
     for r in results:
         model = r.get("model", "")
         dataset = r.get("dataset", "")
-        lines.append(f"<h2>{model} / {dataset}</h2>")
+        lines.append(
+            f"<h2>{html.escape(str(model))} / {html.escape(str(dataset))}</h2>"
+        )
         if r.get("skipped"):
             lines.append(
-                f"<p><em>Skipped:</em> {r.get('skip_reason', '')}</p>"
+                f"<p><em>Skipped:</em> {html.escape(str(r.get('skip_reason', '')))}</p>"
             )
             continue
         metrics = r.get("metrics", {})
         if metrics:
             lines.append("<table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>")
             for mname, value in metrics.items():
-                cell = f"{value:.6g}" if isinstance(value, (int, float)) else str(value)
-                lines.append(f"<tr><td>{mname}</td><td>{cell}</td></tr>")
+                lines.append(
+                    f"<tr><td>{html.escape(str(mname))}</td><td>"
+                    f"{_fmt_html_metric_value(value)}</td></tr>"
+                )
             lines.append("</tbody></table>")
         per_case = r.get("per_case", [])
         if per_case:
             lines.append("<h3>Per-case</h3><table><thead><tr><th>Case ID</th>")
             all_metrics = sorted(set(k for c in per_case for k in c.get("metrics", {})))
             for m in all_metrics:
-                lines.append(f"<th>{m}</th>")
+                lines.append(f"<th>{html.escape(str(m))}</th>")
             lines.append("</tr></thead><tbody>")
             for c in per_case:
-                line = f"<tr><td>{c.get('case_id', '')}</td>"
+                line = f"<tr><td>{html.escape(str(c.get('case_id', '')))}</td>"
                 for m in all_metrics:
                     val = c.get("metrics", {}).get(m, "")
-                    cell = f"{val:.6g}" if isinstance(val, (int, float)) else str(val)
-                    line += f"<td>{cell}</td>"
+                    line += f"<td>{_fmt_html_metric_value(val)}</td>"
                 line += "</tr>"
                 lines.append(line)
             lines.append("</tbody></table>")

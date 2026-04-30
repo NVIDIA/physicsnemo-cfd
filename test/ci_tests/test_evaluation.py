@@ -6,16 +6,9 @@
 
 from __future__ import annotations
 
-import importlib.util
+from collections.abc import Iterator
 
 import pytest
-
-# Bench L2 imports physicsnemo.utils.sdf at module level; skip whole module if missing.
-if importlib.util.find_spec("physicsnemo.utils.sdf") is None:
-    pytest.skip(
-        "physicsnemo.utils.sdf not available (install/upgrade nvidia-physicsnemo)",
-        allow_module_level=True,
-    )
 
 import numpy as np
 import pyvista as pv
@@ -34,9 +27,26 @@ from physicsnemo.cfd.evaluation.datasets.adapters.drivaerml import (
 from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase
 from physicsnemo.cfd.evaluation.datasets.vtk_ground_truth import extract_volume_fields_from_mesh
 from physicsnemo.cfd.evaluation.metrics import get_metric, list_metrics
-from physicsnemo.cfd.evaluation.metrics.builtin.l2 import l2_pressure
+from physicsnemo.cfd.evaluation.metrics.builtin.l2 import (
+    l2_pressure_surface,
+    l2_pressure_volume,
+)
 from physicsnemo.cfd.evaluation.metrics.mesh_bridge import build_comparison_mesh
-from physicsnemo.cfd.evaluation.metrics.registry import register_metric
+from physicsnemo.cfd.evaluation.metrics.registry import register_metric, unregister_metric
+
+_CI_TEST_LEGACY_METRIC_NAME = "_ci_test_legacy_metric"
+
+
+@pytest.fixture
+def ci_test_legacy_metric() -> Iterator[None]:
+    """Register a domain-agnostic legacy metric only for one test and remove after."""
+
+    def legacy(_gt: dict, _pred: dict) -> float:
+        return 1.0
+
+    register_metric(_CI_TEST_LEGACY_METRIC_NAME, legacy)
+    yield
+    unregister_metric(_CI_TEST_LEGACY_METRIC_NAME)
 
 
 def test_normalize_metrics_config_strings_and_dicts() -> None:
@@ -157,7 +167,51 @@ def test_build_comparison_mesh_surface_zero_l2_when_identical() -> None:
     key = f"{gtn}_l2_error"
     assert abs(float(d[key])) < 1e-10
 
-    v = l2_pressure(
+    v = l2_pressure_surface(
+        case.ground_truth or {},
+        pred,
+        case=case,
+        comparison_mesh=mesh,
+        metric_dtype=dtype,
+        output=output,
+    )
+    assert abs(v) < 1e-10
+
+
+def test_build_comparison_mesh_volume_zero_l2_when_identical() -> None:
+    """In-memory volume grid + synthetic numpy fields; matches surface zero-L2 regression for volume."""
+    volume = pv.ImageData(dimensions=(6, 5, 4), spacing=(1.0, 1.0, 1.0), origin=(0.0, 0.0, 0.0))
+    n_pts = volume.n_points
+    p = np.random.randn(n_pts).astype(np.float64)
+    vel = np.random.randn(n_pts, 3).astype(np.float64)
+    nut = np.random.randn(n_pts).astype(np.float64)
+
+    case = CanonicalCase(
+        case_id="syn_vol",
+        mesh_path="",
+        mesh_type="point",
+        ground_truth={
+            "pressure": p,
+            "velocity": vel,
+            "turbulent_viscosity": nut,
+        },
+        inference_domain="volume",
+    )
+    pred = {
+        "pressure": p.copy(),
+        "velocity": vel.copy(),
+        "turbulent_viscosity": nut.copy(),
+    }
+    output = OutputConfig()
+    mesh, dtype = build_comparison_mesh(case, pred, output, mesh_override=volume)
+    assert dtype == "point"
+    gtn = output.ground_truth_volume_mesh_field_names["pressure"]
+    prn = output.volume_mesh_field_names["pressure"]
+    d = compute_l2_errors(mesh, [gtn], [prn], dtype=dtype)
+    key = f"{gtn}_l2_error"
+    assert abs(float(d[key])) < 1e-10
+
+    v = l2_pressure_volume(
         case.ground_truth or {},
         pred,
         case=case,
@@ -335,14 +389,111 @@ def test_drivaerml_adapter_finds_trim_only_volume_fields(tmp_path) -> None:
     assert case.ground_truth["turbulent_viscosity"].shape == (n,)
 
 
-def test_legacy_metric_call_without_extended_kwargs() -> None:
+def test_build_comparison_mesh_volume_cell_dtype_matches_n_cells() -> None:
+    """Volume VTU-style fields on cells (DrivAerML default): lengths match ``n_cells``, not ``n_points``."""
+    grid = pv.ImageData(dimensions=(5, 6, 7))
+    nc, np_ = grid.n_cells, grid.n_points
+    assert nc != np_
+    pr = np.random.randn(nc).astype(np.float64)
+    vel = np.random.randn(nc, 3).astype(np.float64)
+    nut = np.random.randn(nc).astype(np.float64)
+
+    case = CanonicalCase(
+        case_id="vol_cell",
+        mesh_path="",
+        mesh_type="cell",
+        ground_truth={"pressure": pr, "velocity": vel, "turbulent_viscosity": nut},
+        inference_domain="volume",
+    )
+    pred = {
+        "pressure": pr.copy(),
+        "velocity": vel.copy(),
+        "turbulent_viscosity": nut.copy(),
+    }
+    output = OutputConfig()
+    mesh, dtype = build_comparison_mesh(case, pred, output, mesh_override=grid)
+    assert dtype == "cell"
+    gtn = output.ground_truth_volume_mesh_field_names["pressure"]
+    prn = output.volume_mesh_field_names["pressure"]
+    d = compute_l2_errors(mesh, [gtn], [prn], dtype=dtype)
+    assert abs(float(d[f"{gtn}_l2_error"])) < 1e-10
+
+
+def test_build_comparison_mesh_volume_point_dtype_matches_n_points() -> None:
+    """Point-centered volume fields (``mesh_type: point`` or array length == ``n_points``)."""
+    grid = pv.ImageData(dimensions=(5, 6, 7))
+    nc, np_ = grid.n_cells, grid.n_points
+    assert nc != np_
+    pr = np.random.randn(np_).astype(np.float64)
+    vel = np.random.randn(np_, 3).astype(np.float64)
+    nut = np.random.randn(np_).astype(np.float64)
+
+    case = CanonicalCase(
+        case_id="vol_pt",
+        mesh_path="",
+        mesh_type="point",
+        ground_truth={"pressure": pr, "velocity": vel, "turbulent_viscosity": nut},
+        inference_domain="volume",
+    )
+    pred = {
+        "pressure": pr.copy(),
+        "velocity": vel.copy(),
+        "turbulent_viscosity": nut.copy(),
+    }
+    output = OutputConfig()
+    mesh, dtype = build_comparison_mesh(case, pred, output, mesh_override=grid)
+    assert dtype == "point"
+    gtn = output.ground_truth_volume_mesh_field_names["pressure"]
+    prn = output.volume_mesh_field_names["pressure"]
+    d = compute_l2_errors(mesh, [gtn], [prn], dtype=dtype)
+    assert abs(float(d[f"{gtn}_l2_error"])) < 1e-10
+
+
+def test_extract_volume_fields_generic_uses_vanilla_cfd_names() -> None:
+    """Generic extractor defaults are dataset-agnostic (``UMean`` / ``nutMean`` / ``pMean``)."""
+    grid = pv.ImageData(dimensions=(4, 4, 4))
+    n = grid.n_cells
+    rng = np.random.default_rng(0)
+    grid.cell_data["pMean"] = rng.standard_normal(n).astype(np.float32)
+    grid.cell_data["UMean"] = rng.standard_normal((n, 3)).astype(np.float32)
+    grid.cell_data["nutMean"] = rng.standard_normal(n).astype(np.float32)
+
+    gt, loc = extract_volume_fields_from_mesh(grid, data_type="auto")
+    assert loc == "cell"
+    assert gt is not None
+    assert set(gt.keys()) == {"pressure", "velocity", "turbulent_viscosity"}
+
+
+def test_drivaerml_adapter_finds_trim_only_volume_fields(tmp_path) -> None:
+    """DrivAer adapter ships ``*MeanTrim`` defaults so Trim-only VTUs populate velocity / νₜ
+    without requiring per-config ``velocity_field_names`` / ``turbulent_viscosity_field_names``.
+    """
+    assert "UMeanTrim" in DRIVAER_VOLUME_VELOCITY_NAMES
+    assert "nutMeanTrim" in DRIVAER_TURBULENT_VISCOSITY_NAMES
+
+    run_dir = tmp_path / "run_1"
+    run_dir.mkdir()
+    grid = pv.ImageData(dimensions=(4, 4, 4))
+    n = grid.n_cells
+    rng = np.random.default_rng(0)
+    grid.cell_data["pMeanTrim"] = rng.standard_normal(n).astype(np.float32)
+    grid.cell_data["UMeanTrim"] = rng.standard_normal((n, 3)).astype(np.float32)
+    grid.cell_data["nutMeanTrim"] = rng.standard_normal(n).astype(np.float32)
+    ugrid = grid.cast_to_unstructured_grid()
+    ugrid.save(str(run_dir / "volume_1.vtu"))
+
+    adapter = DrivAerMLAdapter(root=str(tmp_path), inference_domain="volume")
+    case = adapter.load_case("run_1")
+    assert case.inference_domain == "volume"
+    assert case.ground_truth is not None
+    assert set(case.ground_truth.keys()) == {"pressure", "velocity", "turbulent_viscosity"}
+    assert case.ground_truth["velocity"].shape == (n, 3)
+    assert case.ground_truth["turbulent_viscosity"].shape == (n,)
+
+
+def test_legacy_metric_call_without_extended_kwargs(ci_test_legacy_metric: None) -> None:
     """Metrics with a fixed (gt, pred) signature fall back when extended kwargs are rejected."""
-
-    def legacy(gt: dict, pred: dict) -> float:
-        return 1.0
-
-    register_metric("_ci_test_legacy_metric", legacy)
-    fn = get_metric("_ci_test_legacy_metric")
+    fn = get_metric(_CI_TEST_LEGACY_METRIC_NAME)
     out = _call_metric(
         fn,
         {},

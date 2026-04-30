@@ -22,7 +22,8 @@ from typing import Any
 import pyvista as pv
 
 from physicsnemo.cfd.evaluation.datasets.adapter_registry import DatasetAdapter
-from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain
+from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, coerce_inference_domain_or_default
+from physicsnemo.cfd.evaluation.common.natural_sort import natural_sorted
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.datasets.vtk_ground_truth import (
     DEFAULT_PRESSURE_NAMES,
@@ -54,14 +55,20 @@ class DrivAerMLAdapter(DatasetAdapter):
     ``boundary_vtp_filename`` (fixed name in every run dir) or ``boundary_vtp_template``
     (e.g. ``"boundary_{run_suffix}.vtp"``; supports ``{run_suffix}``, ``{case_id}``).
 
+    Benchmarks use **all** ``run_*`` directories under ``dataset.root`` that contain the
+    required mesh (or the subset in ``dataset.case_ids``). Published
+    train/validation CSVs in the workflow folder are not applied by the benchmark driver.
+
     **Volume** — set ``dataset.kwargs.inference_domain: volume``. Default
     ``run_<n>/volume_<n>.vtu``. Override with ``volume_vtu_filename`` or ``volume_vtu_template``.
 
     Optional kwargs (from ``dataset.kwargs`` in config):
 
     - ``inference_domain``: ``"surface"`` (default) or ``volume``.
-    - ``gt_data_type``: for surface, ``auto`` / ``cell`` / ``point`` / ``from_model`` (see below).
-      For volume, passed to volume GT extraction as ``auto`` / ``cell`` / ``point`` only.
+    - ``gt_data_type``: for surface, ``auto`` / ``cell`` / ``point`` / ``from_model``
+      (below). Surface ``auto`` and ``cell`` are equivalent (both try **cell** then **point**).
+      For volume, passed to volume GT extraction as ``auto`` / ``cell`` / ``point`` only
+      (``auto`` / ``point`` prefer **point** then **cell**; ``cell`` prefers **cell** first).
     - ``align_ground_truth_to_model``: surface only; same as elsewhere.
     - ``pressure_field_names``, ``shear_field_names``: surface GT array name overrides.
     - ``turbulent_viscosity_field_names``, ``velocity_field_names``,
@@ -84,10 +91,12 @@ class DrivAerMLAdapter(DatasetAdapter):
     @classmethod
     def inference_domain_from_kwargs(cls, kwargs: dict[str, Any] | None) -> InferenceDomain:
         kw = kwargs or {}
-        dom = kw.get("inference_domain", "surface")
-        if dom in ("surface", "volume"):
-            return dom  # type: ignore[return-value]
-        return "surface"
+        raw = kw.get("inference_domain")
+        return coerce_inference_domain_or_default(
+            raw,
+            default="surface",
+            parameter="dataset.kwargs.inference_domain",
+        )
 
     def __init__(self, root: str, **kwargs: Any) -> None:
         self.root = Path(root)
@@ -143,7 +152,7 @@ class DrivAerMLAdapter(DatasetAdapter):
             )
         return run_dir / f"volume_{self._run_suffix(case_id)}.vtu"
 
-    def list_cases(self, split: str | None = None) -> list[str]:
+    def list_cases(self) -> list[str]:
         """Return case IDs: run directory names that contain the required mesh for the mode."""
         case_ids: list[str] = []
         for p in self.root.iterdir():
@@ -155,7 +164,7 @@ class DrivAerMLAdapter(DatasetAdapter):
             else:
                 if self._boundary_vtp_path(p, p.name).exists():
                     case_ids.append(p.name)
-        return sorted(case_ids)
+        return natural_sorted(case_ids)
 
     def load_case(self, case_id: str) -> CanonicalCase:
         """Load surface VTP or volume VTU and optional ground truth."""
@@ -188,7 +197,7 @@ class DrivAerMLAdapter(DatasetAdapter):
             shear_names=self._shear_names,
         )
         ground_truth = gt_dict if gt_dict else None
-        mesh_type = gt_loc if gt_loc is not None else "cell"
+        mesh_type = gt_loc if gt_loc is not None else "unknown"
 
         meta: dict[str, Any] = {
             "dataset": "drivaerml",
@@ -234,7 +243,7 @@ class DrivAerMLAdapter(DatasetAdapter):
             pressure_names=self._volume_pressure_names if self._volume_pressure_names else None,
         )
         ground_truth = gt_dict if gt_dict else None
-        mesh_type = gt_loc if gt_loc is not None else "cell"
+        mesh_type = gt_loc if gt_loc is not None else "point"  # nodal VTU default; matches mesh_bridge volume
 
         meta: dict[str, Any] = {
             "dataset": "drivaerml",

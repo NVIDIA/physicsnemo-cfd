@@ -22,7 +22,7 @@ hydra:
   job:
     chdir: false
 
-case_id: [run_1, run_11]
+case_id: null
 
 run:
   device: "cuda:0"
@@ -48,6 +48,7 @@ benchmark:
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
     - name: xmgn_surface
       inference_domain: surface
+      # If boundary VTP omits Normals, see xmgn wrapper doc: surface_auto_orient_normals / surface_flip_normals
       kwargs: { "max_points": 250000, "interpolation_k": 4 }
     - name: fignet_surface
       inference_domain: surface
@@ -57,9 +58,10 @@ benchmark:
       root: "/code/drivaerml"
       split: null
       kwargs: { align_ground_truth_to_model: true, inference_domain: surface }
+  # When true: writes full os.environ → env.json (may leak HF/AWS tokens). Prefer false for shared runs.
   reproducibility:
-    log_env: true
-    save_artifacts: true
+    log_env: false
+    save_artifacts: false
 
 output:
   surface_interpolate_point_to_cell_for_metrics: true

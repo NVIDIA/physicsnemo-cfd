@@ -12,5 +12,5 @@ PhysicsNeMo CFD Common Utilities
    :toctree: generated/common/
 
    load_global_stats
-   load_mesh
+   load_surface_mesh
    interpolate_to_mesh

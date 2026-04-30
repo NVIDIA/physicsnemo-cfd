@@ -54,6 +54,13 @@ class _ScalingUnpickler(pickle.Unpickler):
         return super().find_class(module, name)
 
 
+_COMPAT_UNPICKLE_ERRORS = (
+    AttributeError,
+    ImportError,
+    pickle.UnpicklingError,
+)
+
+
 def load_scaling_factors_tensors(
     cfg: DictConfig,
     device: torch.device,
@@ -64,7 +71,7 @@ def load_scaling_factors_tensors(
     with open(pickle_path, "rb") as f:
         try:
             scaling_factors = _ScalingUnpickler(f).load()
-        except Exception:
+        except _COMPAT_UNPICKLE_ERRORS:
             f.seek(0)
             scaling_factors = pickle.load(f)
 

@@ -30,8 +30,9 @@ from physicsnemo.cfd.evaluation.datasets.schema import (
     CanonicalCase,
     InferenceDomain,
     build_predictions_dict,
-    predictions_dict,
+    coerce_inference_domain_or_default,
 )
+from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
 from physicsnemo.cfd.evaluation.models.model_registry import (
     CFDModel,
     ModelInput,
@@ -129,12 +130,23 @@ def _volume_datapipe_kw() -> dict[str, Any]:
 class TransolverWrapper(CFDModel):
     """Transolver: boundary VTP (surface) or volume VTU; set ``model.inference_domain: volume`` for VTU."""
 
-    INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "surface"
+    INFERENCE_DOMAIN: ClassVar[InferenceDomain | None] = None
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
 
     @property
     def output_location(self) -> OutputLocation:
         return self.OUTPUT_LOCATION
+
+    @classmethod
+    def inference_domain_from_kwargs(
+        cls, kwargs: dict[str, Any]
+    ) -> InferenceDomain | None:
+        """Align benchmark routing with :meth:`load` (default surface when omitted)."""
+        return coerce_inference_domain_or_default(
+            kwargs.get("inference_domain"),
+            default="surface",
+            parameter="model.kwargs.inference_domain",
+        )
 
     def __init__(self) -> None:
         self._model: Optional[Transolver] = None
@@ -160,7 +172,11 @@ class TransolverWrapper(CFDModel):
             )
         kw = dict(kwargs)
         dom = kw.pop("inference_domain", None)
-        self._inference_mode = dom if dom in ("surface", "volume") else "surface"
+        self._inference_mode = coerce_inference_domain_or_default(
+            dom,
+            default="surface",
+            parameter="model.kwargs.inference_domain",
+        )
 
         self._device = device
         self._air_density = float(kw.get("air_density", 1.205))
@@ -192,7 +208,7 @@ class TransolverWrapper(CFDModel):
             self._datapipe = TransolverDataPipe(
                 input_path=None,
                 model_type="volume",
-                resolution=None,
+                resolution=self._datapipe_resolution,
                 surface_factors=None,
                 volume_factors=volume_factors,
                 scaling_type="mean_std_scaling",
@@ -209,7 +225,7 @@ class TransolverWrapper(CFDModel):
             self._datapipe = TransolverDataPipe(
                 input_path=None,
                 model_type="surface",
-                resolution=None,
+                resolution=self._datapipe_resolution,
                 surface_factors=surface_factors,
                 volume_factors=None,
                 scaling_type="mean_std_scaling",
@@ -274,32 +290,22 @@ class TransolverWrapper(CFDModel):
         log_inference("transolver", "Running forward pass (predicting fields)…")
         batch = model_input["batch"]
         datapipe = model_input["datapipe"]
-        dev = batch["embeddings"].device
         N = batch["embeddings"].shape[1]
         batch_res = min(self._batch_resolution, N)
         indices = torch.randperm(N, device=batch["embeddings"].device)
         index_blocks = torch.split(indices, batch_res)
         preds_list = []
         with torch.no_grad():
-            for index_block in index_blocks:
-                local_embeddings = batch["embeddings"][:, index_block]
-                local_fx = batch["fx"][:, index_block]
-                local_batch = {
-                    "fx": local_fx,
-                    "embeddings": local_embeddings,
-                    "fields": batch["fields"][:, index_block],
-                }
-                if "air_density" in batch:
-                    local_batch["air_density"] = batch["air_density"]
-                if "stream_velocity" in batch:
-                    local_batch["stream_velocity"] = batch["stream_velocity"]
-                outputs = self._model(fx=local_fx, embedding=local_embeddings)
-                preds_list.append(outputs)
-            predictions = torch.cat(preds_list, dim=1)
-            inverse_indices = torch.empty_like(indices)
-            inverse_indices[indices] = torch.arange(N, device=indices.device)
-            predictions = predictions[:, inverse_indices]
-            # import pdb; pdb.set_trace()
+            with cuda_bf16_autocast(self._device):
+                for index_block in index_blocks:
+                    local_embeddings = batch["embeddings"][:, index_block]
+                    local_fx = batch["fx"][:, index_block]
+                    outputs = self._model(fx=local_fx, embedding=local_embeddings)
+                    preds_list.append(outputs)
+                predictions = torch.cat(preds_list, dim=1)
+                inverse_indices = torch.empty_like(indices)
+                inverse_indices[indices] = torch.arange(N, device=indices.device)
+                predictions = predictions[:, inverse_indices]
         predictions = predictions.squeeze(0)
 
         if self._inference_mode == "volume":
@@ -316,10 +322,14 @@ class TransolverWrapper(CFDModel):
             stream_velocity=batch.get("stream_velocity"),
             factor_type="surface",
         )
-        # predictions = predictions * batch.get("air_density") * (batch.get("stream_velocity") ** 2)
         return predictions
 
-    def decode_outputs(self, raw_output: RawOutput, case: CanonicalCase) -> Predictions:
+    def decode_outputs(
+        self,
+        raw_output: RawOutput,
+        case: CanonicalCase,
+        model_input: Optional[ModelInput] = None,
+    ) -> Predictions:
         pred = raw_output
         if pred.dim() == 3:
             pred = pred.squeeze(0)
@@ -345,7 +355,7 @@ class TransolverWrapper(CFDModel):
         dynamic_pressure = self._air_density * (self._stream_velocity ** 2)
         pressure = (pred[:, 0] * dynamic_pressure).cpu().numpy().astype(np.float32)
         wss = (pred[:, 1:4] * dynamic_pressure).cpu().numpy().astype(np.float32)
-        return predictions_dict(pressure, wss)
+        return build_predictions_dict(pressure=pressure, shear_stress=wss)
 
     def _move_reference_scale_to_device(self, dp: TransolverDataPipe) -> None:
         """``reference_scale`` is often created on CPU; mesh tensors live on ``self._device``."""

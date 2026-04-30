@@ -12,7 +12,7 @@ PhysicsNeMo CFD Datasets
    :toctree: generated/datasets/
 
    CanonicalCase
-   predictions_dict
+   build_predictions_dict
    DatasetAdapter
    register_adapter
    get_adapter

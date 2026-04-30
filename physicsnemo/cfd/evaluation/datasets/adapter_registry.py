@@ -41,7 +41,7 @@ class DatasetAdapter(ABC):
         return cls.inference_domain()
 
     @abstractmethod
-    def list_cases(self, split: str | None = None) -> list[str]:
+    def list_cases(self) -> list[str]:
         """Return case IDs (e.g. run IDs or file stems)."""
         ...
 
@@ -52,7 +52,7 @@ class DatasetAdapter(ABC):
 
     def validate(self, case: CanonicalCase) -> bool:
         """Check required fields and mesh validity. Override as needed."""
-        return case.mesh_path != "" and case.mesh_type in ("point", "cell")
+        return case.mesh_path != "" and case.mesh_type in ("point", "cell", "unknown")
 
 
 def register_adapter(name: str, adapter_class: Type[DatasetAdapter]) -> None:

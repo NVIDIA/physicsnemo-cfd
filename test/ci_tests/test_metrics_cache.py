@@ -50,7 +50,6 @@ def test_fingerprint_changes_with_checkpoint() -> None:
         model_inference_domain=None,
         dataset_name="d",
         dataset_root="/data",
-        dataset_split=None,
         dataset_kwargs_resolved={},
         output_dict=output_config_to_fingerprint_dict(OutputConfig()),
         metric_specs=[("l2_pressure", {})],
@@ -73,7 +72,6 @@ def test_fingerprint_canonical_dataset_root() -> None:
         model_inference_domain=None,
         dataset_name="d",
         dataset_root="/tmp/../tmp/dataset",
-        dataset_split=None,
         dataset_kwargs_resolved={},
         output_dict=out,
         metric_specs=[("l2_pressure", {})],
@@ -81,6 +79,25 @@ def test_fingerprint_canonical_dataset_root() -> None:
     fp_norm = metrics_cache_fingerprint(**{**base, "dataset_root": "/tmp/dataset"})
     fp_canon = metrics_cache_fingerprint(**base)
     assert fp_norm == fp_canon
+
+
+def test_fingerprint_changes_with_run_seed() -> None:
+    out = output_config_to_fingerprint_dict(OutputConfig())
+    base = dict(
+        model_name="m",
+        model_checkpoint="c.pt",
+        model_stats_path="",
+        model_kwargs={},
+        model_inference_domain="surface",
+        dataset_name="d",
+        dataset_root="/r",
+        dataset_kwargs_resolved={},
+        output_dict=out,
+        metric_specs=[("l2_pressure", {})],
+    )
+    fp1 = metrics_cache_fingerprint(**base)
+    fp2 = metrics_cache_fingerprint(**{**base, "run_seed": 123})
+    assert fp1 != fp2
 
 
 def test_fingerprint_numpy_model_kwargs_stable() -> None:
@@ -94,7 +111,6 @@ def test_fingerprint_numpy_model_kwargs_stable() -> None:
         model_inference_domain="surface",
         dataset_name="d",
         dataset_root="/r",
-        dataset_split=None,
         dataset_kwargs_resolved={},
         output_dict=out,
         metric_specs=[("l2_pressure", {})],
@@ -102,7 +118,6 @@ def test_fingerprint_numpy_model_kwargs_stable() -> None:
     fp_np = metrics_cache_fingerprint(**base)
     fp_py = metrics_cache_fingerprint(**{**base, "model_kwargs": {"batch_resolution": 60000}})
     assert fp_np == fp_py
-
 
 def test_fingerprint_metric_spec_kwargs_order() -> None:
     out = output_config_to_fingerprint_dict(OutputConfig())
@@ -114,7 +129,6 @@ def test_fingerprint_metric_spec_kwargs_order() -> None:
         model_inference_domain="surface",
         dataset_name="d",
         dataset_root="/r",
-        dataset_split=None,
         dataset_kwargs_resolved={"xyz": 1},
         output_dict=out,
         metric_specs=[("l2_pressure", {"foo": 1, "bar": 2})],

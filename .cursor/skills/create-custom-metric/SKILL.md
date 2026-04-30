@@ -16,7 +16,7 @@ Guide the user through adding a new metric to the benchmarking workflow.
 - `physicsnemo/cfd/postprocessing_tools/metric_registry.py` — `register_metric`, `get_metric`, `MetricFn`
 - `physicsnemo/cfd/evaluation/metrics/builtin/forces.py` — `drag_error`, `lift_error` (dict-returning, mesh-based)
 - `physicsnemo/cfd/evaluation/metrics/builtin/l2.py` — L2 metrics (scalar-returning, numpy fallback)
-- `physicsnemo/cfd/evaluation/metrics/mesh_bridge.py` — `build_comparison_mesh`
+- `physicsnemo/cfd/evaluation/metrics/mesh_bridge.py` — `build_comparison_mesh`, `resolve_comparison_mesh_for_metric`
 - `physicsnemo/cfd/postprocessing_tools/metrics/aero_forces.py` — `compute_force_coefficients` (normals, areas, integration)
 - `workflows/benchmarking_workflow/notebooks/adding_a_new_metric.ipynb` — end-to-end tutorial
 
@@ -65,22 +65,20 @@ def mae_pressure(ground_truth, predictions, **_):
 
 ### Mesh-based metric (uses normals, areas, geometry)
 
-Use `_resolve_mesh` pattern to get the comparison mesh, then access arrays:
+Use ``resolve_comparison_mesh_for_metric`` (shared helper in ``mesh_bridge``; do not copy a local ``_resolve_mesh``) to get the comparison mesh, then access arrays:
 
 ```python
-from physicsnemo.cfd.evaluation.metrics.mesh_bridge import build_comparison_mesh
-
-def _resolve_mesh(predictions, *, case, comparison_mesh, metric_dtype, output):
-    if comparison_mesh is not None and metric_dtype is not None:
-        return comparison_mesh, metric_dtype
-    if case is not None and output is not None:
-        return build_comparison_mesh(case, predictions, output)
-    return None, None
+from physicsnemo.cfd.evaluation.metrics.mesh_bridge import resolve_comparison_mesh_for_metric
 
 def my_force_metric(ground_truth, predictions, *, case=None, comparison_mesh=None,
                     metric_dtype=None, output=None, **_):
-    mesh, dtype = _resolve_mesh(predictions, case=case, comparison_mesh=comparison_mesh,
-                                 metric_dtype=metric_dtype, output=output)
+    mesh, dtype = resolve_comparison_mesh_for_metric(
+        predictions,
+        case=case,
+        comparison_mesh=comparison_mesh,
+        metric_dtype=metric_dtype,
+        output=output,
+    )
     if mesh is None or output is None:
         return float("nan")
 

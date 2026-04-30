@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from physicsnemo.cfd.evaluation.benchmarks.engine import run_benchmark
+from physicsnemo.cfd.evaluation.benchmarks.engine import run_benchmark_cli
 from physicsnemo.cfd.evaluation.config import Config, load_config
 import physicsnemo.cfd.evaluation.datasets.adapters  # noqa: F401
 from physicsnemo.cfd.evaluation.datasets import get_adapter
@@ -32,7 +32,7 @@ def _first_case_id(config: Config) -> str | None:
     adapter_class = get_adapter(config.dataset.name)
     dkwargs = resolve_dataset_kwargs_for_model(config.dataset.kwargs, config.model.name)
     adapter = adapter_class(root=config.dataset.root, **dkwargs)
-    case_ids = config.dataset.case_ids or adapter.list_cases(split=config.dataset.split)
+    case_ids = config.dataset.case_ids or adapter.list_cases()
     if not case_ids:
         return None
     return case_ids[0]
@@ -71,7 +71,7 @@ def main() -> None:
         "Prefer: workflows/benchmarking_workflow (python main.py) or benchmarks.run with flat YAML.",
         file=sys.stderr,
     )
-    results = run_benchmark(config, case_id=case_id)
+    results = run_benchmark_cli(config, case_id=case_id)
     print(f"Completed {len(results)} run(s). Results in {config.run.output_dir}")
 
 

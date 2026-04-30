@@ -28,7 +28,8 @@ from physicsnemo.distributed import DistributedManager
 from physicsnemo.models.domino.model import DoMINO
 
 from physicsnemo.cfd.evaluation.common.checkpoint_compat import parse_checkpoint_epoch, trusted_torch_load_context
-from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, predictions_dict
+from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, build_predictions_dict, normalize_inference_domain_str
+from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
 from physicsnemo.cfd.evaluation.models.common_wrapper_utils.vtk_datapipe_io import (
     run_id_from_case_id,
 )
@@ -61,12 +62,45 @@ class DominoWrapper(CFDModel):
       ``model.model_type`` must be ``surface`` or ``volume`` (``combined`` is not supported here).
     - ``point_batch_size`` (int, optional): Subdomain batch size (default 256000).
 
-    Set ``model.inference_domain: volume`` for VTU cases, or omit it to follow ``model.model_type``
-    in the DoMINO YAML.
+    **Benchmark ``model.stats_path``:** When non-empty, overrides the ``data.scaling_factors`` entry in
+    ``domino_config`` and any engine-passed ``_resolved_scaling_factors`` (HF package cache path).
+    Otherwise, if ``resolve_model_assets`` supplies ``_resolved_scaling_factors``, that wins over stale
+    YAML paths; if not, ``data.scaling_factors`` is resolved with relative paths anchored to the YAML
+    directory and (for Hub-style layouts) prefers a pickle file colocated with ``domino_config``.
+    The pickle must be the training ``ScalingFactors`` artifact, not ``global_stats.json``.
+
+    Set ``model.inference_domain`` for VTU or VTP workloads to match Hydra/domain routing; alternatively
+    omit it — :meth:`load` resolves ``surface`` vs ``volume`` from ``domino_config`` (``model.model_type``).
+    Routing and metrics use :meth:`inference_domain_from_kwargs` so ``model.model_type: volume``
+    aligns with volume datasets without a duplicate YAML field here.
     """
 
-    INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "surface"
+    INFERENCE_DOMAIN: ClassVar[InferenceDomain | None] = None
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
+
+    @classmethod
+    def inference_domain_from_kwargs(cls, kwargs: dict[str, Any]) -> InferenceDomain | None:
+        """Match :meth:`load`: read ``model.model_type`` when ``domino_config`` exists and inference_domain omitted."""
+        dom_raw = kwargs.get("inference_domain")
+        if dom_raw is not None:
+            return normalize_inference_domain_str(
+                dom_raw,
+                parameter="model.kwargs.inference_domain",
+            )
+        cfg_path = kwargs.get("domino_config") or kwargs.get("config_path")
+        if not cfg_path:
+            return None
+        try:
+            dom_cfg = OmegaConf.load(str(cfg_path))
+        except Exception:
+            return None
+        mtype_raw = OmegaConf.select(dom_cfg, "model.model_type")
+        if isinstance(mtype_raw, str):
+            return normalize_inference_domain_str(
+                mtype_raw,
+                parameter="Domino YAML model.model_type",
+            )
+        return None
 
     @property
     def output_location(self) -> OutputLocation:
@@ -109,7 +143,27 @@ class DominoWrapper(CFDModel):
         self._cfg = OmegaConf.load(cfg_path)
         _cfg_p = Path(cfg_path).resolve()
         _cfg_dir = _cfg_p.parent
-        if _resolved_sf:
+        stats_override = (stats_path or "").strip()
+        if stats_override:
+            raw = Path(stats_override).expanduser()
+            pickle_path = raw if raw.is_absolute() else (_cfg_dir / raw).resolve()
+            if not pickle_path.is_file():
+                if pickle_path.is_dir():
+                    raise ValueError(
+                        "DoMINO scaling path must be a file (training ScalingFactors pickle), "
+                        f"not a directory: {pickle_path!r}. Set benchmark model.stats_path to that pickle, "
+                        "or leave stats_path empty to use domino_config data.scaling_factors."
+                    )
+                raise FileNotFoundError(
+                    "DoMINO scaling factors pickle not found (benchmark model.stats_path override): "
+                    f"{pickle_path}"
+                )
+            OmegaConf.update(self._cfg, "data.scaling_factors", str(pickle_path))
+            log_inference(
+                "domino",
+                f"Using benchmark model.stats_path as data.scaling_factors override: {pickle_path}",
+            )
+        elif _resolved_sf:
             OmegaConf.update(
                 self._cfg,
                 "data.scaling_factors",
@@ -143,18 +197,25 @@ class DominoWrapper(CFDModel):
                             str(_fallback.resolve()),
                         )
 
-        mtype = self._cfg.model.model_type
-        if mtype not in ("surface", "volume"):
+        try:
+            mtype = normalize_inference_domain_str(
+                str(self._cfg.model.model_type),
+                parameter="Domino YAML model.model_type",
+            )
+        except ValueError:
             raise NotImplementedError(
                 "DominoWrapper supports DoMINO config model.model_type "
-                f"'surface' or 'volume' only; got {mtype!r} (combined is not supported)."
-            )
+                f"'surface' or 'volume' only; got {self._cfg.model.model_type!r} (combined is not supported)."
+            ) from None
 
         dom = kw.pop("inference_domain", None)
-        if dom in ("surface", "volume"):
-            self._inference_mode = dom
-        else:
+        if dom is None:
             self._inference_mode = "volume" if mtype == "volume" else "surface"
+        else:
+            self._inference_mode = normalize_inference_domain_str(
+                dom,
+                parameter="model.kwargs.inference_domain",
+            )
 
         if self._inference_mode != mtype:
             raise ValueError(
@@ -199,7 +260,8 @@ class DominoWrapper(CFDModel):
         if epoch is not None:
             ckpt_args["epoch"] = epoch
 
-        loaded_epoch = load_checkpoint(device=dev, **ckpt_args)
+        with trusted_torch_load_context():
+            loaded_epoch = load_checkpoint(device=dev, **ckpt_args)
         self._model.eval()
         log_inference("domino", "Checkpoint loaded; model ready for inference.")
         return self
@@ -246,31 +308,39 @@ class DominoWrapper(CFDModel):
         if model_input.get("mode") == "volume":
             log_inference("domino", "Running forward pass (predicting volume fields)…")
             with torch.no_grad():
-                pred = domino_volume_test_step(
-                    model_input["data_dict"],
-                    self._model,
-                    model_input["cfg"],
-                    model_input["vol_factors"],
-                    dev,
-                    model_input["point_batch_size"],
-                )
+                with cuda_bf16_autocast(dev):
+                    pred = domino_volume_test_step(
+                        model_input["data_dict"],
+                        self._model,
+                        model_input["cfg"],
+                        model_input["vol_factors"],
+                        dev,
+                        model_input["point_batch_size"],
+                    )
             return pred
 
         log_inference("domino", "Running forward pass (predicting surface fields)…")
         with torch.no_grad():
-            pred = domino_surface_test_step(
-                model_input["data_dict"],
-                self._model,
-                model_input["cfg"],
-                model_input["surf_factors"],
-                dev,
-                model_input["point_batch_size"],
-            )
+            with cuda_bf16_autocast(dev):
+                pred = domino_surface_test_step(
+                    model_input["data_dict"],
+                    self._model,
+                    model_input["cfg"],
+                    model_input["surf_factors"],
+                    dev,
+                    model_input["point_batch_size"],
+                )
         return pred
 
-    def decode_outputs(self, raw_output: RawOutput, case: CanonicalCase) -> Predictions:
+    def decode_outputs(
+        self,
+        raw_output: RawOutput,
+        case: CanonicalCase,
+        model_input: Optional[ModelInput] = None,
+    ) -> Predictions:
         if self._inference_mode == "volume":
-            assert self._cfg is not None
+            if self._cfg is None:
+                raise RuntimeError("DominoWrapper: call load() first")
             log_inference(
                 "domino",
                 "Decoding volume outputs (canonical keys from variables.volume.solution)…",
@@ -283,4 +353,4 @@ class DominoWrapper(CFDModel):
             pred = pred.squeeze(0)
         pressure = pred[:, 0].cpu().numpy().astype("float32")
         wss = pred[:, 1:4].cpu().numpy().astype("float32")
-        return predictions_dict(pressure, wss)
+        return build_predictions_dict(pressure=pressure, shear_stress=wss)
