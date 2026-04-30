@@ -29,7 +29,7 @@ from torch_geometric.data import Data as PyGData
 from physicsnemo.models.meshgraphnet import MeshGraphNet
 
 from physicsnemo.cfd.evaluation.common.checkpoint_compat import trusted_torch_load_context
-from physicsnemo.cfd.evaluation.common.io import load_global_stats, load_surface_mesh
+from physicsnemo.cfd.evaluation.common.io import load_global_stats, surface_polydata_from_case
 from physicsnemo.cfd.evaluation.common.interpolation import interpolate_to_mesh
 from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, build_predictions_dict
 from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
@@ -203,7 +203,7 @@ class XMGNWrapper(CFDModel):
             "xmgn",
             f"Reading mesh (case {case.case_id}): {case.mesh_path}",
         )
-        mesh = load_surface_mesh(case.mesh_path)
+        mesh = surface_polydata_from_case(case)
         if "Normals" not in mesh.point_data:
             mesh = mesh.compute_normals(
                 point_normals=True,
@@ -268,7 +268,7 @@ class XMGNWrapper(CFDModel):
                 "match reloading the surface mesh alone."
             )
         if mesh is None or pred_coords is None:
-            mesh = load_surface_mesh(case.mesh_path)
+            mesh = surface_polydata_from_case(case)
             pred_coords = np.array(mesh.points)
         target_points = np.array(mesh.points)
         p_mesh, wss_mesh = interpolate_to_mesh(

@@ -20,13 +20,14 @@ Hydra entrypoint for config-driven benchmark evaluation.
 Run from this directory::
 
     python main.py
-    python main.py --config-name=config_volume
+    python main.py --config-name=config_matrix_surface_custom
     python main.py case_id=run_1 run.device=cuda:0
     python main.py 'case_id=[run_1,run_11]'
 
-Default Hydra config is ``conf/config_surface.yaml``. Use
-``--config-name=config_volume`` for the volume benchmark. Same layout as
-``workflows/domino_design_sensitivities/`` (Hydra + ``conf/``).
+Default Hydra config is ``conf/config_matrix_surface_hf.yaml`` (matrix + Hugging Face
+checkpoints). Use ``--config-name=config_matrix_volume_hf`` or the ``*_custom`` matrix
+configs for local checkpoint paths. Same layout as ``workflows/domino_design_sensitivities/``
+(Hydra + ``conf/``).
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ from physicsnemo.cfd.evaluation.benchmarks.hydra_utils import hydra_config_to_be
 from physicsnemo.cfd.evaluation.config import Config
 
 
-@hydra.main(version_base="1.3", config_path="conf", config_name="config_surface")
+@hydra.main(version_base="1.3", config_path="conf", config_name="config_matrix_surface_hf")
 def main(cfg: DictConfig) -> None:
     """
     Load benchmark configuration with Hydra/OmegaConf interpolation and run.
@@ -47,8 +48,8 @@ def main(cfg: DictConfig) -> None:
     Parameters
     ----------
     cfg : DictConfig
-        Composed user config (``conf/config_surface.yaml`` by default, or
-        ``config_volume`` via ``--config-name=config_volume``) plus CLI overrides.
+        Composed user config (``conf/config_matrix_surface_hf.yaml`` by default, or any
+        ``--config-name=`` stem under ``conf/``) plus CLI overrides.
     """
     raw, case_id = hydra_config_to_benchmark_dict(cfg)
     config = Config.from_dict(raw)

@@ -22,7 +22,7 @@ from typing import Any, ClassVar, Optional
 
 import numpy as np
 
-from physicsnemo.cfd.evaluation.common.io import load_surface_mesh
+from physicsnemo.cfd.evaluation.common.io import surface_polydata_from_case
 from physicsnemo.cfd.evaluation.datasets.schema import (
     CanonicalCase,
     InferenceDomain,
@@ -88,7 +88,7 @@ class SurfaceBaselineWrapper(CFDModel):
             "surface_baseline",
             f"Reading surface mesh and building baseline fields: {case.mesh_path}",
         )
-        mesh = load_surface_mesh(case.mesh_path)
+        mesh = surface_polydata_from_case(case)
         n = mesh.n_cells if self.output_location == "cell" else mesh.n_points
         p = np.zeros((n,), dtype=np.float32)
         wss = np.zeros((n, 3), dtype=np.float32)

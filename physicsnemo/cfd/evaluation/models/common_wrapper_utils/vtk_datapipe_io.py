@@ -52,15 +52,28 @@ def read_stl_geometry(stl_path: str, device: torch.device) -> dict[str, torch.Te
 
 
 def read_surface_from_vtp(
-    vtp_path: str, device: torch.device, n_output_fields: int = 4
+    vtp_path: str,
+    device: torch.device,
+    n_output_fields: int = 4,
+    *,
+    mesh: pv.DataSet | None = None,
 ) -> dict[str, torch.Tensor]:
     """Read VTP surface: cell centers, normals, areas, dummy surface_fields.
 
     When VTK cell normals are absent (``.cell_normals is None``), computes them via
     :meth:`~pyvista.PolyData.compute_normals` with ``cell_normals=True``,
     ``point_normals=False`` — same idea as XMGN when point ``Normals`` are missing.
+
+    Parameters
+    ----------
+    mesh
+        If set (e.g. from :attr:`~physicsnemo.cfd.evaluation.datasets.schema.CanonicalCase.reference_geometry`),
+        skips ``pv.read(vtp_path)`` and uses this dataset (converted to ``PolyData`` when needed).
     """
-    mesh = pv.read(vtp_path)
+    if mesh is None:
+        mesh = pv.read(vtp_path)
+    elif not isinstance(mesh, pv.PolyData):
+        mesh = mesh.extract_surface()
     if mesh.cell_normals is None:
         mesh = mesh.compute_normals(cell_normals=True, point_normals=False)
     surface_mesh_centers = torch.from_numpy(np.asarray(mesh.cell_centers().points)).to(
@@ -86,10 +99,21 @@ def read_surface_from_vtp(
 
 
 def read_volume_from_vtu(
-    vtu_path: str, device: torch.device, n_output_fields: int = 5
+    vtu_path: str,
+    device: torch.device,
+    n_output_fields: int = 5,
+    *,
+    mesh: pv.DataSet | None = None,
 ) -> dict[str, torch.Tensor]:
-    """Read VTU volume mesh: cell centers and dummy ``volume_fields`` (inference_on_vtk layout)."""
-    mesh = pv.read(vtu_path)
+    """Read VTU volume mesh: cell centers and dummy ``volume_fields`` (inference_on_vtk layout).
+
+    Parameters
+    ----------
+    mesh
+        Optional in-memory mesh to avoid ``pv.read(vtu_path)`` (e.g. ``CanonicalCase.reference_geometry``).
+    """
+    if mesh is None:
+        mesh = pv.read(vtu_path)
     volume_mesh_centers = torch.from_numpy(np.asarray(mesh.cell_centers().points)).to(
         device=device, dtype=torch.float32
     )
@@ -136,6 +160,8 @@ def build_volume_data_dict(
     stream_velocity: float,
     run_idx: int = 1,
     n_output_fields: int = 5,
+    *,
+    reference_mesh: pv.DataSet | None = None,
 ) -> dict[str, torch.Tensor]:
     """Build data dict for volume inference: STL + VTU + flow params (DrivAer-style run dir).
 
@@ -144,7 +170,11 @@ def build_volume_data_dict(
     """
     stl_path = _find_stl_in_dir(run_dir, run_idx)
     data_dict = read_stl_geometry(str(stl_path), device)
-    data_dict.update(read_volume_from_vtu(vtu_path, device, n_output_fields=n_output_fields))
+    data_dict.update(
+        read_volume_from_vtu(
+            vtu_path, device, n_output_fields=n_output_fields, mesh=reference_mesh
+        )
+    )
     data_dict["air_density"] = torch.tensor([air_density], device=device, dtype=torch.float32)
     data_dict["stream_velocity"] = torch.tensor(
         [stream_velocity], device=device, dtype=torch.float32
@@ -159,11 +189,13 @@ def build_surface_data_dict(
     air_density: float,
     stream_velocity: float,
     run_idx: int = 1,
+    *,
+    reference_mesh: pv.DataSet | None = None,
 ) -> dict[str, torch.Tensor]:
     """Build data dict for surface inference: STL + VTP + flow params. Finds STL in run_dir."""
     stl_path = _find_stl_in_dir(run_dir, run_idx)
     data_dict = read_stl_geometry(str(stl_path), device)
-    data_dict.update(read_surface_from_vtp(vtp_path, device))
+    data_dict.update(read_surface_from_vtp(vtp_path, device, mesh=reference_mesh))
     data_dict["air_density"] = torch.tensor([air_density], device=device, dtype=torch.float32)
     data_dict["stream_velocity"] = torch.tensor(
         [stream_velocity], device=device, dtype=torch.float32

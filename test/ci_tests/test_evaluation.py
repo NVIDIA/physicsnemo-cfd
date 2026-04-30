@@ -31,6 +31,7 @@ from physicsnemo.cfd.evaluation.metrics.builtin.l2 import (
     l2_pressure_surface,
     l2_pressure_volume,
 )
+from physicsnemo.cfd.evaluation.common.io import surface_polydata_from_case
 from physicsnemo.cfd.evaluation.metrics.mesh_bridge import build_comparison_mesh
 from physicsnemo.cfd.evaluation.metrics.registry import register_metric, unregister_metric
 
@@ -141,6 +142,58 @@ def test_list_metrics_includes_core_builtin() -> None:
     names = list_metrics()
     assert "l2_pressure" in names
     assert "drag" in names
+
+
+def test_surface_polydata_from_case_skips_pv_read(monkeypatch, tmp_path) -> None:
+    """When ``reference_geometry`` is set, do not ``pv.read`` ``mesh_path``."""
+
+    def _fail_read(*args, **kwargs):
+        raise AssertionError(f"unexpected pv.read call: args={args!r}")
+
+    monkeypatch.setattr(pv, "read", _fail_read)
+    ref = pv.Plane(i_resolution=2, j_resolution=2)
+    case = CanonicalCase(
+        case_id="run_1",
+        mesh_path=str(tmp_path / "missing_boundary.vtp"),
+        mesh_type="cell",
+        ground_truth=None,
+        inference_domain="surface",
+        reference_geometry=ref,
+    )
+    m = surface_polydata_from_case(case)
+    assert isinstance(m, pv.PolyData)
+
+
+def test_build_comparison_mesh_with_case_reference_geometry_skips_pv_read(
+    monkeypatch, tmp_path
+) -> None:
+    """Benchmark path passes ``mesh_override=case.reference_geometry``; parity with explicit override."""
+    def _fail_read(*args, **kwargs):
+        raise AssertionError("comparison mesh load must not pv.read case.mesh_path")
+
+    monkeypatch.setattr(pv, "read", _fail_read)
+    base = pv.Plane(i_resolution=4, j_resolution=4)
+    mesh0 = base.point_data_to_cell_data(pass_point_data=True)
+    n_cells = mesh0.n_cells
+    p = np.ones(n_cells, dtype=np.float64)
+    wss = np.zeros((n_cells, 3), dtype=np.float64)
+    case = CanonicalCase(
+        case_id="syn",
+        mesh_path=str(tmp_path / "fake.vtp"),
+        mesh_type="cell",
+        ground_truth={"pressure": p, "shear_stress": wss},
+        inference_domain="surface",
+        reference_geometry=mesh0,
+    )
+    pred = {"pressure": p.copy(), "shear_stress": wss.copy()}
+    mesh_out, dtype = build_comparison_mesh(
+        case,
+        pred,
+        OutputConfig(),
+        mesh_override=case.reference_geometry,
+    )
+    assert dtype == "cell"
+    assert mesh_out.n_cells == n_cells
 
 
 def test_build_comparison_mesh_surface_zero_l2_when_identical() -> None:

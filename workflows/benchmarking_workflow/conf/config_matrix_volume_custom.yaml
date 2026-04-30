@@ -17,7 +17,7 @@
 # Matrix volume benchmark: every ``benchmark.models`` entry × every ``benchmark.datasets`` entry.
 #
 # Run:
-#   python main.py --config-name=config_matrix_volume
+#   python main.py --config-name=config_matrix_volume_custom
 
 # When ``checkpoint`` and ``stats_path`` are both set, they override built-in ``hf://`` defaults
 # (per-model roots in ``builtin_packages``: ``GEOTRANSOLVER_PACKAGE_ROOT``, etc.). Omit those keys to download from Hub instead.
@@ -53,19 +53,19 @@ benchmark:
   models:
     - name: geotransolver_volume
       inference_domain: volume
-      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_volume_checkpoint/checkpoint.0.501.pt"
-      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_volume_checkpoint/global_stats.json"
+      checkpoint: "/path/to/geotransolver_drivaerml_volume_checkpoint/checkpoint.0.501.pt"
+      stats_path: "/path/to/geotransolver_drivaerml_volume_checkpoint/global_stats.json"
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
     - name: transolver_volume
       inference_domain: volume
-      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/transolver_drivaerml_volume_checkpoint/checkpoint.0.501.pt"
-      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/transolver_drivaerml_volume_checkpoint/global_stats.json"
+      checkpoint: "/path/to/transolver_drivaerml_volume_checkpoint/checkpoint.0.501.pt"
+      stats_path: "/path/to/transolver_drivaerml_volume_checkpoint/global_stats.json"
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
     - name: domino_volume
       inference_domain: volume
-      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_volume_checkpoint/checkpoint.0.501.pt"
-      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_volume_checkpoint/global_stats.json"
-      kwargs: { "domino_config": "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_volume_checkpoint/config.yaml" }
+      checkpoint: "/path/to/domino_drivaerml_volume_checkpoint/checkpoint.0.501.pt"
+      stats_path: "/path/to/domino_drivaerml_volume_checkpoint/scaling_factors.pkl"
+      kwargs: { "domino_config": "/path/to/domino_drivaerml_volume_checkpoint/config.yaml" }
     # Uncomment when you have your custom model volume checkpoint + stats next to it (same layout as training).
     # - name: volume_baseline_model
     #   inference_domain: volume
@@ -74,7 +74,7 @@ benchmark:
     #   kwargs: { }
   datasets:
     - name: drivaerml
-      root: "/lustre/fsw/coreai_modulus_cae/datasets/drivaer_aws/drivaer_data_finetune"
+      root: "/data/drivaerml"
       kwargs: { align_ground_truth_to_model: true, inference_domain: volume }
   # When true: writes full os.environ → env.json (may leak HF/AWS tokens). Prefer false for shared runs.
   reproducibility:
@@ -82,14 +82,16 @@ benchmark:
     save_artifacts: false
 
 output:
+  # volume_mesh_field_names / ground_truth_volume_mesh_field_names: VTK array names used when writing optional .vtu outputs
+  # (e.g. inference or comparison meshes); align with model outputs and GT field names from the dataset adapter.
   volume_mesh_field_names:
-    pressure: "pMeanTrimPred"
-    turbulent_viscosity: "nutMeanTrimPred"
-    velocity: "UMeanTrimPred"
+    pressure: "pressure_pred"
+    turbulent_viscosity: "turbulent_viscosity_pred"
+    velocity: "velocity_pred"
   ground_truth_volume_mesh_field_names:
-    pressure: "pMeanTrim"
-    turbulent_viscosity: "nutMeanTrim"
-    velocity: "UMeanTrim"
+    pressure: "pressure_true"
+    turbulent_viscosity: "turbulent_viscosity_true"
+    velocity: "velocity_true"
   streamlines_vector_canonical: velocity
 
 metrics:

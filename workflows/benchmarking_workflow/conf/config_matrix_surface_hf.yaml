@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Matrix surface benchmark using HF-hosted checkpoints (same layout as ``config_matrix_surface.yaml``,
+# Matrix surface benchmark using HF-hosted checkpoints (same layout as ``config_matrix_surface_custom.yaml``,
 # but checkpoints resolve from Hub via ``builtin_packages`` — omit ``checkpoint`` / ``stats_path``).
 #
-# Reports/visuals mirror ``config_surface.yaml`` with ``reports.enabled: true``.
+# Reports/visuals: ``reports.enabled: true`` (see custom matrix config for the same structure).
 #
 # Run:
 #   python main.py --config-name=config_matrix_surface_hf
@@ -55,8 +55,7 @@ benchmark:
       kwargs: { "max_points": 250000, "interpolation_k": 4 }
   datasets:
     - name: drivaerml
-      root: "/code/drivaerml"
-      split: null
+      root: "/lustre/fsw/portfolios/coreai/users/ktangsali/drivaerml"
       kwargs: { align_ground_truth_to_model: true, inference_domain: surface }
   # When true: writes full os.environ → env.json (may leak HF/AWS tokens). Prefer false for shared runs.
   reproducibility:
@@ -64,14 +63,16 @@ benchmark:
     save_artifacts: false
 
 output:
+  # mesh_field_names / ground_truth_mesh_field_names: VTK array names used when writing optional .vtp outputs
+  # (e.g. inference or comparison meshes); align with model outputs and GT field names from the dataset adapter.
   surface_interpolate_point_to_cell_for_metrics: true
   surface_metrics_idw_k: 5
   mesh_field_names:
-    pressure: "pMeanTrimPred"
-    shear_stress: "wallShearStressMeanTrimPred"
+    pressure: "pressure_pred"
+    shear_stress: "wall_shear_stress_pred"
   ground_truth_mesh_field_names:
-    pressure: "pMeanTrim"
-    shear_stress: "wallShearStressMeanTrim"
+    pressure: "pressure_true"
+    shear_stress: "wall_shear_stress_true"
 
 metrics:
   - l2_pressure
@@ -81,7 +82,7 @@ metrics:
   - lift
 
 reports:
-  enabled: true
+  enabled: false
   save_comparison_meshes: false
   comparison_mesh_subdir: comparison_meshes
   visual_case_ids: [run_1, run_11]

@@ -24,6 +24,8 @@ import numpy as np
 import pyvista as pv
 import torch
 
+from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase
+
 
 def _coerce_global_stats_dict(raw: dict[str, Any]) -> dict[str, Any]:
     """Normalize parsed ``global_stats.json`` to canonical ``mean`` + ``std`` mapping keys.
@@ -221,4 +223,26 @@ def load_surface_mesh(mesh_path: str) -> pv.PolyData:
     mesh = pv.read(str(path))
     if not isinstance(mesh, pv.PolyData):
         raise TypeError(f"Expected PolyData for surface mesh, got {type(mesh)}")
+    return mesh
+
+
+def surface_polydata_from_case(case: CanonicalCase) -> pv.PolyData:
+    """Surface ``PolyData`` for *case*, preferring :attr:`~CanonicalCase.reference_geometry` when set."""
+    ref = case.reference_geometry
+    if ref is not None:
+        mesh = ref
+        if not isinstance(mesh, pv.PolyData):
+            mesh = mesh.extract_surface()
+        return mesh
+    return load_surface_mesh(case.mesh_path)
+
+
+def volume_dataset_from_case(case: CanonicalCase) -> pv.DataSet:
+    """Volume dataset for *case* (prefer ``reference_geometry``), matching DrivAer VTU normalization."""
+    ref = case.reference_geometry
+    if ref is not None:
+        return ref
+    mesh = pv.read(case.mesh_path)
+    if hasattr(mesh, "cast_to_unstructured_grid"):
+        mesh = mesh.cast_to_unstructured_grid()
     return mesh

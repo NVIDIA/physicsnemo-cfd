@@ -66,8 +66,18 @@ def load_scaling_factors_tensors(
     device: torch.device,
 ) -> tuple[torch.Tensor | None, torch.Tensor]:
     """Return ``(vol_factors, surf_factors)`` as in domino ``test.py`` / ``load_scaling_factors``."""
-    pickle_path = os.path.join(cfg.data.scaling_factors)
-    pickle_path = os.path.expanduser(pickle_path)
+    pickle_path = os.path.normpath(os.path.expanduser(str(cfg.data.scaling_factors)))
+    _p = Path(pickle_path)
+    # Stale YAML sometimes points at ``global_stats.json``; DoMINO needs ``scaling_factors.pkl``.
+    if _p.is_file() and _p.suffix.lower() == ".json":
+        _alt = (_p.parent / "scaling_factors.pkl").resolve()
+        if _alt.is_file():
+            pickle_path = str(_alt)
+        else:
+            raise ValueError(
+                "DoMINO ``data.scaling_factors`` must be ``scaling_factors.pkl``, not JSON. "
+                f"No scaling_factors.pkl beside {_p}."
+            )
     with open(pickle_path, "rb") as f:
         try:
             scaling_factors = _ScalingUnpickler(f).load()

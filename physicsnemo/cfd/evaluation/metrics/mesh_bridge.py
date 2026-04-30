@@ -163,9 +163,10 @@ def build_comparison_mesh(
     Parameters
     ----------
     mesh_override
-        If set, use this dataset instead of ``pv.read(case.mesh_path)`` (e.g. tests or in-memory
-        pipelines). ``case.mesh_path`` is still accepted on ``CanonicalCase`` but ignored when
-        override is provided.
+        If set, use this dataset instead of ``pv.read(case.mesh_path)`` (e.g. tests, in-memory
+        pipelines, or :attr:`~physicsnemo.cfd.evaluation.datasets.schema.CanonicalCase.reference_geometry`
+        from the adapter). ``case.mesh_path`` is still required on ``CanonicalCase`` for logging
+        and fallbacks but is ignored for loading when **override** is provided.
 
     Returns
     -------
@@ -249,10 +250,13 @@ def resolve_comparison_mesh_for_metric(
     """Reuse the benchmark engine's comparison mesh or build one from ``case`` + ``output``.
 
     When the caller already merged mesh + dof label (benchmark path), forwards
-    ``(comparison_mesh, metric_dtype)``. Otherwise calls :func:`build_comparison_mesh`.
+    ``(comparison_mesh, metric_dtype)``. Otherwise calls :func:`build_comparison_mesh`, passing
+    ``mesh_override=case.reference_geometry`` when the case provides it so adapters may avoid a second
+    ``pv.read(case.mesh_path)``.
     """
     if comparison_mesh is not None and metric_dtype is not None:
         return comparison_mesh, metric_dtype
     if case is not None and output is not None:
-        return build_comparison_mesh(case, predictions, output)
+        ref = getattr(case, "reference_geometry", None)
+        return build_comparison_mesh(case, predictions, output, mesh_override=ref)
     return None, None

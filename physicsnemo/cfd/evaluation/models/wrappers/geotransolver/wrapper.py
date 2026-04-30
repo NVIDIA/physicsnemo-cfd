@@ -279,7 +279,7 @@ class GeoTransolverWrapper(CFDModel):
         dp = TransolverDataPipe(
             input_path=None,
             model_type="surface",
-            resolution=self._datapipe_resolution,
+            resolution=None,
             surface_factors=self._surface_factors,
             volume_factors=None,
             scaling_type="mean_std_scaling",
@@ -296,7 +296,7 @@ class GeoTransolverWrapper(CFDModel):
         dp = TransolverDataPipe(
             input_path=None,
             model_type="volume",
-            resolution=self._datapipe_resolution,
+            resolution=None,
             surface_factors=None,
             volume_factors=self._volume_factors,
             scaling_type="mean_std_scaling",
@@ -325,6 +325,7 @@ class GeoTransolverWrapper(CFDModel):
                 air_density=self._air_density,
                 stream_velocity=self._stream_velocity,
                 run_idx=run_idx,
+                reference_mesh=case.reference_geometry,
             )
             n_stl = int(data_dict["stl_coordinates"].shape[0])
             safe_geo = max(1, min(self._geometry_sampling_requested, n_stl))
@@ -340,6 +341,7 @@ class GeoTransolverWrapper(CFDModel):
                 air_density=self._air_density,
                 stream_velocity=self._stream_velocity,
                 run_idx=run_idx,
+                reference_mesh=case.reference_geometry,
             )
             n_stl = int(data_dict["stl_coordinates"].shape[0])
             n_surf = int(data_dict["surface_mesh_centers"].shape[0])
@@ -368,23 +370,22 @@ class GeoTransolverWrapper(CFDModel):
         use_full_fx = "geometry" in batch
 
         with torch.no_grad():
-            with cuda_bf16_autocast(self._device):
-                for index_block in index_blocks:
-                    local_embeddings = batch["embeddings"][:, index_block]
-                    local_fx = fx_bn_c if use_full_fx else fx_bn_c[:, index_block]
-                    local_positions = local_embeddings[:, :, :3]
-                    geometry_kw = batch["geometry"] if "geometry" in batch else None
-                    outputs = self._model(
-                        local_embedding=local_embeddings,
-                        local_positions=local_positions,
-                        global_embedding=local_fx,
-                        geometry=geometry_kw,
-                    )
-                    preds_list.append(outputs)
-                predictions = torch.cat(preds_list, dim=1)
-                inverse_indices = torch.empty_like(indices)
-                inverse_indices[indices] = torch.arange(N, device=indices.device)
-                predictions = predictions[:, inverse_indices]
+            for index_block in index_blocks:
+                local_embeddings = batch["embeddings"][:, index_block]
+                local_fx = fx_bn_c if use_full_fx else fx_bn_c[:, index_block]
+                local_positions = local_embeddings[:, :, :3]
+                geometry_kw = batch["geometry"] if "geometry" in batch else None
+                outputs = self._model(
+                    local_embedding=local_embeddings,
+                    local_positions=local_positions,
+                    global_embedding=local_fx,
+                    geometry=geometry_kw,
+                )
+                preds_list.append(outputs)
+            predictions = torch.cat(preds_list, dim=1)
+            inverse_indices = torch.empty_like(indices)
+            inverse_indices[indices] = torch.arange(N, device=indices.device)
+            predictions = predictions[:, inverse_indices]
         predictions = predictions.squeeze(0)
 
         if self._inference_mode == "volume":

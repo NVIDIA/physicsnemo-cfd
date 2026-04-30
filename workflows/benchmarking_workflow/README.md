@@ -4,7 +4,7 @@ This workflow is an **opinionated**, **config-driven** benchmark entry point for
 
 ### How to use this README (goal-oriented)
 
-1. **Run the benchmark as configured** — install, set **`benchmark.datasets[].root`** and model paths (or overrides), run **`python main.py`** with **`config_surface`** or **`config_volume`**, confirm outputs under **`run.output_dir`**.
+1. **Run the benchmark as configured** — install, set **`benchmark.datasets[].root`** and model paths (or overrides), run **`python main.py`** (default **`config_matrix_surface_hf`**) or **`--config-name=config_matrix_surface_custom`** / **`config_matrix_volume_hf`**, confirm outputs under **`run.output_dir`**.
 2. **Stay in YAML / Hydra first** — change **`conf/*.yaml`** or pass **Hydra overrides** for models, **`case_id`**, metrics, outputs, metrics cache, and exit policy; avoid Python changes until defaults are insufficient.
 3. **Extend when needed** — add **`CFDModel`** wrappers, **`DatasetAdapter`** implementations, **`register_metric`** / **`register_visual`**, or custom configs for integrations the stock workflow does not cover.
 
@@ -31,23 +31,23 @@ Then use the commands below **from this directory** (`workflows/benchmarking_wor
 
 1. **Prerequisites:** Python 3.10+, NVIDIA GPU for full inference runs, checkpoints and dataset on disk or mounted volume. (For a concise **goal-oriented** path through docs and config, see the [introduction](#model-evaluation-and-benchmarking) above.)
 2. **Assets:** Download benchmark checkpoints and the **DrivAerML** evaluation tree (see [DrivAerML dataset: download and directory layout](#drivaerml-dataset-download-and-directory-layout)); **NGC** may mirror these later (see [Benchmark assets on NGC](#benchmark-assets-on-ngc-coming-soon)). Point `model.checkpoint`, `stats_path`, and `dataset.root` in `conf/*.yaml` at local paths, or use [Hydra overrides](#paths-without-ngc-hydra-overrides).
-3. **Configure:** Edit `conf/config_surface.yaml` (default), `config_volume.yaml`, or matrix configs under `conf/`.
+3. **Configure:** Edit YAML under `conf/` (see [Configuration files](#configuration-files-in-conf): **`_custom`** = local **`checkpoint`** / **`stats_path`**, **`_hf`** = Hugging Face **`builtin_packages`** when those keys are omitted).
 4. **Run:**
 
 ```bash
-# Surface benchmark (default config)
+# Matrix surface (default Hydra config: Hugging Face checkpoints)
 python main.py
 
-# Volume benchmark
-python main.py --config-name=config_volume
+# Local checkpoint paths (edit paths in YAML first)
+python main.py --config-name=config_matrix_surface_custom
 
-# Matrix: multiple models × dataset blocks
-python main.py --config-name=config_matrix_surface
-python main.py --config-name=config_matrix_volume
+# Matrix volume — HF vs local
+python main.py --config-name=config_matrix_volume_hf
+python main.py --config-name=config_matrix_volume_custom
 
 # Overrides (examples)
 python main.py case_id=run_1 run.device=cuda:0
-python main.py --config-name=config_volume run.output_dir=my_volume_run
+python main.py --config-name=config_matrix_surface_hf run.output_dir=my_surface_run
 python main.py run.fail_on_all_skipped=true
 ```
 
@@ -56,10 +56,27 @@ python main.py run.fail_on_all_skipped=true
 
 ```bash
 torchrun --standalone --nproc_per_node=4 main.py
-# or: torchrun --standalone --nproc_per_node=8 main.py --config-name=config_matrix_surface
+# or: torchrun --standalone --nproc_per_node=8 main.py --config-name=config_matrix_surface_custom
 ```
 
 Cases are split across GPUs (`cases[rank::world_size]`). Rank 0 writes reports and optional artifacts. Set `run.distributed: false` only for debugging (each rank would run the full case list).
+
+---
+
+## Configuration files in `conf/`
+
+Hydra loads **`--config-name=<stem>`** from this directory (no `.yaml` suffix). This workflow ships **four** configs: **matrix only** — **`_custom`** for **local or NFS checkpoints** you set in YAML, **`_hf`** for **Hugging Face** defaults via **`builtin_packages`** when **`checkpoint`** / **`stats_path`** are omitted.
+
+| Config file | Role |
+| ----------- | ---- |
+| **`config_matrix_surface_custom.yaml`** | **Matrix** surface: **`benchmark.models`** × **`benchmark.datasets`**. Fill **`checkpoint`**, **`stats_path`**, **`dataset.root`**, and DoMINO **`kwargs.domino_config`** / **`stats_path` → `scaling_factors.pkl`** as in the template comments. Use **`--config-name=config_matrix_surface_custom`**. |
+| **`config_matrix_volume_custom.yaml`** | **Matrix** volume with the same **explicit path** story for VTU inference. |
+| **`config_matrix_surface_hf.yaml`** | Same matrix **layout** as the surface **custom** file, but models typically **omit** **`checkpoint`** / **`stats_path`** so weights resolve from **Hugging Face**. This is the **default** for **`python main.py`** (`main.py` `config_name`). Requires **`huggingface-cli login`** or **`HF_TOKEN`** for private repos. |
+| **`config_matrix_volume_hf.yaml`** | HF-hosted volume matrix (GeoTransolver / Transolver / DoMINO); **XMGN / FiGNet volume** may have no Hub checkpoint—omit those blocks. |
+
+**`_custom` vs `_hf`:** use **`_custom`** when you want full control over **on-disk** checkpoints and stats; use **`_hf`** when you rely on **Hub** resolution and optional cache under **`PHYSICSNEMO_CFD_MODEL_CACHE`**.
+
+**VTK field names on written meshes:** Under **`output`**, the maps **`mesh_field_names`** / **`ground_truth_mesh_field_names`** (surface) and **`volume_mesh_field_names`** / **`ground_truth_volume_mesh_field_names`** (volume) set the **VTK array names** used when the workflow writes optional **`.vtp`** / **`.vtu`** files (for example saved inference meshes from **`run.save_inference_mesh`** or comparison meshes when reports enable them). Choose strings that match your model’s written fields and the ground-truth adapter’s field names.
 
 ---
 
@@ -200,16 +217,16 @@ The flat CLI **`python -m physicsnemo.cfd.evaluation.benchmarks.run`** applies t
 
 ---
 
-## Config files
+## Config files (short reference)
 
 | File | Role |
 | ---- | ----- |
-| [`conf/config_surface.yaml`](conf/config_surface.yaml) | **Surface**, `benchmark.mode: matrix`, **GeoTransolver** × **drivaerml**. Top-level **`case_id: [run_1, run_11]`**. **`run.device`**: `cuda:1`. **`run.output_dir`**: **`benchmark_results_surface`**. |
-| [`conf/config_volume.yaml`](conf/config_volume.yaml) | **Volume**, same pattern; **`run.output_dir`**: **`benchmark_results_volume`**. |
-| [`conf/config_matrix_surface.yaml`](conf/config_matrix_surface.yaml) | **Matrix surface:** multiple models × one drivaerml row; **`case_id: null`**. **`run.output_dir`**: **`benchmark_results_matrix_surface`**. |
-| [`conf/config_matrix_volume.yaml`](conf/config_matrix_volume.yaml) | **Matrix volume:** same for volume checkpoints. **`run.output_dir`**: **`benchmark_results_matrix_volume`**. |
+| [`conf/config_matrix_surface_custom.yaml`](conf/config_matrix_surface_custom.yaml) | **Matrix surface**, **local** `checkpoint` / `stats_path`; **`run.output_dir`**: **`benchmark_results_matrix_surface`**. |
+| [`conf/config_matrix_volume_custom.yaml`](conf/config_matrix_volume_custom.yaml) | **Matrix volume**, same for VTU runs; **`run.output_dir`**: **`benchmark_results_matrix_volume`**. |
+| [`conf/config_matrix_surface_hf.yaml`](conf/config_matrix_surface_hf.yaml) | **Matrix surface**, **HF** assets; **`run.output_dir`**: **`benchmark_results_matrix_surface_hf`**. Default **`python main.py`**. |
+| [`conf/config_matrix_volume_hf.yaml`](conf/config_matrix_volume_hf.yaml) | **Matrix volume**, **HF** assets; **`run.output_dir`** as in file. |
 
-**Matrix mode:** every **`benchmark.models`** entry runs against every **`benchmark.datasets`** entry; incompatible surface/volume pairs are skipped. Edit checkpoint paths; comment out any **`- name:`** block you do not need.
+**Matrix mode:** every **`benchmark.models`** entry runs against every **`benchmark.datasets`** entry; incompatible surface/volume pairs are skipped. Edit checkpoint paths in **`_custom`**; comment out any **`- name:`** block you do not need.
 
 ---
 
@@ -261,7 +278,7 @@ Schema: **`physicsnemo.cfd.evaluation.datasets.schema`** — **`CanonicalCase`**
 
 ## Metrics
 
-Registered names (or dicts with `name` + kwargs). **`conf/config_surface.yaml`** and **`conf/config_volume.yaml`** use different subsets — **`drag`** and **`lift`** are registered for **`domain="surface"`** only (`evaluation/metrics/builtin/forces.py`). Do **not** list **`drag`** / **`lift`** under volume benchmarks: **`get_metric`** has no volume entry, and the benchmark would record NaNs without a loud error.
+Registered names (or dicts with `name` + kwargs). Surface and volume matrix configs use different metric subsets — **`drag`** and **`lift`** are registered for **`domain="surface"`** only (`evaluation/metrics/builtin/forces.py`). Do **not** list **`drag`** / **`lift`** under volume benchmarks: **`get_metric`** has no volume entry, and the benchmark would record NaNs without a loud error.
 
 **Surface example:**
 
@@ -273,7 +290,7 @@ metrics:
   - lift
 ```
 
-**Volume example** (`config_volume.yaml` / `config_matrix_volume.yaml`):
+**Volume example** (`config_matrix_volume_custom.yaml` / `config_matrix_volume_hf.yaml`):
 
 ```yaml
 metrics:
@@ -298,7 +315,7 @@ metrics:
 
 When **`reports.enabled`** and **`reports.visuals`** are set, PNGs are written under `{run.output_dir}/visuals/`. Comparison VTK exists if **`reports.save_comparison_meshes: true`**.
 
-**Benchmark mode:** `reports.visuals` run only when **`benchmark.mode`** is **`"single"`** (one model × one dataset). **`"matrix"`** runs skip visuals so filenames and multi-run aggregation stay well-defined — use **`"single"`** or a dedicated config for plots.
+When **`reports.visuals`** is set, each registered visual receives the full **`results`** list (one entry per model × dataset cell); built-ins iterate runs and write `{run.output_dir}/visuals/` PNGs with **`model`** / **`dataset`** in the filename where applicable.
 
 **`aggregate_volume_errors`** writes per-run files such as **`{model}_{dataset}_aggregate_resampled_volume.vtk`** and **`{model}_{dataset}_aggregate_volume_*_slice.png`** (sanitized names). Headless servers may need **xvfb** (see **`setup.sh`** for an example `apt` line — optional).
 
@@ -342,7 +359,7 @@ Register more: **`physicsnemo.cfd.evaluation.reports.register_visual`**.
 
 ## Baseline model stubs (`surface_baseline`, `volume_baseline`)
 
-Smoke-test wrappers: **`checkpoint: ""`**, **`stats_path: ""`**. Use in **`benchmark.models`** (matrix) or top-level **`model`** (single).
+Smoke-test wrappers: **`checkpoint: ""`**, **`stats_path: ""`**. Use under **`benchmark.models`** entries.
 
 ---
 

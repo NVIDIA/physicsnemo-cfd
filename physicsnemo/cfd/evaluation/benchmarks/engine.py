@@ -306,15 +306,26 @@ def _save_inference_mesh_if_requested(
         f"Writing inference mesh (predictions only) to {out_path}…",
     )
     try:
+        ref_geo = getattr(case, "reference_geometry", None)
         if m_dom == "surface":
-            mesh = pv.read(case.mesh_path)
-            if not isinstance(mesh, pv.PolyData):
-                mesh = mesh.extract_surface()
+            if ref_geo is not None:
+                mesh = ref_geo
+                if not isinstance(mesh, pv.PolyData):
+                    mesh = mesh.extract_surface()
+            else:
+                mesh = pv.read(case.mesh_path)
+                if not isinstance(mesh, pv.PolyData):
+                    mesh = mesh.extract_surface()
             names = output_config.mesh_field_names
         else:
-            mesh = pv.read(case.mesh_path)
-            if hasattr(mesh, "cast_to_unstructured_grid"):
-                mesh = mesh.cast_to_unstructured_grid()
+            if ref_geo is not None:
+                mesh = ref_geo
+                if hasattr(mesh, "cast_to_unstructured_grid"):
+                    mesh = mesh.cast_to_unstructured_grid()
+            else:
+                mesh = pv.read(case.mesh_path)
+                if hasattr(mesh, "cast_to_unstructured_grid"):
+                    mesh = mesh.cast_to_unstructured_grid()
             names = output_config.volume_mesh_field_names
 
         data_target = mesh.cell_data if wrapper.output_location == "cell" else mesh.point_data
@@ -606,7 +617,9 @@ def _run_single(
         metric_dtype: str | None = None
         comparison_mesh_build_err: str | None = None
         try:
-            comparison_mesh, metric_dtype = build_comparison_mesh(case, predictions, output_config)
+            comparison_mesh, metric_dtype = build_comparison_mesh(
+                case, predictions, output_config, mesh_override=case.reference_geometry
+            )
         except _MESH_IO_BRIDGE_ERRORS:
             comparison_mesh_build_err = traceback.format_exc()
             log_dataset(
@@ -867,23 +880,17 @@ def run_benchmark(
         write_report(results, output_dir, formats=["json", "csv", "html"])
 
     if is_rank0 and config.reports.enabled and config.reports.visuals:
-        if config.benchmark.mode != "single":
-            log_dataset(
-                "benchmark",
-                'Skipping reports.visuals: supported only when benchmark.mode is "single" (not matrix).',
-            )
-        else:
-            import physicsnemo.cfd.evaluation.reports  # noqa: F401 — register built-in visuals
+        import physicsnemo.cfd.evaluation.reports  # noqa: F401 — register built-in visuals
 
-            from physicsnemo.cfd.evaluation.benchmarks.report_plugins import run_optional_report_plugins
+        from physicsnemo.cfd.evaluation.benchmarks.report_plugins import run_optional_report_plugins
 
-            log_dataset("benchmark", "Running reports.visuals from benchmark results…")
-            run_optional_report_plugins(
-                config,
-                results,
-                output_dir,
-                context={"comparison_meshes_by_run": meshes_by_run},
-            )
+        log_dataset("benchmark", "Running reports.visuals from benchmark results…")
+        run_optional_report_plugins(
+            config,
+            results,
+            output_dir,
+            context={"comparison_meshes_by_run": meshes_by_run},
+        )
 
     _enforce_benchmark_policy(config, results)
 

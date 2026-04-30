@@ -16,7 +16,7 @@
 
 """kNN-based interpolation from prediction points to full mesh."""
 
-from typing import Final, Union
+from typing import Any, Final, Union
 
 import numpy as np
 import torch
@@ -105,3 +105,47 @@ def interpolate_to_mesh(
         p_mesh = _combine_field_neighbors_idw(distances, pressure_pred[indices])
         wss_mesh = _combine_field_neighbors_idw(distances, wss_pred[indices])
     return p_mesh.astype(np.float32), wss_mesh.astype(np.float32)
+
+
+def surface_interp_meta_from_data_dict(data_dict: dict[str, Any], dp: Any) -> dict[str, Any]:
+    """Build normalization metadata matching ``TransolverDataPipe.preprocess_surface_data``.
+
+    Embeddings store translated / scale-normalized coordinates; full mesh cell centers must use
+    the same transform before kNN interpolation (drag/lift on full surface).
+    """
+    com_np = None
+    if dp.config.translational_invariance:
+        if dp.config.reference_origin is not None:
+            com_np = dp.config.reference_origin.detach().cpu().numpy()
+        else:
+            com_np = (
+                torch.mean(data_dict["stl_centers"], dim=0)
+                .unsqueeze(0)
+                .detach()
+                .cpu()
+                .numpy()
+            )
+    scale_np = None
+    if dp.config.scale_invariance and dp.config.reference_scale is not None:
+        scale_np = dp.config.reference_scale.detach().cpu().numpy()
+    return {
+        "translational": bool(dp.config.translational_invariance),
+        "scale_inv": bool(dp.config.scale_invariance),
+        "center_of_mass": com_np,
+        "reference_scale": scale_np,
+    }
+
+
+def world_cell_centers_to_embedding_coords(
+    centers_world: np.ndarray,
+    meta: dict[str, Any],
+) -> np.ndarray:
+    """Map world-space surface cell centers to the same normalized frame as embedding xyz."""
+    t = np.asarray(centers_world, dtype=np.float64)
+    if meta.get("translational") and meta.get("center_of_mass") is not None:
+        com = np.asarray(meta["center_of_mass"], dtype=np.float64).reshape(1, 3)
+        t = t - com
+    if meta.get("scale_inv") and meta.get("reference_scale") is not None:
+        sc = np.asarray(meta["reference_scale"], dtype=np.float64).reshape(1, 3)
+        t = t / sc
+    return t

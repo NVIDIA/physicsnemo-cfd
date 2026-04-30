@@ -158,6 +158,23 @@ class DominoWrapper(CFDModel):
                     "DoMINO scaling factors pickle not found (benchmark model.stats_path override): "
                     f"{pickle_path}"
                 )
+            # Other benchmark models use ``global_stats.json``; DoMINO expects ``scaling_factors.pkl``.
+            if pickle_path.suffix.lower() == ".json":
+                sibling_pkl = (pickle_path.parent / "scaling_factors.pkl").resolve()
+                if sibling_pkl.is_file():
+                    log_inference(
+                        "domino",
+                        "stats_path points at JSON (e.g. global_stats.json); "
+                        f"using DoMINO pickle {sibling_pkl}",
+                    )
+                    pickle_path = sibling_pkl
+                else:
+                    raise ValueError(
+                        "DoMINO normalization is loaded from a training ScalingFactors pickle "
+                        "(``scaling_factors.pkl``), not ``global_stats.json``. "
+                        f"No scaling_factors.pkl next to {pickle_path}. "
+                        "Set model.stats_path to that pickle, or place scaling_factors.pkl beside the JSON."
+                    )
             OmegaConf.update(self._cfg, "data.scaling_factors", str(pickle_path))
             log_inference(
                 "domino",

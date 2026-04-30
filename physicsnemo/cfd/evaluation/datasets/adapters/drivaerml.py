@@ -216,6 +216,7 @@ class DrivAerMLAdapter(DatasetAdapter):
             ground_truth=ground_truth,
             metadata=meta,
             inference_domain="surface",
+            reference_geometry=mesh,
         )
 
     def _load_volume_case(self, case_id: str, run_dir: Path) -> CanonicalCase:
@@ -262,4 +263,5 @@ class DrivAerMLAdapter(DatasetAdapter):
             ground_truth=ground_truth,
             metadata=meta,
             inference_domain="volume",
+            reference_geometry=ugrid,
         )

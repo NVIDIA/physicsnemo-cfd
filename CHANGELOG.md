@@ -36,7 +36,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
   `output.ground_truth_mesh_field_names`, and volume equivalents).
 - `physicsnemo.cfd.postprocessing_tools.metric_registry` for named metrics shared with evaluation.
 - Example Hydra configs under `workflows/benchmarking_workflow/conf/`, including matrix templates
-  `config_matrix_surface.yaml` and `config_matrix_volume.yaml` (multiple models × dataset blocks).
+  `config_matrix_surface_custom.yaml` / `config_matrix_surface_hf.yaml` and volume equivalents (multiple models × dataset blocks; **`_custom`** = explicit paths, **`_hf`** = Hugging Face **`builtin_packages`**).
 - Library CLIs remain for scripting: `python -m physicsnemo.cfd.evaluation.benchmarks` /
   `python -m physicsnemo.cfd.evaluation.inference` (flat YAML path, no `${...}` interpolation).
 
@@ -67,7 +67,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
   under `physicsnemo.cfd.evaluation.metrics.builtin` instead of duplicated
   NumPy-only helpers.
 - Evaluation **workflow docs** center on **`workflows/benchmarking_workflow/main.py`** (Hydra) and
-  **`conf/config_surface.yaml`** / **`conf/config_volume.yaml`**; **`python -m physicsnemo.cfd.evaluation.inference`**
+  **`conf/config_matrix_surface_*.yaml`** / **`config_matrix_volume_*.yaml`**; **`python -m physicsnemo.cfd.evaluation.inference`**
   still forwards to the benchmark engine; **`inference_<model>_<case>.vtp|vtu`** when **`run.save_inference_mesh`** is true.
 - Matrix benchmark settings are edited in the **`conf/*.yaml`** files; the old **`benchmark_matrix.yaml`**
   overlay was removed earlier from the examples folder.
@@ -76,7 +76,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
-- **`workflows/benchmarking_workflow/evaluation_config.yaml`** — the workflow is driven by Hydra **`conf/config_surface.yaml`** / **`config_volume.yaml`** and **`main.py`**.
+- **`workflows/benchmarking_workflow/evaluation_config.yaml`** — the workflow is driven by Hydra **`conf/config_matrix_*.yaml`** and **`main.py`** (no separate single-model **`config_surface`** / **`config_volume`** in `conf/`).
 
 ### Fixed
 

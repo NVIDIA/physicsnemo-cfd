@@ -27,7 +27,7 @@ from physicsnemo.models.figconvnet.components.reductions import REDUCTION_TYPES
 from physicsnemo.models.figconvnet.geometries import GridFeaturesMemoryFormat
 
 from physicsnemo.cfd.evaluation.common.checkpoint_compat import trusted_torch_load_context
-from physicsnemo.cfd.evaluation.common.io import load_global_stats, load_surface_mesh
+from physicsnemo.cfd.evaluation.common.io import load_global_stats, surface_polydata_from_case
 from physicsnemo.cfd.evaluation.common.interpolation import interpolate_to_mesh
 from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, build_predictions_dict
 from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
@@ -51,6 +51,35 @@ _DEFAULT_RESOLUTION_MEMORY_FORMAT_PAIRS = (
 _DEFAULT_COMMUNICATION_TYPES = ("sum",)
 
 _DEFAULT_REDUCTIONS = ("mean",)
+
+
+def _fignet_state_dict_from_checkpoint(checkpoint: object) -> dict[str, Any]:
+    """Extract model weights from common checkpoint layouts.
+
+    Training may save under ``model`` (full job dict), ``model_state_dict`` (XMGN-style),
+    ``state_dict``, or as a flat :class:`torch.nn.Module` state dict (e.g. ``model_00999.pth``).
+    """
+    if not isinstance(checkpoint, dict):
+        raise TypeError(
+            f"FIGNet checkpoint must be a dict, got {type(checkpoint).__name__}"
+        )
+    for key in ("model", "model_state_dict", "state_dict"):
+        inner = checkpoint.get(key)
+        if isinstance(inner, dict) and inner:
+            v0 = next(iter(inner.values()))
+            if torch.is_tensor(v0):
+                return {k.replace("module.", ""): v for k, v in inner.items()}
+
+    # Flat state_dict file: keys are parameter names, values are tensors.
+    sample = [(k, v) for k, v in list(checkpoint.items())[:32] if torch.is_tensor(v)]
+    if len(sample) >= 2 and all(isinstance(k, str) for k, _ in sample):
+        return {k.replace("module.", ""): v for k, v in checkpoint.items() if torch.is_tensor(v)}
+
+    keys_preview = list(checkpoint.keys())[:24]
+    raise KeyError(
+        "FIGNet checkpoint must contain tensor weights under 'model', 'model_state_dict', "
+        f"or 'state_dict', or be a flat state dict. Top-level keys: {keys_preview}"
+    )
 
 
 class FIGConvUNetDrivAerML(FIGConvUNet):
@@ -171,8 +200,11 @@ class FIGNetWrapper(CFDModel):
             use_rel_pos_encode=True,
         )
         with trusted_torch_load_context():
-            checkpoint = torch.load(checkpoint_path, weights_only=False)
-            model.load_state_dict(checkpoint["model"], strict=True)
+            checkpoint = torch.load(
+                checkpoint_path, map_location=device, weights_only=False
+            )
+            state_dict = _fignet_state_dict_from_checkpoint(checkpoint)
+            model.load_state_dict(state_dict, strict=True)
         model = model.to(device)
         model.eval()
         self._model = model
@@ -186,7 +218,7 @@ class FIGNetWrapper(CFDModel):
             "fignet",
             f"Reading mesh (case {case.case_id}): {case.mesh_path}",
         )
-        mesh = load_surface_mesh(case.mesh_path)
+        mesh = surface_polydata_from_case(case)
         mesh = mesh.compute_normals()
         mesh = mesh.compute_cell_sizes()
         coords = torch.from_numpy(mesh.cell_centers().points).to(
@@ -237,7 +269,7 @@ class FIGNetWrapper(CFDModel):
                 "match reloading the surface mesh alone."
             )
         if mesh is None or coords_denorm is None:
-            mesh = load_surface_mesh(case.mesh_path)
+            mesh = surface_polydata_from_case(case)
             mesh = mesh.compute_normals()
             mesh = mesh.compute_cell_sizes()
             coords_denorm = torch.from_numpy(mesh.cell_centers().points).to(

@@ -23,7 +23,12 @@ _BENCHMARK_CONF = (
 
 @pytest.mark.parametrize(
     "config_name",
-    ["config_surface", "config_volume", "config_matrix_surface", "config_matrix_volume"],
+    [
+        "config_matrix_surface_hf",
+        "config_matrix_volume_hf",
+        "config_matrix_surface_custom",
+        "config_matrix_volume_custom",
+    ],
 )
 def test_hydra_config_loads_into_config(config_name: str) -> None:
     if not _BENCHMARK_CONF.is_dir():

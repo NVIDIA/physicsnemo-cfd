@@ -50,12 +50,14 @@ DEFAULT_TURBULENT_VISCOSITY_NAMES = (
     "turbulent_viscosity",
     "TurbulentViscosity",
     "nuTilde",
+    "nutMeanTrim",
 )
 DEFAULT_VOLUME_VELOCITY_NAMES = (
     "UMean",
     "U",
     "velocity",
     "Velocity",
+    "UMeanTrim",
 )
 # Volume pressure uses the same canonical key ``pressure`` as surface (domain disambiguates).
 DEFAULT_VOLUME_PRESSURE_NAMES = DEFAULT_PRESSURE_NAMES

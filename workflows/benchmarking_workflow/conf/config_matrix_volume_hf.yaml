@@ -3,10 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Matrix volume benchmark using HF-hosted checkpoints (GeoTransolver, Transolver, DoMINO).
-# Same structure as ``config_matrix_volume.yaml`` but checkpoints resolve from Hub via
+# Same structure as ``config_matrix_volume_custom.yaml`` but checkpoints resolve from Hub via
 # ``builtin_packages`` — omit ``checkpoint`` / ``stats_path`` / ``domino_config`` kwargs when using defaults.
 #
-# Reports/visuals mirror ``config_volume.yaml`` with ``reports.enabled: true``.
+# Reports/visuals: ``reports.enabled: true``.
 #
 # XMGN / FIGConvNet have no volume checkpoints on Hub — omit them here.
 #
@@ -51,32 +51,33 @@ benchmark:
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
   datasets:
     - name: drivaerml
-      root: "/code/drivaerml"
-      split: null
+      root: "/data/drivaerml"
       kwargs: { align_ground_truth_to_model: true, inference_domain: volume }
   reproducibility:
     log_env: true
     save_artifacts: true
 
 output:
+  # volume_mesh_field_names / ground_truth_volume_mesh_field_names: VTK array names used when writing optional .vtu outputs
+  # (e.g. inference or comparison meshes); align with model outputs and GT field names from the dataset adapter.
   volume_mesh_field_names:
-    pressure: "pMeanTrimPred"
-    turbulent_viscosity: "nutMeanTrimPred"
-    velocity: "UMeanTrimPred"
+    pressure: "pressure_pred"
+    turbulent_viscosity: "turbulent_viscosity_pred"
+    velocity: "velocity_pred"
   ground_truth_volume_mesh_field_names:
-    pressure: "pMeanTrim"
-    turbulent_viscosity: "nutMeanTrim"
-    velocity: "UMeanTrim"
+    pressure: "pressure_true"
+    turbulent_viscosity: "turbulent_viscosity_true"
+    velocity: "velocity_true"
   streamlines_vector_canonical: velocity
 
-# Matches ``config_matrix_volume.yaml`` field metrics; omit ``drag`` / ``lift`` (surface-domain metrics).
+# Matches ``config_matrix_volume_custom.yaml`` field metrics; omit ``drag`` / ``lift`` (surface-domain metrics).
 metrics:
   - l2_pressure
   - l2_turbulent_viscosity
   - l2_velocity
 
 
-# Reports/visuals aligned with ``config_volume.yaml``; ``reports.enabled: true``.
+# Reports/visuals aligned with volume custom matrix; ``reports.enabled: true``.
 reports:
   enabled: true
   save_comparison_meshes: false

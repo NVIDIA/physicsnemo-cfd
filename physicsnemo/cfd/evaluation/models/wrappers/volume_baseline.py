@@ -21,8 +21,8 @@ from __future__ import annotations
 from typing import Any, ClassVar, Optional
 
 import numpy as np
-import pyvista as pv
 
+from physicsnemo.cfd.evaluation.common.io import volume_dataset_from_case
 from physicsnemo.cfd.evaluation.datasets.schema import (
     CanonicalCase,
     InferenceDomain,
@@ -87,9 +87,7 @@ class VolumeBaselineWrapper(CFDModel):
             "volume_baseline",
             f"Reading volume mesh and building baseline fields: {case.mesh_path}",
         )
-        mesh = pv.read(case.mesh_path)
-        if hasattr(mesh, "cast_to_unstructured_grid"):
-            mesh = mesh.cast_to_unstructured_grid()
+        mesh = volume_dataset_from_case(case)
         n = mesh.n_cells if self.output_location == "cell" else mesh.n_points
         p = np.zeros((n,), dtype=np.float32)
         v = np.zeros((n, 3), dtype=np.float32)

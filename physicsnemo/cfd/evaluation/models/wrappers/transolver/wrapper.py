@@ -208,7 +208,7 @@ class TransolverWrapper(CFDModel):
             self._datapipe = TransolverDataPipe(
                 input_path=None,
                 model_type="volume",
-                resolution=self._datapipe_resolution,
+                resolution=None,
                 surface_factors=None,
                 volume_factors=volume_factors,
                 scaling_type="mean_std_scaling",
@@ -225,7 +225,7 @@ class TransolverWrapper(CFDModel):
             self._datapipe = TransolverDataPipe(
                 input_path=None,
                 model_type="surface",
-                resolution=self._datapipe_resolution,
+                resolution=None,
                 surface_factors=surface_factors,
                 volume_factors=None,
                 scaling_type="mean_std_scaling",
@@ -270,6 +270,7 @@ class TransolverWrapper(CFDModel):
                 air_density=self._air_density,
                 stream_velocity=self._stream_velocity,
                 run_idx=run_idx,
+                reference_mesh=case.reference_geometry,
             )
         else:
             data_dict = build_surface_data_dict(
@@ -279,6 +280,7 @@ class TransolverWrapper(CFDModel):
                 air_density=self._air_density,
                 stream_velocity=self._stream_velocity,
                 run_idx=run_idx,
+                reference_mesh=case.reference_geometry,
             )
 
         batch = self._datapipe(data_dict)

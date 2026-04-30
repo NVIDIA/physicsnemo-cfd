@@ -18,7 +18,7 @@
 # Incompatible model/domain pairs are skipped automatically (see engine ``allow_skip_mismatch``).
 #
 # Run:
-#   python main.py --config-name=config_matrix_surface
+#   python main.py --config-name=config_matrix_surface_custom
 #
 # When ``checkpoint`` and ``stats_path`` are both set, they override built-in ``hf://`` defaults
 # (per-model roots in ``builtin_packages``: ``GEOTRANSOLVER_PACKAGE_ROOT``, etc.). Omit those keys to download from Hub instead.
@@ -56,30 +56,31 @@ benchmark:
   models:
     - name: geotransolver_surface
       inference_domain: surface
-      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
-      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_surface_checkpoint/global_stats.json"
+      checkpoint: "/path/to/geotransolver_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
+      stats_path: "/path/to/geotransolver_drivaerml_surface_checkpoint/global_stats.json"
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
     - name: transolver_surface
       inference_domain: surface
-      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/transolver_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
-      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/transolver_drivaerml_surface_checkpoint/global_stats.json"
+      checkpoint: "/path/to/transolver_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
+      stats_path: "/path/to/transolver_drivaerml_surface_checkpoint/global_stats.json"
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
     - name: xmgn_surface
       inference_domain: surface
-      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/xmgn_drivaerml_surface_checkpoint/final_model_checkpoint.pth"
-      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/xmgn_drivaerml_surface_checkpoint/global_stats.json"
+      checkpoint: "/path/to/xmgn_drivaerml_surface_checkpoint/final_model_checkpoint.pth"
+      stats_path: "/path/to/xmgn_drivaerml_surface_checkpoint/global_stats.json"
       # If boundary VTP omits Normals, see xmgn wrapper doc: surface_auto_orient_normals / surface_flip_normals
       kwargs: { "max_points": 250000, "interpolation_k": 4 }
     - name: fignet_surface
       inference_domain: surface
-      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/fignet_drivaerml_surface_checkpoint/model_00999.pth"
-      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/fignet_drivaerml_surface_checkpoint/global_stats.json"
+      checkpoint: "/path/to/fignet_drivaerml_surface_checkpoint/model_00999.pth"
+      stats_path: "/path/to/fignet_drivaerml_surface_checkpoint/global_stats.json"
       kwargs: { "max_points": 250000, "interpolation_k": 4 }
     - name: domino_surface
       inference_domain: surface
-      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
-      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_surface_checkpoint/global_stats.json"
-      kwargs: { "domino_config": "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_surface_checkpoint/config.yaml" }
+      checkpoint: "/path/to/domino_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
+      # DoMINO uses ``scaling_factors.pkl`` (not ``global_stats.json`` like GeoTransolver / Transolver).
+      stats_path: "/path/to/domino_drivaerml_surface_checkpoint/scaling_factors.pkl"
+      kwargs: { "domino_config": "/path/to/domino_drivaerml_surface_checkpoint/config.yaml" }
     # Uncomment when you have a your custom model surface checkpoint + stats next to it (same layout as training).
     # - name: surface_baseline_model
     #   inference_domain: surface
@@ -88,7 +89,7 @@ benchmark:
     #   kwargs: { }
   datasets:
     - name: drivaerml
-      root: "/lustre/fsw/coreai_modulus_cae/datasets/drivaer_aws/drivaer_data_finetune"
+      root: "/data/drivaerml"
       kwargs: { align_ground_truth_to_model: true, inference_domain: surface }
   # When true: writes full os.environ → env.json (may leak HF/AWS tokens). Prefer false for shared runs.
   reproducibility:
@@ -96,14 +97,16 @@ benchmark:
     save_artifacts: false
 
 output:
+  # mesh_field_names / ground_truth_mesh_field_names: VTK array names used when writing optional .vtp outputs
+  # (e.g. inference or comparison meshes); align with model outputs and GT field names from the dataset adapter.
   surface_interpolate_point_to_cell_for_metrics: true
   surface_metrics_idw_k: 5
   mesh_field_names:
-    pressure: "pMeanTrimPred"
-    shear_stress: "wallShearStressMeanTrimPred"
+    pressure: "pressure_pred"
+    shear_stress: "wall_shear_stress_pred"
   ground_truth_mesh_field_names:
-    pressure: "pMeanTrim"
-    shear_stress: "wallShearStressMeanTrim"
+    pressure: "pressure_true"
+    shear_stress: "wall_shear_stress_true"
 
 metrics:
   - l2_pressure

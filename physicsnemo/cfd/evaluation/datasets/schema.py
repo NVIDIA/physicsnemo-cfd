@@ -68,6 +68,11 @@ class CanonicalCase:
     ground_truth: dict[str, Any] | None = None  # surface: pressure, shear_stress; volume: pressure, velocity, …
     metadata: dict[str, Any] = field(default_factory=dict)
     inference_domain: InferenceDomain = "surface"
+    #: Optional mesh already loaded by the dataset adapter (e.g. :class:`pyvista.PolyData` for
+    #: surface, :class:`pyvista.UnstructuredGrid` for volume). When set, benchmarks and wrappers
+    #: may skip a redundant ``pv.read(case.mesh_path)`` for the same case. Adapters are not
+    #: required to populate this field.
+    reference_geometry: Any | None = None
 
     def __post_init__(self) -> None:
         if self.mesh_type not in ("point", "cell", "unknown"):
