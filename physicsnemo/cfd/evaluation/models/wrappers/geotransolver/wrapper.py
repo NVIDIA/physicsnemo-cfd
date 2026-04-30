@@ -188,6 +188,9 @@ class GeoTransolverWrapper(CFDModel):
         self._batch_resolution: int = 2048
         self._inference_mode: Literal["surface", "volume"] = "surface"
         self._datapipe_user_kw: dict[str, Any] = {}
+        # STL bounding-box max extent for the most recent volume case; used by ``decode_outputs``
+        # to unscale νₜ (kinematic viscosity) by ``u * L`` — same reference scale as DoMINO volume.
+        self._volume_length_scale: Optional[float] = None
 
     def load(
         self,
@@ -328,6 +331,11 @@ class GeoTransolverWrapper(CFDModel):
                 reference_mesh=case.reference_geometry,
             )
             n_stl = int(data_dict["stl_coordinates"].shape[0])
+            # STL bounding-box max extent (matches DoMINO ``length_scale`` in build_domin_volume_datadict).
+            stl = data_dict["stl_coordinates"]
+            self._volume_length_scale = float(
+                (stl.amax(dim=0) - stl.amin(dim=0)).max().item()
+            )
             safe_geo = max(1, min(self._geometry_sampling_requested, n_stl))
             user_kw = self._datapipe_user_kw
             if self._datapipe is None or self._datapipe_geometry_effective != safe_geo:
@@ -420,12 +428,18 @@ class GeoTransolverWrapper(CFDModel):
                 "geotransolver",
                 "Decoding outputs (velocity + pressure + nut → canonical volume keys)…",
             )
+            if self._volume_length_scale is None:
+                raise RuntimeError(
+                    "GeoTransolverWrapper: prepare_inputs must run before decode_outputs (volume length scale missing)"
+                )
             u = float(self._stream_velocity)
             rho = float(self._air_density)
             dynamic_pressure = rho * (u**2)
+            # νₜ has units of m²/s; unscale by ``u * L`` (matches DoMINO volume reference scaling).
+            nut_scale = u * self._volume_length_scale
             velocity = (pred[:, 0:3] * u).cpu().numpy().astype(np.float32)
             pressure = (pred[:, 3] * dynamic_pressure).cpu().numpy().astype(np.float32)
-            turbulent_viscosity = (pred[:, 4] * dynamic_pressure).cpu().numpy().astype(np.float32)
+            turbulent_viscosity = (pred[:, 4] * nut_scale).cpu().numpy().astype(np.float32)
             return build_predictions_dict(
                 velocity=velocity,
                 pressure=pressure,
