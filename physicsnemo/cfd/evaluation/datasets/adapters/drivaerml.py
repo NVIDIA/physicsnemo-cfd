@@ -32,6 +32,20 @@ from physicsnemo.cfd.evaluation.datasets.vtk_ground_truth import (
 )
 
 
+#: DrivAer/OpenFOAM volume VTUs commonly expose ``*MeanTrim`` (truncated-domain time averages).
+#: The adapter prepends these to the generic CFD names so default DrivAer runs find velocity
+#: and νₜ without requiring per-config ``dataset.kwargs.velocity_field_names`` overrides.
+DRIVAER_VOLUME_VELOCITY_NAMES: tuple[str, ...] = ("UMeanTrim", "UMean", "U", "velocity", "Velocity")
+DRIVAER_TURBULENT_VISCOSITY_NAMES: tuple[str, ...] = (
+    "nutMeanTrim",
+    "nutMean",
+    "nut",
+    "turbulent_viscosity",
+    "TurbulentViscosity",
+    "nuTilde",
+)
+
+
 class DrivAerMLAdapter(DatasetAdapter):
     """Adapter for DrivAerML layout under ``root/run_<id>/``.
 
@@ -51,8 +65,10 @@ class DrivAerMLAdapter(DatasetAdapter):
     - ``align_ground_truth_to_model``: surface only; same as elsewhere.
     - ``pressure_field_names``, ``shear_field_names``: surface GT array name overrides.
     - ``turbulent_viscosity_field_names``, ``velocity_field_names``,
-      ``volume_pressure_field_names``: volume GT VTK array name tuples (defaults in
-      ``vtk_ground_truth``). Volume pressure is exposed in GT as ``pressure``.
+      ``volume_pressure_field_names``: volume GT VTK array name tuples. Adapter defaults
+      (``DRIVAER_VOLUME_VELOCITY_NAMES`` / ``DRIVAER_TURBULENT_VISCOSITY_NAMES``) prepend the
+      DrivAer/OpenFOAM ``*MeanTrim`` variant so DrivAer VTUs work without overrides. Volume
+      pressure falls back to ``DEFAULT_VOLUME_PRESSURE_NAMES`` (already includes ``pMeanTrim``).
     - ``boundary_vtp_filename``: if set, every run uses this exact VTP name (legacy e.g. ``boundary_1.vtp``).
     - ``boundary_vtp_template``: custom surface filename pattern.
     - ``volume_vtu_filename``: if set, every run uses this exact VTU name inside the run dir.
@@ -96,8 +112,12 @@ class DrivAerMLAdapter(DatasetAdapter):
         tn = kwargs.get("turbulent_viscosity_field_names")
         vn = kwargs.get("velocity_field_names")
         pn_vol = kwargs.get("volume_pressure_field_names")
-        self._nut_names: tuple[str, ...] = tuple(tn) if tn else ()
-        self._vel_names: tuple[str, ...] = tuple(vn) if vn else ()
+        self._nut_names: tuple[str, ...] = (
+            tuple(tn) if tn else DRIVAER_TURBULENT_VISCOSITY_NAMES
+        )
+        self._vel_names: tuple[str, ...] = (
+            tuple(vn) if vn else DRIVAER_VOLUME_VELOCITY_NAMES
+        )
         self._volume_pressure_names: tuple[str, ...] = tuple(pn_vol) if pn_vol else ()
 
     def _run_suffix(self, case_id: str) -> str:

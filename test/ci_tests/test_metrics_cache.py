@@ -130,7 +130,7 @@ def test_write_read_roundtrip(tmp_path: Path) -> None:
     write_metrics_cache(
         path,
         fingerprint=fp,
-        model="geotransolver",
+        model="geotransolver_surface",
         dataset="drivaerml",
         case_id="run_1",
         case_metrics={"l2_pressure": 0.5, "l2_shear_stress": float("nan")},

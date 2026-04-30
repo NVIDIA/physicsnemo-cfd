@@ -2,20 +2,18 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Matrix volume benchmark using HF-hosted checkpoints (GeoTransolver, Transolver, DoMINO).
+# Same structure as ``config_matrix_volume.yaml`` but checkpoints resolve from Hub via
+# ``builtin_packages`` — omit ``checkpoint`` / ``stats_path`` / ``domino_config`` kwargs when using defaults.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# Reports/visuals mirror ``config_volume.yaml`` with ``reports.enabled: true``.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-# Volume benchmark (VTU / point metrics, volume fields, PDE residuals, velocity streamlines).
-# Run: ``python main.py --config-name=config_volume``
+# XMGN / FIGConvNet have no volume checkpoints on Hub — omit them here.
+#
+# Run:
+#   python main.py --config-name=config_matrix_volume_hf
+#
+# Requires: huggingface-cli login (or HF_TOKEN) when pulling private artifacts.
 
 defaults:
   - _self_
@@ -27,12 +25,11 @@ hydra:
   job:
     chdir: false
 
-# Top-level: one id, list (shared by all matrix datasets), or null for per-dataset case_ids / all cases.
 case_id: [run_1, run_11]
 
 run:
   device: "cuda:0"
-  output_dir: "benchmark_results_volume"
+  output_dir: "benchmark_results_matrix_volume_hf"
   seed: 42
   batch_size: 1
   save_inference_mesh: false
@@ -41,16 +38,20 @@ run:
     path: ${run.output_dir}/metrics_cache
 
 benchmark:
-  mode: "matrix"
+  mode: matrix
   models:
-    - name: "geotransolver_volume"
+    - name: domino_volume
       inference_domain: volume
-      checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_volume_checkpoint/checkpoint.0.501.pt"
-      stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_volume_checkpoint/global_stats.json"
+      kwargs: {}
+    - name: geotransolver_volume
+      inference_domain: volume
+      kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
+    - name: transolver_volume
+      inference_domain: volume
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
   datasets:
-    - name: "drivaerml"
-      root: "/lustre/fsw/coreai_modulus_cae/datasets/drivaer_aws/drivaer_data_finetune"
+    - name: drivaerml
+      root: "/code/drivaerml"
       split: null
       kwargs: { align_ground_truth_to_model: true, inference_domain: volume }
   reproducibility:
@@ -68,20 +69,20 @@ output:
     velocity: "UMeanTrim"
   streamlines_vector_canonical: velocity
 
+# Matches ``config_matrix_volume.yaml`` field metrics; omit ``drag`` / ``lift`` (surface-domain metrics).
 metrics:
   - l2_pressure
   - l2_turbulent_viscosity
   - l2_velocity
-  - continuity_residual_l2
-  - momentum_residual_l2
 
+
+# Reports/visuals aligned with ``config_volume.yaml``; ``reports.enabled: true``.
 reports:
-  enabled: false
+  enabled: true
   save_comparison_meshes: false
   comparison_mesh_subdir: comparison_meshes
   visual_case_ids: [run_1, run_11]
   visuals:
-    # Omit ``fields`` to plot all ``output.volume_mesh_field_names`` arrays on the comparison mesh.
     - name: plot_fields_volume
       view: xy
     - name: line_plot
@@ -90,7 +91,6 @@ reports:
       normalize_factor: 1.0
       true_line_kwargs: { label: Ground truth }
       pred_line_kwargs: { label: Prediction }
-    # Volume point mesh: uses ``output.streamlines_vector_canonical`` (velocity) when omitted.
     - name: streamlines_comparison
       view: xy
     - name: aggregate_volume_errors

@@ -46,31 +46,58 @@ class _TrainedStub:
     REQUIRES_REMOTE_ASSETS = True
 
 
-def test_builtin_geotransolver_asset_registered() -> None:
-    spec = get_default_asset("geotransolver")
+def test_builtin_geotransolver_surface_asset_registered() -> None:
+    spec = get_default_asset("geotransolver_surface")
     assert spec is not None
     assert spec.package_root == BENCHMARK_CHECKPOINTS_HF_ROOT
-    assert spec.package_root == BUILTIN_MODEL_PACKAGE_ROOTS["geotransolver"]
-    assert "checkpoint.0.501.pt" in spec.checkpoint_relpath
+    assert spec.package_root == BUILTIN_MODEL_PACKAGE_ROOTS["geotransolver_surface"]
+    assert spec.checkpoint_relpath.endswith(".mdlus")
+    assert "surface_checkpoint" in spec.checkpoint_relpath
     assert spec.stats_relpath.endswith("global_stats.json")
 
 
 def test_builtin_transolver_uses_per_model_package_root() -> None:
-    spec = get_default_asset("transolver")
+    spec = get_default_asset("transolver_surface")
     assert spec is not None
     assert spec.package_root == TRANSOLVER_PACKAGE_ROOT
-    assert spec.package_root == BUILTIN_MODEL_PACKAGE_ROOTS["transolver"]
+    assert spec.package_root == BUILTIN_MODEL_PACKAGE_ROOTS["transolver_surface"]
 
 
-def test_builtin_domino_includes_domino_config_relpath() -> None:
-    spec = get_default_asset("domino")
+def test_builtin_xmgn_fignet_surface_assets_registered() -> None:
+    xspec = get_default_asset("xmgn_surface")
+    assert xspec is not None
+    assert xspec.package_root == BUILTIN_MODEL_PACKAGE_ROOTS["xmgn_surface"]
+    assert xspec.checkpoint_relpath.endswith(".pth")
+
+    fspec = get_default_asset("fignet_surface")
+    assert fspec is not None
+    assert fspec.package_root == BUILTIN_MODEL_PACKAGE_ROOTS["fignet_surface"]
+
+
+def test_builtin_geotransolver_volume_asset_registered() -> None:
+    spec = get_default_asset("geotransolver_volume")
     assert spec is not None
-    assert any(k == "domino_config" for k, _ in spec.extra_resolve_relpaths)
+    assert spec.package_root == BUILTIN_MODEL_PACKAGE_ROOTS["geotransolver_volume"]
+    assert spec.checkpoint_relpath.endswith(".mdlus")
+    assert "volume_checkpoint" in spec.checkpoint_relpath
+    assert spec.stats_relpath.endswith("global_stats.json")
+
+
+def test_builtin_domino_extra_assets_use_checkpoint_parent_placeholder() -> None:
+    """Built-in DoMINO registers companion YAML/pickle paths via ``{checkpoint_parent}`` templates."""
+    spec = get_default_asset("domino_surface")
+    assert spec is not None
+    assert len(spec.extra_resolve_relpaths) == 2
+    assert any(
+        "{checkpoint_parent}" in rel for _, rel in spec.extra_resolve_relpaths
+    )
+    kinds = {k for k, _ in spec.extra_resolve_relpaths}
+    assert "domino_config" in kinds and "_resolved_scaling_factors" in kinds
 
 
 def test_resolve_model_assets_explicit_paths() -> None:
     cfg = ModelConfig(
-        name="fignet",
+        name="fignet_surface",
         checkpoint="/abs/ck.pt",
         stats_path="/abs/stats.json",
     )

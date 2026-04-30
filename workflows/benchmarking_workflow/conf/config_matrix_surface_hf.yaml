@@ -1,13 +1,16 @@
-# Matrix surface benchmark using HF-hosted checkpoints.
-# Checkpoint and stats paths are omitted — the engine resolves them from the
-# per-model HF package roots in ``builtin_packages.py``.
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Matrix surface benchmark using HF-hosted checkpoints (same layout as ``config_matrix_surface.yaml``,
+# but checkpoints resolve from Hub via ``builtin_packages`` — omit ``checkpoint`` / ``stats_path``).
+#
+# Reports/visuals mirror ``config_surface.yaml`` with ``reports.enabled: true``.
 #
 # Run:
 #   python main.py --config-name=config_matrix_surface_hf
 #
 # Requires: huggingface-cli login (or HF_TOKEN env var) for private repos.
-
-## TODO: Remove this after testing
 
 defaults:
   - _self_
@@ -34,24 +37,24 @@ run:
 benchmark:
   mode: matrix
   models:
-    - name: geotransolver
-      inference_domain: surface
-      kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
-    - name: transolver
-      inference_domain: surface
-      kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
-    - name: xmgn
-      inference_domain: surface
-      kwargs: { "max_points": 250000, "interpolation_k": 4 }
-    - name: fignet
-      inference_domain: surface
-      kwargs: { "max_points": 250000, "interpolation_k": 4 }
-    - name: domino
+    - name: domino_surface
       inference_domain: surface
       kwargs: {}
+    - name: geotransolver_surface
+      inference_domain: surface
+      kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
+    - name: transolver_surface
+      inference_domain: surface
+      kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
+    - name: xmgn_surface
+      inference_domain: surface
+      kwargs: { "max_points": 250000, "interpolation_k": 4 }
+    - name: fignet_surface
+      inference_domain: surface
+      kwargs: { "max_points": 250000, "interpolation_k": 4 }
   datasets:
     - name: drivaerml
-      root: "/lustre/fsw/coreai_modulus_cae/datasets/drivaer_aws/drivaer_data_finetune"
+      root: "/code/drivaerml"
       split: null
       kwargs: { align_ground_truth_to_model: true, inference_domain: surface }
   reproducibility:
@@ -64,6 +67,9 @@ output:
   mesh_field_names:
     pressure: "pMeanTrimPred"
     shear_stress: "wallShearStressMeanTrimPred"
+  ground_truth_mesh_field_names:
+    pressure: "pMeanTrim"
+    shear_stress: "wallShearStressMeanTrim"
 
 metrics:
   - l2_pressure
@@ -73,8 +79,44 @@ metrics:
   - lift
 
 reports:
-  enabled: false
+  enabled: true
   save_comparison_meshes: false
   comparison_mesh_subdir: comparison_meshes
   visual_case_ids: [run_1, run_11]
-  visuals: []
+  visuals:
+    - name: field_comparison_surface
+      canonical_keys: [pressure, shear_stress]
+      view: xy
+    - name: line_plot
+      canonical_key: pressure
+      plot_coord: x
+      normalize_factor: 1.0
+      true_line_kwargs: { label: Ground truth }
+      pred_line_kwargs: { label: Prediction }
+    - name: line_plot
+      canonical_key: shear_stress
+      plot_coord: x
+      normalize_factor: 1.0
+      true_line_kwargs: { label: Ground truth }
+      pred_line_kwargs: { label: Prediction }
+    - name: line_plot_centerlines
+      canonical_key: pressure
+      plot_coord: x
+      normalize_factor: 1.0
+      z_clip: 0.4
+      y_slice_origin: [0, 0, 0]
+      xlabel: "X Coordinate"
+      ylabel: "Pressure"
+      true_line_kwargs: { label: Ground truth }
+      pred_line_kwargs: { label: Prediction }
+    - name: streamlines_comparison
+      canonical_key: shear_stress
+      view: xy
+    - name: design_scatter
+      pairs:
+        - { name: Cd, true_key: drag_true, pred_key: drag_pred }
+        - { name: Cl, true_key: lift_true, pred_key: lift_pred }
+    - name: design_trend
+      pairs:
+        - { name: Cd, true_key: drag_true, pred_key: drag_pred }
+        - { name: Cl, true_key: lift_true, pred_key: lift_pred }

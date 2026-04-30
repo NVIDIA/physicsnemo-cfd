@@ -43,7 +43,7 @@ run:
 benchmark:
   mode: "matrix"
   models:
-    - name: "geotransolver"
+    - name: "geotransolver_surface"
       inference_domain: surface
       checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_surface_checkpoint/checkpoint.0.501.pt"
       stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_surface_checkpoint/global_stats.json"
@@ -61,6 +61,9 @@ output:
   mesh_field_names:
     pressure: "pMeanTrimPred"
     shear_stress: "wallShearStressMeanTrimPred"
+  ground_truth_mesh_field_names:
+    pressure: "pMeanTrim"
+    shear_stress: "wallShearStressMeanTrim"
 
 metrics:
   - l2_pressure

@@ -2,11 +2,16 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Resolve ``ModelConfig`` checkpoint and stats paths via local paths or :class:`Package`."""
+"""Resolve ``ModelConfig`` checkpoint/stats paths and optional companion assets via :class:`Package`.
+
+Companion relpaths in ``AssetSpec.extra_resolve_relpaths`` support ``{checkpoint_parent}``; see
+:class:`~physicsnemo.cfd.evaluation.assets.registry.AssetSpec`.
+"""
 
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any, Type
 
 from physicsnemo.cfd.evaluation.assets.package import Package, maybe_touch_hf_config_json
@@ -21,11 +26,28 @@ def _sanitize_cache_token(name: str) -> str:
     return s[:64] if s else "model"
 
 
+_CHECKPOINT_PARENT = "{checkpoint_parent}"
+
+
+def _expand_checkpoint_parent(rel_template: str, ck_rel: str) -> str:
+    """Substitute ``{checkpoint_parent}`` with the directory containing the checkpoint file."""
+    if _CHECKPOINT_PARENT not in rel_template:
+        return rel_template
+    parent = Path(ck_rel).parent.as_posix()
+    if not parent or parent == ".":
+        raise ValueError(
+            f"checkpoint_relpath {ck_rel!r} must include a directory segment when using "
+            f"{_CHECKPOINT_PARENT!r} in ``AssetSpec.extra_resolve_relpaths``."
+        )
+    return rel_template.replace(_CHECKPOINT_PARENT, parent)
+
+
 def _asset_identity(pkg_root: str, ck_rel: str, st_rel: str, spec: AssetSpec | None) -> str:
     ident = f"package:{pkg_root}|{ck_rel}|{st_rel}"
     if spec and spec.extra_resolve_relpaths:
-        for k, rel in spec.extra_resolve_relpaths:
-            ident += f"|{k}:{rel}"
+        for k, rel_t in spec.extra_resolve_relpaths:
+            rel_exp = _expand_checkpoint_parent(rel_t, ck_rel)
+            ident += f"|{k}:{rel_exp}"
     return ident
 
 
@@ -35,7 +57,7 @@ def resolve_model_assets(
 ) -> tuple[str, str, str | None, dict[str, str]]:
     """
     Return local ``checkpoint_path``, ``stats_path``, optional ``asset_identity`` for metrics cache,
-    and ``load_kw`` (e.g. resolved ``domino_config``) to merge before ``wrapper.load``.
+    and ``load_kw`` (companion assets merged before ``wrapper.load``).
 
     When ``asset_identity`` is not ``None``, callers should pass it to :func:`metrics_cache_fingerprint`
     and may pass empty checkpoint/stats strings for the fingerprint payload to avoid cache-dir churn.
@@ -74,16 +96,22 @@ def resolve_model_assets(
             f"``register_default_asset`` for this model name."
         )
 
-    ck_rel = (
+    yaml_ck = (
         (model_config.checkpoint_relpath or "").strip()
         or str(model_config.kwargs.get("checkpoint_relpath") or "").strip()
-        or (spec.checkpoint_relpath if spec else "")
     )
-    st_rel = (
+    yaml_st = (
         (model_config.stats_relpath or "").strip()
         or str(model_config.kwargs.get("stats_relpath") or "").strip()
-        or (spec.stats_relpath if spec else "")
     )
+    if bool(yaml_ck) ^ bool(yaml_st):
+        raise ValueError(
+            f"Model {model_config.name!r}: set both ``checkpoint_relpath`` and ``stats_relpath``, "
+            f"or omit both to use registered defaults."
+        )
+
+    ck_rel = yaml_ck or ((spec.checkpoint_relpath or "").strip() if spec else "")
+    st_rel = yaml_st or ((spec.stats_relpath or "").strip() if spec else "")
     if not ck_rel or not st_rel:
         raise ValueError(
             f"Model {model_config.name!r}: package {pkg_root!r} requires "
@@ -103,7 +131,8 @@ def resolve_model_assets(
     st_path = pkg.resolve(st_rel)
     load_kw: dict[str, str] = {}
     if spec and spec.extra_resolve_relpaths:
-        for kw_name, rel in spec.extra_resolve_relpaths:
-            load_kw[kw_name] = pkg.resolve(rel)
+        for kw_name, rel_t in spec.extra_resolve_relpaths:
+            rel_exp = _expand_checkpoint_parent(rel_t, ck_rel)
+            load_kw[kw_name] = pkg.resolve(rel_exp)
     identity = _asset_identity(pkg_root, ck_rel, st_rel, spec)
     return ck_path, st_path, identity, load_kw

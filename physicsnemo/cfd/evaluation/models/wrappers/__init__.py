@@ -25,11 +25,14 @@ from physicsnemo.cfd.evaluation.models.wrappers.transolver import TransolverWrap
 from physicsnemo.cfd.evaluation.models.wrappers.volume_baseline import VolumeBaselineWrapper
 from physicsnemo.cfd.evaluation.models.wrappers.xmgn import XMGNWrapper
 
-register_model("fignet", FIGNetWrapper)
-register_model("xmgn", XMGNWrapper)
-register_model("geotransolver", GeoTransolverWrapper)
-register_model("transolver", TransolverWrapper)
-register_model("domino", DominoWrapper)
+register_model("fignet_surface", FIGNetWrapper)
+register_model("xmgn_surface", XMGNWrapper)
+register_model("geotransolver_surface", GeoTransolverWrapper)
+register_model("geotransolver_volume", GeoTransolverWrapper)
+register_model("transolver_surface", TransolverWrapper)
+register_model("transolver_volume", TransolverWrapper)
+register_model("domino_surface", DominoWrapper)
+register_model("domino_volume", DominoWrapper)
 register_model("surface_baseline", SurfaceBaselineWrapper)
 register_model("volume_baseline", VolumeBaselineWrapper)
 

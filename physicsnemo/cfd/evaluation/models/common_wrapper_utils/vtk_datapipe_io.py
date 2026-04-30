@@ -93,31 +93,6 @@ def read_volume_from_vtu(
     }
 
 
-def build_volume_data_dict(
-    run_dir: Path,
-    vtu_path: str,
-    device: torch.device,
-    air_density: float,
-    stream_velocity: float,
-    run_idx: int = 1,
-    n_output_fields: int = 5,
-) -> dict[str, torch.Tensor]:
-    """Build data dict for volume inference: STL + VTU + flow params (DrivAer-style run dir)."""
-    stl_path = run_dir / f"drivaer_{run_idx}_single_solid.stl"
-    if not stl_path.exists():
-        stl_files = list(run_dir.glob("*_single_solid.stl"))
-        if not stl_files:
-            raise FileNotFoundError(f"No STL file found in {run_dir}")
-        stl_path = stl_files[0]
-    data_dict = read_stl_geometry(str(stl_path), device)
-    data_dict.update(read_volume_from_vtu(vtu_path, device, n_output_fields=n_output_fields))
-    data_dict["air_density"] = torch.tensor([air_density], device=device, dtype=torch.float32)
-    data_dict["stream_velocity"] = torch.tensor(
-        [stream_velocity], device=device, dtype=torch.float32
-    )
-    return data_dict
-
-
 def _find_stl_in_dir(run_dir: Path, run_idx: int) -> Path:
     """Find an STL file in *run_dir* using progressively looser name patterns."""
     candidates = [
@@ -132,6 +107,30 @@ def _find_stl_in_dir(run_dir: Path, run_idx: int) -> Path:
         if globs:
             return globs[0]
     raise FileNotFoundError(f"No STL file found in {run_dir} for run_idx {run_idx}")
+
+
+def build_volume_data_dict(
+    run_dir: Path,
+    vtu_path: str,
+    device: torch.device,
+    air_density: float,
+    stream_velocity: float,
+    run_idx: int = 1,
+    n_output_fields: int = 5,
+) -> dict[str, torch.Tensor]:
+    """Build data dict for volume inference: STL + VTU + flow params (DrivAer-style run dir).
+
+    STL resolution matches :func:`build_surface_data_dict` — ``drivaer_<run_idx>.stl``,
+    ``drivaer_<run_idx>_single_solid.stl``, then ``*_single_solid.stl``, then any ``*.stl``.
+    """
+    stl_path = _find_stl_in_dir(run_dir, run_idx)
+    data_dict = read_stl_geometry(str(stl_path), device)
+    data_dict.update(read_volume_from_vtu(vtu_path, device, n_output_fields=n_output_fields))
+    data_dict["air_density"] = torch.tensor([air_density], device=device, dtype=torch.float32)
+    data_dict["stream_velocity"] = torch.tensor(
+        [stream_velocity], device=device, dtype=torch.float32
+    )
+    return data_dict
 
 
 def build_surface_data_dict(

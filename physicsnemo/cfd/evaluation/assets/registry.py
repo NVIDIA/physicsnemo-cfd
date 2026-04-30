@@ -20,8 +20,11 @@ class AssetSpec:
     ----------
     extra_resolve_relpaths
         Optional ``(load_kwarg_name, relpath_in_package)`` pairs resolved with the same
-        :class:`~physicsnemo.cfd.evaluation.assets.package.Package` as checkpoint/stats
-        (e.g. ``("domino_config", "…/config.yaml")`` for DoMINO).
+        :class:`~physicsnemo.cfd.evaluation.assets.package.Package` as checkpoint/stats.
+
+        A relpath may contain the literal substring ``{checkpoint_parent}``; it is replaced with the
+        parent directory of ``checkpoint_relpath`` (after resolving overrides), so companion assets
+        can live next to the weight file without duplicating folder names in registrations.
     """
 
     package_root: str

@@ -45,6 +45,42 @@ def _infer_surface_preference(mesh: pv.PolyData, gt: dict[str, Any], mesh_type: 
     return "cell"
 
 
+def _infer_volume_preference(
+    mesh: pv.DataSet,
+    gt: dict[str, Any],
+    predictions: dict[str, Any],
+    mesh_type: str,
+) -> str:
+    """
+    Choose point vs cell attachment for volume fields.
+
+    Prefer ``mesh_type`` from the dataset adapter, but validate against array length.
+    Uses the first available canonical field among pressure / velocity / turbulent_viscosity,
+    preferring ground truth then predictions (GT may be absent in edge cases).
+    """
+    ref = None
+    for key in ("pressure", "velocity", "turbulent_viscosity"):
+        if gt:
+            ref = gt.get(key)
+        if ref is None and predictions:
+            ref = predictions.get(key)
+        if ref is not None:
+            break
+    if ref is not None:
+        a = np.asarray(ref)
+        n = int(a.shape[0]) if a.ndim >= 2 else int(a.size)
+        if mesh.n_points != mesh.n_cells:
+            if n == mesh.n_points:
+                return "point"
+            if n == mesh.n_cells:
+                return "cell"
+        elif mesh_type in ("point", "cell"):
+            return mesh_type
+    if mesh_type in ("point", "cell"):
+        return mesh_type
+    return "cell"
+
+
 def _assign_field(
     mesh: pv.DataSet,
     preference: str,
@@ -112,6 +148,8 @@ def build_comparison_mesh(
         unambiguous, otherwise ``case.mesh_type`` (default ``cell``). If
         ``output.surface_interpolate_point_to_cell_for_metrics`` is true and the mesh used point
         dofs, fields are IDW-interpolated to cell centers and the returned dtype is ``\"cell\"``.
+        For **volume**, inferred the same way from GT / predictions vs topology; VTU reference data
+        is often cell-centered (``pMean`` on cells).
     """
     if mesh_override is not None:
         mesh = mesh_override.copy(deep=True)
@@ -129,7 +167,7 @@ def build_comparison_mesh(
         # adapter used when extracting GT, causing "expected N cell values, got ..." mismatches.
         preference = _infer_surface_preference(mesh, gt, case.mesh_type)
     elif case.inference_domain == "volume":
-        preference = "point"
+        preference = _infer_volume_preference(mesh, gt, predictions, case.mesh_type)
         gt_map = output.ground_truth_volume_mesh_field_names
         pred_map = output.volume_mesh_field_names
         pairs = (

@@ -27,7 +27,7 @@ from omegaconf import DictConfig, OmegaConf
 from physicsnemo.distributed import DistributedManager
 from physicsnemo.models.domino.model import DoMINO
 
-from physicsnemo.cfd.evaluation.common.checkpoint_compat import trusted_torch_load_context
+from physicsnemo.cfd.evaluation.common.checkpoint_compat import parse_checkpoint_epoch, trusted_torch_load_context
 from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, predictions_dict
 from physicsnemo.cfd.evaluation.models.common_wrapper_utils.vtk_datapipe_io import (
     run_id_from_case_id,
@@ -89,6 +89,8 @@ class DominoWrapper(CFDModel):
         **kwargs: Any,
     ) -> "DominoWrapper":
         kw = dict(kwargs)
+        # Exact HF-cache path from ``resolve_model_assets`` (overrides stale paths inside shipped ``config.yaml``).
+        _resolved_sf = kw.pop("_resolved_scaling_factors", None)
         cfg_path = kw.get("domino_config") or kw.get("config_path")
         if not cfg_path:
             raise ValueError(
@@ -106,13 +108,40 @@ class DominoWrapper(CFDModel):
         )
         self._cfg = OmegaConf.load(cfg_path)
         _cfg_p = Path(cfg_path).resolve()
-        _sf = self._cfg.data.scaling_factors
-        if _sf and not Path(str(_sf)).is_absolute():
+        _cfg_dir = _cfg_p.parent
+        if _resolved_sf:
             OmegaConf.update(
                 self._cfg,
                 "data.scaling_factors",
-                str(_cfg_p.parent / str(_sf)),
+                str(Path(_resolved_sf).resolve()),
             )
+        else:
+            _sf = self._cfg.data.scaling_factors
+            if _sf:
+                _sf_path = Path(str(_sf)).expanduser()
+                _pickle_name = _sf_path.name or "scaling_factors.pkl"
+                _local_by_config = _cfg_dir / _pickle_name
+                # Prefer pickle next to ``config.yaml`` (Hub layout) over stale absolute paths in YAML.
+                if _local_by_config.is_file():
+                    OmegaConf.update(
+                        self._cfg,
+                        "data.scaling_factors",
+                        str(_local_by_config.resolve()),
+                    )
+                elif not _sf_path.is_absolute():
+                    OmegaConf.update(
+                        self._cfg,
+                        "data.scaling_factors",
+                        str(_cfg_dir / str(_sf)),
+                    )
+                elif not _sf_path.exists():
+                    _fallback = _cfg_dir / _pickle_name
+                    if _fallback.is_file():
+                        OmegaConf.update(
+                            self._cfg,
+                            "data.scaling_factors",
+                            str(_fallback.resolve()),
+                        )
 
         mtype = self._cfg.model.model_type
         if mtype not in ("surface", "volume"):
@@ -166,6 +195,9 @@ class DominoWrapper(CFDModel):
             "path": str(checkpoint_dir),
             "models": self._model,
         }
+        epoch = parse_checkpoint_epoch(checkpoint_path)
+        if epoch is not None:
+            ckpt_args["epoch"] = epoch
 
         loaded_epoch = load_checkpoint(device=dev, **ckpt_args)
         self._model.eval()

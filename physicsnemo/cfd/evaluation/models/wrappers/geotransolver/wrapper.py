@@ -42,7 +42,7 @@ from physicsnemo.cfd.evaluation.models.model_registry import (
     Predictions,
 )
 from physicsnemo.cfd.evaluation.inference.progress import log_inference
-from physicsnemo.cfd.evaluation.common.checkpoint_compat import trusted_torch_load_context
+from physicsnemo.cfd.evaluation.common.checkpoint_compat import parse_checkpoint_epoch, trusted_torch_load_context
 from physicsnemo.cfd.evaluation.common.io import load_transolver_surface_factors, load_transolver_volume_factors
 from physicsnemo.cfd.evaluation.models.common_wrapper_utils.vtk_datapipe_io import (
     build_surface_data_dict,
@@ -235,6 +235,9 @@ class GeoTransolverWrapper(CFDModel):
             "path": str(checkpoint_dir),
             "models": self._model,
         }
+        epoch = parse_checkpoint_epoch(checkpoint_path)
+        if epoch is not None:
+            ckpt_args["epoch"] = epoch
         with trusted_torch_load_context():
             _ = load_checkpoint(device=dev, **ckpt_args)
         self._model = self._model.to(dev)

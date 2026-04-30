@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Load reference pressure / wall shear from VTK (VTP) for benchmarking."""
+"""Load reference fields from VTK: surface VTP (pressure / WSS) and volume VTU (pressure / velocity / νₜ)."""
 
 from typing import Literal
 
@@ -23,7 +23,9 @@ import pyvista as pv
 from sklearn.neighbors import NearestNeighbors
 
 
-# Common DrivAerML / external aero field names (reference CFD, not *Pred)
+# Generic external-aero CFD field names (reference, not ``*Pred``). Adapters with their own
+# stronger conventions (e.g. DrivAer ``*MeanTrim``) pass adapter-specific tuples through
+# ``extract_*_from_mesh(..., *_names=...)`` rather than relying on these defaults.
 DEFAULT_PRESSURE_NAMES = (
     "pMeanTrim",
     "pMean",
@@ -38,7 +40,9 @@ DEFAULT_SHEAR_NAMES = (
     "wallShearStressMean",
 )
 
-# Volume RANS / LES-style names (reference CFD)
+# Volume RANS / LES-style names (reference CFD). These are dataset-agnostic generic CFD
+# conventions; adapters that ship a more specific convention (e.g. DrivAer ``*MeanTrim``)
+# pass their own tuples through ``extract_volume_fields_from_mesh(..., velocity_names=...)``.
 DEFAULT_TURBULENT_VISCOSITY_NAMES = (
     "nutMean",
     "nut",

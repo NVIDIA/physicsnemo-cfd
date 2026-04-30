@@ -23,7 +23,8 @@
 # (per-model roots in ``builtin_packages``: ``GEOTRANSOLVER_PACKAGE_ROOT``, etc.). Omit those keys to download from Hub instead.
 # DoMINO: omit ``checkpoint`` / ``stats_path`` / ``domino_config`` to pull weights + ``config.yaml`` from Hub
 # (see ``builtin_packages``); set any of them to override.
-# Uncomment or add more models (registered names: geotransolver, transolver, domino, fignet, xmgn, …).
+# Uncomment or add more models (registered names: ``*_surface`` / ``*_volume`` for GeoTransolver /
+# Transolver / DoMINO; ``xmgn``, ``fignet``, …).
 
 defaults:
   - _self_
@@ -50,17 +51,17 @@ run:
 benchmark:
   mode: matrix
   models:
-    - name: geotransolver
+    - name: geotransolver_volume
       inference_domain: volume
       checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_volume_checkpoint/checkpoint.0.501.pt"
       stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/geotransolver_drivaerml_volume_checkpoint/global_stats.json"
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
-    - name: transolver
+    - name: transolver_volume
       inference_domain: volume
       checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/transolver_drivaerml_volume_checkpoint/checkpoint.0.501.pt"
       stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/transolver_drivaerml_volume_checkpoint/global_stats.json"
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
-    - name: domino
+    - name: domino_volume
       inference_domain: volume
       checkpoint: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_volume_checkpoint/checkpoint.0.501.pt"
       stats_path: "/lustre/fsw/coreai_modulus_cae/rranade/modulus_dev/modulus_forked/ktangsali/physicsnemo-external-aero-checkpoints/benchmark_models/domino_drivaerml_volume_checkpoint/global_stats.json"
@@ -85,6 +86,10 @@ output:
     pressure: "pMeanTrimPred"
     turbulent_viscosity: "nutMeanTrimPred"
     velocity: "UMeanTrimPred"
+  ground_truth_volume_mesh_field_names:
+    pressure: "pMeanTrim"
+    turbulent_viscosity: "nutMeanTrim"
+    velocity: "UMeanTrim"
   streamlines_vector_canonical: velocity
 
 metrics:
@@ -93,8 +98,6 @@ metrics:
   - l2_velocity
   - continuity_residual_l2
   - momentum_residual_l2
-  - drag
-  - lift
 
 reports:
   enabled: false

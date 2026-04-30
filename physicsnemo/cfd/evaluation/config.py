@@ -109,7 +109,7 @@ class RunConfig:
 
 @dataclass
 class ModelConfig:
-    name: str = "fignet"
+    name: str = "fignet_surface"
     checkpoint: str = ""
     stats_path: str = ""
     #: Remote package root when checkpoint/stats are omitted: ``hf://org/repo@rev``, ``s3://...``, or local path.
@@ -124,7 +124,12 @@ class ModelConfig:
     def merged_kwargs_for_load(self) -> dict[str, Any]:
         """``model.kwargs`` plus ``inference_domain`` so wrappers can branch surface vs volume."""
         kw = dict(self.kwargs)
-        for k in ("package", "checkpoint_relpath", "stats_relpath"):
+        for k in (
+            "package",
+            "checkpoint_relpath",
+            "stats_relpath",
+            "_resolved_scaling_factors",
+        ):
             kw.pop(k, None)
         if self.inference_domain in ("surface", "volume"):
             kw["inference_domain"] = self.inference_domain
@@ -205,6 +210,10 @@ class OutputConfig:
     ``mesh_field_names`` maps canonical surface keys to VTP array names (predictions).
     ``ground_truth_mesh_field_names`` maps canonical keys to reference VTK names on the mesh.
     ``volume_mesh_field_names`` / ``ground_truth_volume_mesh_field_names`` do the same for volume.
+    Defaults are dataset-agnostic mesh-buffer labels (``pMean`` / ``UMean`` / ``nutMean`` and
+    ``*Pred`` counterparts); they do not need to match VTU array names on disk because the
+    bridge attaches arrays under these labels regardless. Override per-dataset in YAML when
+    you want artifacts (PNGs, comparison meshes) to use a specific naming convention.
     """
 
     mesh_field_names: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_MESH_FIELD_NAMES))

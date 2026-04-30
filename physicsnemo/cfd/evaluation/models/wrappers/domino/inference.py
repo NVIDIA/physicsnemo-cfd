@@ -28,7 +28,6 @@ import pyvista as pv
 import torch
 import vtk
 from omegaconf import DictConfig
-from vtk.util import numpy_support
 
 from physicsnemo.models.domino.utils import (
     calculate_center_of_mass,
@@ -41,7 +40,6 @@ from physicsnemo.models.domino.geometry_rep import scale_sdf
 from physicsnemo.models.domino.utils.vtk_file_utils import (
     get_fields,
     get_node_to_elem,
-    get_volume_data,
 )
 from physicsnemo.nn.functional import knn, signed_distance_field
 
@@ -353,14 +351,26 @@ def build_domin_volume_datadict(
         np.array(global_params_values_list, dtype=np.float32)
     ).to(device)
 
-    vtk_reader_vol = vtk.vtkXMLUnstructuredGridReader()
-    vtk_reader_vol.SetFileName(vtu_path)
-    vtk_reader_vol.Update()
-    polydata_vol = vtk_reader_vol.GetOutput()
-    volume_coordinates_np, volume_fields_list = get_volume_data(
-        polydata_vol, volume_variable_names
+    # Evaluate DoMINO at VTU cell centers to match GeoTransolver / Transolver volume wrappers
+    # and the cell-located reference fields shipped with DrivAer-style VTUs (``*MeanTrim`` are
+    # written on cells). The model is coordinate-conditioned, so feeding cell centers produces
+    # predictions sized to ``mesh.n_cells`` directly — no point-to-cell interpolation downstream.
+    volume_mesh_pv = pv.read(vtu_path)
+    if hasattr(volume_mesh_pv, "cast_to_unstructured_grid"):
+        volume_mesh_pv = volume_mesh_pv.cast_to_unstructured_grid()
+    volume_coordinates_np = np.asarray(
+        volume_mesh_pv.cell_centers().points, dtype=np.float32
     )
-    volume_fields_np = np.concatenate(volume_fields_list, axis=-1)
+    # ``volume_fields`` is only used in ``domino_volume_test_step`` to allocate ``prediction_vol``
+    # via ``zeros_like``; build a zero placeholder shaped (n_cells, n_features) where
+    # ``n_features`` matches the total feature count from ``variables.volume.solution``.
+    n_features = sum(
+        3 if cfg.variables.volume.solution[name] == "vector" else 1
+        for name in volume_variable_names
+    )
+    volume_fields_np = np.zeros(
+        (volume_coordinates_np.shape[0], n_features), dtype=np.float32
+    )
     volume_coordinates = (
         torch.from_numpy(volume_coordinates_np).to(torch.float32).to(device)
     )

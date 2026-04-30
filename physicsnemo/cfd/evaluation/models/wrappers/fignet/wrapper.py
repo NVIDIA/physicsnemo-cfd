@@ -151,7 +151,9 @@ class FIGNetWrapper(CFDModel):
             use_rel_pos_encode=True,
         )
         checkpoint = torch.load(checkpoint_path, weights_only=False)
-        model.load_state_dict(checkpoint["model"], strict=False)
+        # HF-hosted FiGNet checkpoints ship the raw state dict (no ``"model"`` wrapper key);
+        # local training checkpoints follow the same flat layout post-rebuild.
+        model.load_state_dict(checkpoint, strict=False)
         model = model.to(device)
         model.eval()
         self._model = model

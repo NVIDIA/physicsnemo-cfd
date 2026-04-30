@@ -24,10 +24,29 @@ contain OmegaConf objects and other metadata. Wrap those loads with
 
 from __future__ import annotations
 
+import re
 from contextlib import contextmanager
+from pathlib import PurePath
 from typing import Any, Callable
 
 import torch
+
+
+_CKPT_EPOCH_RE = re.compile(r"^.+\.\d+\.(\d+)\.(?:pt|mdlus)$")
+
+
+def parse_checkpoint_epoch(checkpoint_path: str) -> int | None:
+    """Extract the epoch index from a physicsnemo checkpoint filename.
+
+    Handles both ``checkpoint.{rank}.{epoch}.pt`` (training state) and
+    ``{ModelName}.{rank}.{epoch}.mdlus`` (NeMo model weights).
+
+    Returns ``None`` when the path doesn't match the expected naming convention,
+    so callers can fall back to the default ``load_checkpoint`` glob behaviour.
+    """
+    stem = PurePath(checkpoint_path).name
+    m = _CKPT_EPOCH_RE.match(stem)
+    return int(m.group(1)) if m else None
 
 
 @contextmanager
