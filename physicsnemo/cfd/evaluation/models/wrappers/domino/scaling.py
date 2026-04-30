@@ -54,10 +54,11 @@ class _ScalingUnpickler(pickle.Unpickler):
         return super().find_class(module, name)
 
 
-_COMPAT_UNPICKLE_ERRORS = (
+# Only import/layout compatibility: do not catch ``pickle.UnpicklingError`` or ``Exception``,
+# or a restricted-load failure would fall through to unrestricted ``pickle.load`` (unsafe).
+_COMPAT_UNPICKLE_ERRORS: tuple[type[BaseException], ...] = (
     AttributeError,
     ImportError,
-    pickle.UnpicklingError,
 )
 
 
