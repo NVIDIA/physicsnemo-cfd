@@ -22,8 +22,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
   cell-based L2, drag, and lift. Tunables: ``output.surface_metrics_idw_k``,
   ``output.surface_metrics_idw_device``.
 - **`run.fail_on_all_skipped` / `run.fail_on_any_metric_nan`:** optional benchmark exit policy; raises `BenchmarkPolicyError` (Hydra `main.py` and `python -m physicsnemo.cfd.evaluation.benchmarks.run` exit with code 1).
-- **`physicsnemo.cfd.evaluation.benchmarks.hydra_utils`:** shared Hydra → `Config` dict conversion for tests and `workflows/benchmarking_workflow/main.py`.
-- **CI:** `.github/workflows/ci-tests.yml` runs `pytest` on `test/ci_tests/` (including `test_benchmark_workflow.py`, which composes Hydra configs under `workflows/benchmarking_workflow/conf/`).
+- **`physicsnemo.cfd.evaluation.benchmarks.hydra_utils`:** shared Hydra → `Config` dict conversion for tests and `workflows/benchmarking/main.py`.
+- **CI:** `.github/workflows/ci-tests.yml` runs `pytest` on `test/ci_tests/` (including `test_benchmark_workflow.py`, which composes Hydra configs under `workflows/benchmarking/conf/`).
 - **Multi-GPU benchmarks:** `run_benchmark` / Hydra `main.py` can run under `torchrun` with PhysicsNeMo `DistributedManager` — per-rank case sharding, gather/merge on rank 0, and optional `run.distributed` (default true) to disable sharding for debugging.
 - **Tests:** `test/ci_tests/test_distributed_utils.py` covers merge/shard helpers and `_case_ids_for_run`.
 - **Tests:** `test/ci_tests/test_benchmark_workflow.py` composes workflow YAML and loads `Config`.
@@ -35,7 +35,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
   fields using explicit VTK names from config (`output.mesh_field_names`,
   `output.ground_truth_mesh_field_names`, and volume equivalents).
 - `physicsnemo.cfd.postprocessing_tools.metric_registry` for named metrics shared with evaluation.
-- Example Hydra configs under `workflows/benchmarking_workflow/conf/`, including matrix templates
+- Example Hydra configs under `workflows/benchmarking/conf/`, including matrix templates
   `config_matrix_surface_custom.yaml` / `config_matrix_surface_hf.yaml` and volume equivalents (multiple models × dataset blocks; **`_custom`** = explicit paths, **`_hf`** = Hugging Face **`builtin_packages`**).
 - Library CLIs remain for scripting: `python -m physicsnemo.cfd.evaluation.benchmarks` /
   `python -m physicsnemo.cfd.evaluation.inference` (flat YAML path, no `${...}` interpolation).
@@ -52,7 +52,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
   (per-model roots such as **`GEOTRANSOLVER_PACKAGE_ROOT`** in **`builtin_packages`**).   Omit **`checkpoint`** / **`stats_path`** to use those Hub layouts; when both
   are set, they override the built-in package. **domino** also resolves **`domino_config`** from the same package via :class:`~physicsnemo.cfd.evaluation.assets.registry.AssetSpec` **`extra_resolve_relpaths`**. Edit each model’s root when repos differ.
 - **Surface comparison mesh:** ``build_comparison_mesh`` respects ``CanonicalCase.mesh_type`` — point GT/pred (e.g. ``xmgn`` with ``align_ground_truth_to_model``) no longer forces ``point_data_to_cell_data``, fixing length mismatches vs cell counts.
-- **Benchmarking workflow layout:** legacy **`workflows/bench_example`** moved to **`workflows/deprecated/bench_example`** (superseded by **`workflows/benchmarking_workflow/`**).
+- **Benchmarking workflow layout:** legacy **`workflows/bench_example`** moved to **`workflows/deprecated/bench_example`** (superseded by **`workflows/benchmarking/`**).
 - **`benchmark.reproducibility.log_env`:** default is now **`false`** (was **`true`**) to avoid writing full `os.environ` to `env.json` unless explicitly enabled in YAML.
 - **Breaking:** `physicsnemo.cfd.bench` was renamed to **`physicsnemo.cfd.postprocessing_tools`**
   (same submodules: `metrics`, `visualization`, `geometry`, `interpolation`, `metric_registry`).
@@ -66,7 +66,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 - Benchmark metric registration for evaluation now uses postprocessing_tools-backed built-ins
   under `physicsnemo.cfd.evaluation.metrics.builtin` instead of duplicated
   NumPy-only helpers.
-- Evaluation **workflow docs** center on **`workflows/benchmarking_workflow/main.py`** (Hydra) and
+- Evaluation **workflow docs** center on **`workflows/benchmarking/main.py`** (Hydra) and
   **`conf/config_matrix_surface_*.yaml`** / **`config_matrix_volume_*.yaml`**; **`python -m physicsnemo.cfd.evaluation.inference`**
   still forwards to the benchmark engine; **`inference_<model>_<case>.vtp|vtu`** when **`run.save_inference_mesh`** is true.
 - Matrix benchmark settings are edited in the **`conf/*.yaml`** files; the old **`benchmark_matrix.yaml`**
@@ -76,7 +76,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
-- **`workflows/benchmarking_workflow/evaluation_config.yaml`** — the workflow is driven by Hydra **`conf/config_matrix_*.yaml`** and **`main.py`** (no separate single-model **`config_surface`** / **`config_volume`** in `conf/`).
+- **`workflows/benchmarking/evaluation_config.yaml`** — the workflow is driven by Hydra **`conf/config_matrix_*.yaml`** and **`main.py`** (no separate single-model **`config_surface`** / **`config_volume`** in `conf/`).
 
 ### Fixed
 

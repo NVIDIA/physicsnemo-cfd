@@ -41,9 +41,11 @@ from a Python interface, facilitating scalable deployment of trained models.
   metrics, PDE residuals). [Related publication](https://www.arxiv.org/abs/2507.10747)
   - The `physicsnemo.cfd.evaluation` package runs config-driven inference and
     uses the same `physicsnemo.cfd.postprocessing_tools` metric implementations as the
-    **[`workflows/benchmarking_workflow/`](workflows/benchmarking_workflow/)** Hydra workflow (run **`python main.py`** from that directory; see **[that README](workflows/benchmarking_workflow/README.md)**). Pretrained checkpoints and the reference evaluation dataset will be documented on **NVIDIA NGC** when published (**links TBD**; until then, configure local paths in YAML or via Hydra overrides).
-  - Utilities to extend and build custom metrics, analyze, and visualize the
-    results of trained ML models, both mesh-based and point-cloud based models
+    **[`workflows/benchmarking/`](workflows/benchmarking/)** Hydra workflow (run **`python main.py`** from that directory; see **[that README](workflows/benchmarking/README.md)**).
+    **Pretrained checkpoints** for built-in benchmark models are published on **[Hugging Face](https://huggingface.co/nvidia)** under the `nvidia/*_drivaerml` model repositories (pinned package roots in **[`builtin_packages.py`](physicsnemo/cfd/evaluation/assets/builtin_packages.py)**).
+    The benchmark **evaluation dataset** is **[DrivAerML](https://huggingface.co/datasets/neashton/drivaerml)** on Hugging Face. For air-gapped or custom layouts, set local checkpoint and dataset paths in YAML or Hydra overrides.
+  - **Custom models, data, and metrics:** you can plug in additional **`CFDModel`** wrappers, **`DatasetAdapter`** implementations, **metrics**, and optional **report visuals** for the same Hydra benchmark harness (no fork required). See **[Custom models, datasets, and metrics](workflows/benchmarking/README.md#custom-models-datasets-and-metrics)** in the benchmarking workflow README and the **`physicsnemo.cfd.evaluation`** registration APIs (`register_metric`, `register_visual`, model registry).
+  - Utilities to analyze and visualize predictions from trained ML models (mesh-based and point-cloud), including outputs produced with custom metrics.
 
 - **Hybrid Initialization**:
   - An end-to-end recipe for initializing a CFD simulation with a
@@ -127,11 +129,11 @@ output_dict = call_domino_nim(
 ```
 
 Reference workflows live under the [`workflows`](./workflows) directory. The
-**[benchmarking workflow](workflows/benchmarking_workflow/)** is the supported path for
+**[benchmarking workflow](workflows/benchmarking/)** is the supported path for
 config-driven model evaluation and metrics (`python main.py` with Hydra). Older
 file-based benchmarking samples were moved to
 **[workflows/deprecated/bench_example](workflows/deprecated/bench_example/)** and are
-superseded by `benchmarking_workflow`. Other samples may be packaged as Jupyter
+superseded by `benchmarking`. Other samples may be packaged as Jupyter
 notebooks for inline documentation and visualization.
 
 ## Contributing to PhysicsNeMo

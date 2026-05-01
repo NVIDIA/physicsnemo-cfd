@@ -20,7 +20,7 @@ Before starting, read these files for context:
 - `physicsnemo/cfd/evaluation/models/wrappers/surface_baseline.py` — simplest concrete wrapper
 - `physicsnemo/cfd/evaluation/models/wrappers/__init__.py` — how wrappers are registered
 - `physicsnemo/cfd/evaluation/common/io.py` — mesh loading and normalization stats helpers
-- `workflows/benchmarking_workflow/notebooks/adding_a_new_model.ipynb` — end-to-end tutorial
+- `workflows/benchmarking/notebooks/adding_a_new_model.ipynb` — end-to-end tutorial
 
 ## The `CFDModel` interface
 

@@ -181,7 +181,6 @@ class GeoTransolverWrapper(CFDModel):
         self._surface_factors: Any = None
         self._volume_factors: Any = None
         self._geometry_sampling_requested: int = 300_000
-        self._datapipe_resolution: int = 100_000
         self._device: str = "cuda:0"
         self._air_density: float = 1.205
         self._stream_velocity: float = 30.0
@@ -240,7 +239,9 @@ class GeoTransolverWrapper(CFDModel):
             model_kw = dict(DEFAULT_GEOTRANSOLVER_KW)
 
         self._geometry_sampling_requested = int(kw.get("geometry_sampling", 300_000))
-        self._datapipe_resolution = int(kw.get("resolution", 100_000))
+        # Benchmark inference uses all mesh points; ``TransolverDataPipe`` is built with
+        # ``resolution=None`` in ``_make_datapipe_*`` (ignore ``resolution`` in model kwargs).
+        kw.pop("resolution", None)
 
         if not DistributedManager.is_initialized():
             DistributedManager.initialize()

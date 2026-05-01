@@ -5,7 +5,7 @@ This workflow is an **opinionated**, **config-driven** benchmark entry point for
 ### How to use this README (goal-oriented)
 
 1. **Run the benchmark as configured** — install, set **`benchmark.datasets[].root`** and model paths (or overrides), run **`python main.py`** (default **`config_matrix_surface_hf`**) or **`--config-name=config_matrix_surface_custom`** / **`config_matrix_volume_hf`**, confirm outputs under **`run.output_dir`**.
-2. **Stay in YAML / Hydra first** — change **`conf/*.yaml`** or pass **Hydra overrides** for models, **`case_id`**, metrics, outputs, metrics cache, and exit policy; avoid Python changes until defaults are insufficient.
+2. **Stay in YAML / Hydra first** — change YAML under [`conf/`](conf/) (see for example [`config_matrix_volume_hf.yaml`](conf/config_matrix_volume_hf.yaml)) or pass **Hydra overrides** for models, **`case_id`**, metrics, outputs, metrics cache, and exit policy; avoid Python changes until defaults are insufficient.
 3. **Extend when needed** — add **`CFDModel`** wrappers, **`DatasetAdapter`** implementations, **`register_metric`** / **`register_visual`**, or custom configs for integrations the stock workflow does not cover.
 
 **Contributing:** see the repository **[CONTRIBUTING.md](../../CONTRIBUTING.md)** for pull requests, tests, and sign-off requirements.
@@ -23,7 +23,7 @@ pip install -e ".[dev]"   # editable install + pytest for contributors
 # pip install -e ".[gpu]" --extra-index-url=https://pypi.nvidia.com
 ```
 
-Then use the commands below **from this directory** (`workflows/benchmarking_workflow/`).
+Then use the commands below **from this directory** (`workflows/benchmarking/`).
 
 ---
 

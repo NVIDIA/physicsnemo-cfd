@@ -18,7 +18,7 @@ Guide the user through adding a new metric to the benchmarking workflow.
 - `physicsnemo/cfd/evaluation/metrics/builtin/l2.py` — L2 metrics (scalar-returning, numpy fallback)
 - `physicsnemo/cfd/evaluation/metrics/mesh_bridge.py` — `build_comparison_mesh`, `resolve_comparison_mesh_for_metric`
 - `physicsnemo/cfd/postprocessing_tools/metrics/aero_forces.py` — `compute_force_coefficients` (normals, areas, integration)
-- `workflows/benchmarking_workflow/notebooks/adding_a_new_metric.ipynb` — end-to-end tutorial
+- `workflows/benchmarking/notebooks/adding_a_new_metric.ipynb` — end-to-end tutorial
 
 ## Metric function signature
 

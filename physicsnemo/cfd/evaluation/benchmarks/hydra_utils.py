@@ -14,7 +14,7 @@ from omegaconf import DictConfig, OmegaConf
 def hydra_config_to_benchmark_dict(cfg: DictConfig) -> tuple[dict[str, Any], str | list[str] | None]:
     """
     Convert a composed Hydra ``DictConfig`` into a plain dict for ``Config.from_dict``
-    and normalized ``case_id`` (same rules as ``workflows/benchmarking_workflow/main.py``).
+    and normalized ``case_id`` (same rules as ``workflows/benchmarking/main.py``).
     """
     raw = OmegaConf.to_container(cfg, resolve=True)
     if not isinstance(raw, dict):

@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Compose Hydra configs for ``workflows/benchmarking_workflow`` and load :class:`Config` (no GPU / no inference)."""
+"""Compose Hydra configs for ``workflows/benchmarking`` and load :class:`Config` (no GPU / no inference)."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ pytest.importorskip("hydra")
 from hydra import compose, initialize_config_dir  # noqa: E402
 
 _BENCHMARK_CONF = (
-    Path(__file__).resolve().parents[2] / "workflows" / "benchmarking_workflow" / "conf"
+    Path(__file__).resolve().parents[2] / "workflows" / "benchmarking" / "conf"
 )
 
 
@@ -32,7 +32,7 @@ _BENCHMARK_CONF = (
 )
 def test_hydra_config_loads_into_config(config_name: str) -> None:
     if not _BENCHMARK_CONF.is_dir():
-        pytest.skip("benchmarking_workflow/conf not in tree")
+        pytest.skip("benchmarking/conf not in tree")
     with initialize_config_dir(version_base="1.3", config_dir=str(_BENCHMARK_CONF)):
         cfg = compose(config_name=config_name)
     raw, case_id = hydra_config_to_benchmark_dict(cfg)

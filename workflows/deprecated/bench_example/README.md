@@ -1,6 +1,6 @@
 # Benchmarking AI surrogates for External Aerodynamics
 
-> **DEPRECATED:** This workflow is superseded by [`benchmarking_workflow`](../../benchmarking_workflow/README.md), which provides Hydra configuration, model wrapper integration, distributed multi-GPU support, and more. Please use `benchmarking_workflow` for new work. This directory will be removed in a future release.
+> **DEPRECATED:** This workflow is superseded by [`benchmarking`](../../benchmarking/README.md), which provides Hydra configuration, model wrapper integration, distributed multi-GPU support, and more. Please use `benchmarking` for new work. This directory will be removed in a future release.
 
 The benchmarking workflow is designed for evaluating and validating AI models
 for external aerodynamics. Predicting accurate aerodynamic characteristics of a
@@ -24,7 +24,7 @@ flexibility and freedom.
 For **on-the-fly** evaluation (config-driven inference plus the same
 `physicsnemo.cfd.postprocessing_tools` metrics as the scripts above), use the
 `physicsnemo.cfd.evaluation` package and the example YAML under
-[`workflows/benchmarking_workflow/`](../../benchmarking_workflow/). The pre-baked
+[`workflows/benchmarking/`](../../benchmarking/). The pre-baked
 `.vtp` / `.vtu` workflows in this directory remain the reference for
 post-processed file-based benchmarks.
 

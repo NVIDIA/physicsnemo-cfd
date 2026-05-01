@@ -175,7 +175,7 @@ Stubs that do not load weights (e.g. **`surface_baseline`**, **`volume_baseline`
 Optional Hub analytics: the engine performs a best-effort resolve of **`config.json`** inside HF-backed packages (ignored if missing). **`ngc://`** roots are not implemented yet (constructor/`resolve` will raise **`NotImplementedError`**).
 
 Before opening a pull request that changes **`physicsnemo/cfd/evaluation/`** or
-**`workflows/benchmarking_workflow/`**, run **`test/ci_tests/`** (everything under that folder):
+**`workflows/benchmarking/`**, run **`test/ci_tests/`** (everything under that folder):
 
 ```bash
 pytest -q test/ci_tests/
@@ -184,13 +184,13 @@ pytest -q test/ci_tests/
 The **`test_evaluation.py`** module may skip entirely if `physicsnemo.utils.sdf` is
 unavailable (install or upgrade `nvidia-physicsnemo`).
 
-Do **not** commit generated benchmark outputs under **`workflows/benchmarking_workflow/`**
+Do **not** commit generated benchmark outputs under **`workflows/benchmarking/`**
 (e.g. `benchmark_results*/`, `gpu_output.log`, `metrics_cache/`, Hydra outputs under the
 run directory). That directory includes a **`.gitignore`** for common artifacts.
 
-**Exit codes:** the Hydra entrypoint **`workflows/benchmarking_workflow/main.py`** can exit
+**Exit codes:** the Hydra entrypoint **`workflows/benchmarking/main.py`** can exit
 non-zero when **`run.fail_on_all_skipped`** or **`run.fail_on_any_metric_nan`** is enabled.
-See **`workflows/benchmarking_workflow/README.md`** for automation-oriented runs.
+See **`workflows/benchmarking/README.md`** for automation-oriented runs.
 
 **Continuous integration:** [`.github/workflows/ci-tests.yml`](.github/workflows/ci-tests.yml)
 and [`.gitlab-ci.yml`](.gitlab-ci.yml) run the same **`pytest`** path on push/pull request

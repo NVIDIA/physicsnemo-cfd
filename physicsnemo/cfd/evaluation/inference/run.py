@@ -42,7 +42,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Compatibility wrapper for the benchmark evaluation engine (flat YAML only). "
-            "For Hydra + OmegaConf, use workflows/benchmarking_workflow: python main.py"
+            "For Hydra + OmegaConf, use workflows/benchmarking: python main.py"
         ),
     )
     parser.add_argument("--config", required=True, help="Path to YAML/JSON config")
@@ -68,7 +68,7 @@ def main() -> None:
     print(
         "[evaluation] This CLI (python -m physicsnemo.cfd.evaluation.inference) forwards to the "
         "benchmark engine; model wrappers live under physicsnemo.cfd.evaluation.models. "
-        "Prefer: workflows/benchmarking_workflow (python main.py) or benchmarks.run with flat YAML.",
+        "Prefer: workflows/benchmarking (python main.py) or benchmarks.run with flat YAML.",
         file=sys.stderr,
     )
     results = run_benchmark_cli(config, case_id=case_id)

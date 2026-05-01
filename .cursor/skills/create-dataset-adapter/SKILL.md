@@ -17,7 +17,7 @@ Before starting, read these files for context:
 - `physicsnemo/cfd/evaluation/datasets/adapter_registry.py` — base class and registry
 - `physicsnemo/cfd/evaluation/datasets/schema.py` — `CanonicalCase` and `build_predictions_dict`
 - `physicsnemo/cfd/evaluation/datasets/adapters/drivaerml.py` — reference adapter implementation
-- `workflows/benchmarking_workflow/notebooks/adding_a_new_dataset.ipynb` — end-to-end tutorial
+- `workflows/benchmarking/notebooks/adding_a_new_dataset.ipynb` — end-to-end tutorial
 
 ## Step 1: Explore the new dataset
 

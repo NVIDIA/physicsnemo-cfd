@@ -11,7 +11,7 @@ When the user wants to add a new CFD dataset, benchmark models on custom data, o
 Key reference files:
 - `physicsnemo/cfd/evaluation/datasets/adapter_registry.py` — `DatasetAdapter` base class
 - `physicsnemo/cfd/evaluation/datasets/adapters/drivaerml.py` — reference implementation
-- `workflows/benchmarking_workflow/notebooks/adding_a_new_dataset.ipynb` — end-to-end tutorial
+- `workflows/benchmarking/notebooks/adding_a_new_dataset.ipynb` — end-to-end tutorial
 
 ### Creating a New Model Wrapper
 
@@ -20,7 +20,7 @@ When the user wants to add a new CFD model, integrate a new neural network archi
 Key reference files:
 - `physicsnemo/cfd/evaluation/models/model_registry.py` — `CFDModel` base class
 - `physicsnemo/cfd/evaluation/models/wrappers/surface_baseline.py` — simplest reference implementation
-- `workflows/benchmarking_workflow/notebooks/adding_a_new_model.ipynb` — end-to-end tutorial
+- `workflows/benchmarking/notebooks/adding_a_new_model.ipynb` — end-to-end tutorial
 
 ### Creating a Custom Metric
 
@@ -29,7 +29,7 @@ When the user wants to add a new evaluation metric, implement a custom error mea
 Key reference files:
 - `physicsnemo/cfd/postprocessing_tools/metric_registry.py` — `register_metric`, `MetricFn`
 - `physicsnemo/cfd/evaluation/metrics/builtin/forces.py` — reference force metric implementation
-- `workflows/benchmarking_workflow/notebooks/adding_a_new_metric.ipynb` — end-to-end tutorial
+- `workflows/benchmarking/notebooks/adding_a_new_metric.ipynb` — end-to-end tutorial
 
 ## Codebase Conventions
 

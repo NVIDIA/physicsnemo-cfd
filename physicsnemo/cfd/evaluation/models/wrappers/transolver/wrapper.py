@@ -155,7 +155,6 @@ class TransolverWrapper(CFDModel):
         self._air_density: float = 1.205
         self._stream_velocity: float = 30.0
         self._batch_resolution: int = 2048
-        self._datapipe_resolution: int = 10_000_000
         self._inference_mode: Literal["surface", "volume"] = "surface"
         self._datapipe_user_kw: dict[str, Any] = {}
         # STL bounding-box max extent for the most recent volume case; used by ``decode_outputs``
@@ -185,7 +184,9 @@ class TransolverWrapper(CFDModel):
         self._air_density = float(kw.get("air_density", 1.205))
         self._stream_velocity = float(kw.get("stream_velocity", 30.0))
         self._batch_resolution = int(kw.get("batch_resolution", 2048))
-        self._datapipe_resolution = int(kw.get("resolution", 10_000_000))
+        # Benchmark inference uses all mesh points; ``TransolverDataPipe`` is always built with
+        # ``resolution=None`` (ignore any ``resolution`` in model kwargs so Hydra does not error).
+        kw.pop("resolution", None)
 
         checkpoint_dir = Path(checkpoint_path)
         if checkpoint_dir.is_file():
@@ -306,16 +307,15 @@ class TransolverWrapper(CFDModel):
         index_blocks = torch.split(indices, batch_res)
         preds_list = []
         with torch.no_grad():
-            with cuda_bf16_autocast(self._device):
-                for index_block in index_blocks:
-                    local_embeddings = batch["embeddings"][:, index_block]
-                    local_fx = batch["fx"][:, index_block]
-                    outputs = self._model(fx=local_fx, embedding=local_embeddings)
-                    preds_list.append(outputs)
-                predictions = torch.cat(preds_list, dim=1)
-                inverse_indices = torch.empty_like(indices)
-                inverse_indices[indices] = torch.arange(N, device=indices.device)
-                predictions = predictions[:, inverse_indices]
+            for index_block in index_blocks:
+                local_embeddings = batch["embeddings"][:, index_block]
+                local_fx = batch["fx"][:, index_block]
+                outputs = self._model(fx=local_fx, embedding=local_embeddings)
+                preds_list.append(outputs)
+            predictions = torch.cat(preds_list, dim=1)
+            inverse_indices = torch.empty_like(indices)
+            inverse_indices[indices] = torch.arange(N, device=indices.device)
+            predictions = predictions[:, inverse_indices]
         predictions = predictions.squeeze(0)
 
         if self._inference_mode == "volume":

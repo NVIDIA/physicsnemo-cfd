@@ -25,7 +25,7 @@ hydra:
   job:
     chdir: false
 
-case_id: [run_1, run_11]
+case_id: null
 
 run:
   device: "cuda:0"
