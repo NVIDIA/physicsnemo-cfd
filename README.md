@@ -33,7 +33,8 @@ The library offers utilities for:
 PhysicsNeMo and hosted as NVIDIA Inference Microservices (for example, the
 [DoMINO Automotive Aerodynamics
 NIM](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/domino-automotive-aero))
-from a Python interface, facilitating scalable deployment of trained models.
+from a Python interface (`physicsnemo.cfd.evaluation.nims.call_domino_nim`), facilitating scalable deployment of trained models.
+  - Tutorial Jupyter notebooks (DoMINO NIM + DrivAerML surface/volume meshes, metrics, plots, and no–ground-truth diagnostics) live under **[`workflows/nim_inference/`](workflows/nim_inference/README.md)**.
 - **Benchmarking of ML Model Accuracy**:
   - A benchmark for evaluating and validating the results of trained ML models
   against traditional CFD results using a broad set of built-in engineering
@@ -130,10 +131,12 @@ output_dict = call_domino_nim(
 
 Reference workflows live under the [`workflows`](./workflows) directory. The
 **[benchmarking workflow](workflows/benchmarking/)** is the supported path for
-config-driven model evaluation and metrics (`python main.py` with Hydra). Older
+config-driven model evaluation and metrics (`python main.py` with Hydra). For
+**DoMINO NIM** walkthroughs against DrivAerML meshes (not the Hydra matrix), see
+**[`workflows/nim_inference/`](workflows/nim_inference/README.md)**. Older
 file-based benchmarking samples were moved to
 **[workflows/deprecated/bench_example](workflows/deprecated/bench_example/)** and are
-superseded by `benchmarking`. Other samples may be packaged as Jupyter
+superseded by `benchmarking` / `nim_inference` notebooks. Other samples may be packaged as Jupyter
 notebooks for inline documentation and visualization.
 
 ## Contributing to PhysicsNeMo

@@ -1,6 +1,8 @@
 # Benchmarking AI surrogates for External Aerodynamics
 
 > **DEPRECATED:** This workflow is superseded by [`benchmarking`](../../benchmarking/README.md), which provides Hydra configuration, model wrapper integration, distributed multi-GPU support, and more. Please use `benchmarking` for new work. This directory will be removed in a future release.
+>
+> The **DoMINO NIM + DrivAerML** tutorial notebooks (`surface_benchmarking.ipynb`, `volume_benchmarking.ipynb`, `benchmarking_in_absence_of_gt.ipynb`) are maintained under **[`workflows/nim_inference/notebooks/`](../../nim_inference/README.md)**.
 
 The benchmarking workflow is designed for evaluating and validating AI models
 for external aerodynamics. Predicting accurate aerodynamic characteristics of a
