@@ -30,6 +30,7 @@ from physicsnemo.models.meshgraphnet import MeshGraphNet
 
 from physicsnemo.cfd.evaluation.common.checkpoint_compat import trusted_torch_load_context
 from physicsnemo.cfd.evaluation.common.io import load_global_stats, surface_polydata_from_case
+from physicsnemo.cfd.evaluation.config import _parse_bool
 from physicsnemo.cfd.evaluation.common.interpolation import interpolate_to_mesh
 from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, build_predictions_dict
 from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
@@ -114,14 +115,18 @@ class XMGNWrapper(CFDModel):
     MeshGraphNet consumes point normals only when boundary VTPs omit ``Normals``; they are computed with
     :meth:`pyvista.PolyData.compute_normals`.
 
-    ``surface_flip_normals`` (bool, default ``False``)
-        Pass-through ``flip_normals``. Legacy DrivAerML meshes that matched training with VTK's flip heuristic
-        can set ``true`` explicitly.
-    ``surface_auto_orient_normals`` (bool, default ``True``)
-        Prefer outward orientation for watertight bodies instead of blindly flipping normals.
+    ``surface_flip_normals`` (bool or string, default ``False``)
+        Pass-through ``flip_normals``. String forms (e.g. Hydra ``+surface_flip_normals=false``) are parsed
+        like YAML booleans so ``"false"`` is not treated as truthy. Legacy DrivAerML meshes that matched
+        training with VTK's flip heuristic can set ``true`` explicitly.
+    ``surface_auto_orient_normals`` (bool or string, default ``True``)
+        Prefer outward orientation for watertight bodies instead of blindly flipping normals. Same string
+        handling as ``surface_flip_normals``.
     ``physicnemo_force_te`` (str, bool, or ``None``, default ``"False"``)
         Sets ``PHYSICSNEMO_FORCE_TE`` **only during** ``load()`` (prior value restored afterward).
         Use ``physicnemo_force_te: null`` / ``None`` to avoid changing this env from the wrapper—set it in the shell instead.
+    ``cuda_bf16_autocast`` (bool or string, default ``True``)
+        CUDA bf16 autocast around the forward pass; set ``false`` for full fp32. Hydra-safe boolean parsing.
     """
 
     INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "surface"
@@ -140,6 +145,7 @@ class XMGNWrapper(CFDModel):
         self._interpolation_k: int = 5
         self._surface_flip_normals: bool = False
         self._surface_auto_orient_normals: bool = True
+        self._cuda_bf16_autocast: bool = True
 
     def load(
         self,
@@ -149,11 +155,14 @@ class XMGNWrapper(CFDModel):
         **kwargs: Any,
     ) -> "XMGNWrapper":
         self._device = device
+        self._cuda_bf16_autocast = _parse_bool(kwargs.pop("cuda_bf16_autocast", None), default=True)
         self._max_points = kwargs.get("max_points")
         self._node_degree = kwargs.get("node_degree", 6)
         self._interpolation_k = kwargs.get("interpolation_k", 5)
-        self._surface_flip_normals = bool(kwargs.get("surface_flip_normals", False))
-        self._surface_auto_orient_normals = bool(kwargs.get("surface_auto_orient_normals", True))
+        self._surface_flip_normals = _parse_bool(kwargs.get("surface_flip_normals"), default=False)
+        self._surface_auto_orient_normals = _parse_bool(
+            kwargs.get("surface_auto_orient_normals"), default=True
+        )
         raw_te = kwargs.get("physicnemo_force_te", "False")
         te_normalized: Optional[str]
         if raw_te is None:
@@ -237,8 +246,11 @@ class XMGNWrapper(CFDModel):
         graph = model_input["graph"].to(self._device)
         edata = model_input["edata"].to(self._device)
         edata_norm = (edata - self._stats["mean"]["x"]) / self._stats["std"]["x"]
+        ac_ctx = (
+            cuda_bf16_autocast(self._device) if self._cuda_bf16_autocast else nullcontext()
+        )
         with torch.inference_mode():
-            with cuda_bf16_autocast(self._device):
+            with ac_ctx:
                 pred = self._model(model_input["ndata"], edata_norm, graph)
         return pred
 

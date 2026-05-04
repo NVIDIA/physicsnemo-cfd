@@ -19,8 +19,6 @@
 from __future__ import annotations
 
 import math
-import os
-import re
 from pathlib import Path
 from typing import Any, Dict, Literal
 
@@ -382,8 +380,8 @@ def build_domin_volume_datadict(
     # otherwise the pv.read result becomes unreachable and gets GC'd before the heavy SDF / grid work.
     del volume_mesh_pv
     # ``volume_fields`` is only used in ``domino_volume_test_step`` to allocate ``prediction_vol``
-    # via ``zeros_like``; build a zero placeholder shaped (n_cells, n_features) where
-    # ``n_features`` matches the total feature count from ``variables.volume.solution``.
+    # via ``zeros_like``; zero placeholder shaped (n_points, n_features) with ``n_points`` equal to
+    # ``volume_coordinates_np.shape[0]`` (VTU vertices) and ``n_features`` from ``variables.volume.solution``.
     n_features = sum(
         3 if cfg.variables.volume.solution[name] == "vector" else 1
         for name in volume_variable_names
@@ -551,6 +549,9 @@ def domino_volume_test_step(
     After normalization undo, converts to physical units using ``variables.volume.solution`` field order:
     velocity-like vectors × ``stream_velocity``, pressure scalar × ``stream_velocity² ρ``,
     nut-like scalar × ``stream_velocity · length_scale`` (matching domino ``test.py`` heuristics per field name).
+
+    Vector fields that are not classified as velocity (name must start with ``u`` or contain ``velocity``)
+    raise ``ValueError`` — there is no defined physical scaling for arbitrary extra vector channels.
     """
     length_scale = data_dict["length_scale"]
     global_params_values = data_dict["global_params_values"]
@@ -639,6 +640,13 @@ def domino_volume_test_step(
             sl = slice(offset_phys, offset_phys + 3)
             if kind == "velocity_vector":
                 prediction_vol[:, :, sl] *= sv
+            elif kind == "other":
+                raise ValueError(
+                    "volume physical scaling: vector field "
+                    f"{name!r} is not classified as velocity (name should start with 'u' or "
+                    "contain 'velocity'). Extra vector outputs have no defined physical scaling "
+                    "— rename to a velocity-like key or remove the field from ``variables.volume.solution``."
+                )
             offset_phys += 3
         else:
             if kind == "pressure_scalar":
@@ -662,8 +670,10 @@ def domino_volume_predictions_to_canonical(
 ) -> Dict[str, Any]:
     """Map DoMINO volume output (physical units) to canonical keys using ``variables.volume.solution`` order.
 
-    Assumes the usual DrivAer layout (velocity vector, pressure scalar, nut scalar) when names match;
-    other variables are passed through under their config key name.
+    Assumes the usual DrivAer layout (velocity vector, pressure scalar, nut scalar) when names match.
+    Non-velocity vector entries in ``variables.volume.solution`` raise ``ValueError`` (same rule as
+    :func:`domino_volume_test_step`). Scalar fields classified as ``other`` are still passed through
+    under their config key name in ``extra``.
     """
     if pred.dim() == 3:
         pred = pred.squeeze(0)
@@ -692,7 +702,12 @@ def domino_volume_predictions_to_canonical(
             if kind == "velocity_vector":
                 _put_canonical("velocity", chunk, name)
             else:
-                extra[name] = chunk
+                raise ValueError(
+                    "volume canonical mapping: vector field "
+                    f"{name!r} is not classified as velocity (name should start with 'u' or "
+                    "contain 'velocity'). Extra vector outputs have no defined physical scaling in "
+                    "the DoMINO volume path — rename or remove the field from ``variables.volume.solution``."
+                )
         else:
             chunk = arr[:, offset]
             offset += 1

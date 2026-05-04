@@ -175,7 +175,10 @@ def _run_aggregate_pipeline_for_meshes(
             error_arrays[f"{gt_name}_error"].append(error)
 
     case_count = len(meshes)
-    assert template_grid is not None
+    if template_grid is None:
+        raise RuntimeError(
+            "aggregate_volume_errors: template grid is unset after processing meshes (internal error)."
+        )
     log_dataset("benchmark", f"aggregate_volume_errors: aggregating over {case_count} cases.")
 
     fields_to_plot: list[str] = []

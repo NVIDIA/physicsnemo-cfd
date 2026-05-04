@@ -103,6 +103,10 @@ def _infer_volume_preference(
                 return "point"
             if n == mesh.n_cells:
                 return "cell"
+            raise ValueError(
+                f"volume field sample count ({n}) matches neither mesh.n_points ({mesh.n_points}) "
+                f"nor mesh.n_cells ({mesh.n_cells}); check GT / prediction dof layout."
+            )
         elif mesh_type in ("point", "cell"):
             return mesh_type
     if mesh_type in ("point", "cell"):

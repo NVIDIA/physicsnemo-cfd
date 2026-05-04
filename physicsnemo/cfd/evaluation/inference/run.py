@@ -10,6 +10,7 @@ import argparse
 import sys
 
 from physicsnemo.cfd.evaluation.benchmarks.engine import run_benchmark_cli
+from physicsnemo.cfd.evaluation.common.natural_sort import natural_sorted
 from physicsnemo.cfd.evaluation.config import Config, load_config
 import physicsnemo.cfd.evaluation.datasets.adapters  # noqa: F401
 from physicsnemo.cfd.evaluation.datasets import get_adapter
@@ -28,14 +29,14 @@ def _parse_overrides(args: list[str]) -> dict[str, str]:
 
 
 def _first_case_id(config: Config) -> str | None:
-    """Legacy inference default: first case when ``--case-id`` is omitted."""
+    """Default case when ``--case-id`` is omitted: first element of ``natural_sorted(case_ids)`` (benchmark engine order)."""
     adapter_class = get_adapter(config.dataset.name)
     dkwargs = resolve_dataset_kwargs_for_model(config.dataset.kwargs, config.model.name)
     adapter = adapter_class(root=config.dataset.root, **dkwargs)
     case_ids = config.dataset.case_ids or adapter.list_cases()
     if not case_ids:
         return None
-    return case_ids[0]
+    return natural_sorted(case_ids)[0]
 
 
 def main() -> None:
@@ -54,7 +55,10 @@ def main() -> None:
     parser.add_argument(
         "--case-id",
         default=None,
-        help="Case ID (default: first case from dataset, matching legacy single-case inference).",
+        help=(
+            "Case ID (default: first case after natural sort of ``dataset.case_ids`` or adapter list, "
+            "same order as the benchmark engine)."
+        ),
     )
     parser.add_argument("overrides", nargs="*", help="Key=value overrides, e.g. run.device=cuda:1")
     args = parser.parse_args()

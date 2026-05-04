@@ -42,6 +42,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **STL resolution in run directories:** ``_find_stl_in_dir`` (``evaluation.models.common_wrapper_utils.vtk_datapipe_io``, shared by Transolver / GeoTransolver / DoMINO-style VTK helpers) tries ``drivaer_{run_idx}_single_solid.stl`` **before** ``drivaer_{run_idx}.stl``. If a directory contains **both** (e.g. mixed surface/volume exports), geometry now follows that order; legacy DoMINO-only helpers used the reverse. Remove or rename one file if you need the other mesh.
+- **Inference dtype / autocast:** FiGNet, XmGN, and DoMINO support model kwarg ``cuda_bf16_autocast`` (default ``true``; set ``false`` for full fp32). Transolver and GeoTransolver use the same kwarg with default ``false`` (fp32 forwards); set ``true`` for CUDA bf16 autocast to match the other wrappers' default inference style.
 - **Package layout:** model wrappers, ``model_registry``, and ``common_wrapper_utils`` moved to
   **`physicsnemo.cfd.evaluation.models`**. **`physicsnemo.cfd.evaluation.inference`** now holds the flat-YAML
   CLI (`run.py`, `__main__.py`) and **`progress`** (`log_inference`). The **`inference`** package still

@@ -188,9 +188,9 @@ Do **not** commit generated benchmark outputs under **`workflows/benchmarking/`*
 (e.g. `benchmark_results*/`, `gpu_output.log`, `metrics_cache/`, Hydra outputs under the
 run directory). That directory includes a **`.gitignore`** for common artifacts.
 
-**Exit codes:** the Hydra entrypoint **`workflows/benchmarking/main.py`** can exit
-non-zero when **`run.fail_on_all_skipped`** or **`run.fail_on_any_metric_nan`** is enabled.
-See **`workflows/benchmarking/README.md`** for automation-oriented runs.
+**Exit codes:** **`workflows/benchmarking/main.py`** calls **`run_benchmark_cli`**, which maps
+**`BenchmarkPolicyError`** (e.g. when **`run.fail_on_all_skipped`** or **`run.fail_on_any_metric_nan`**
+triggers) to exit **1**. See **`workflows/benchmarking/README.md`** for details.
 
 **Continuous integration:** [`.github/workflows/ci-tests.yml`](.github/workflows/ci-tests.yml)
 and [`.gitlab-ci.yml`](.gitlab-ci.yml) run the same **`pytest`** path on push/pull request

@@ -20,6 +20,7 @@ Surface: cell-centered pressure + WSS (default). Volume: velocity + pressure + n
 ``inference_domain: volume``, matching ``inference_on_vtk.py`` / ``transolver_volume`` training.
 """
 
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Optional
 
@@ -32,6 +33,7 @@ from physicsnemo.cfd.evaluation.datasets.schema import (
     build_predictions_dict,
     coerce_inference_domain_or_default,
 )
+from physicsnemo.cfd.evaluation.config import _parse_bool
 from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
 from physicsnemo.cfd.evaluation.models.model_registry import (
     CFDModel,
@@ -128,7 +130,15 @@ def _volume_datapipe_kw() -> dict[str, Any]:
 
 
 class TransolverWrapper(CFDModel):
-    """Transolver: boundary VTP (surface) or volume VTU; set ``model.inference_domain: volume`` for VTU."""
+    """Transolver: boundary VTP (surface) or volume VTU; set ``model.inference_domain: volume`` for VTU.
+
+    **Model kwargs**
+
+    ``cuda_bf16_autocast`` (bool or string, default ``False``)
+        When ``true``, CUDA inference runs under bf16 autocast (matches FiGNet / XmGN / DoMINO defaults).
+        Default is fp32 forwards for numerics parity with prior releases; enable explicitly for speed.
+        Parsed with Hydra-safe boolean rules.
+    """
 
     INFERENCE_DOMAIN: ClassVar[InferenceDomain | None] = None
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
@@ -160,6 +170,7 @@ class TransolverWrapper(CFDModel):
         # STL bounding-box max extent for the most recent volume case; used by ``decode_outputs``
         # to unscale νₜ (kinematic viscosity) by ``u * L`` — same reference scale as DoMINO volume.
         self._volume_length_scale: Optional[float] = None
+        self._cuda_bf16_autocast: bool = False
 
     def load(
         self,
@@ -184,6 +195,7 @@ class TransolverWrapper(CFDModel):
         self._air_density = float(kw.get("air_density", 1.205))
         self._stream_velocity = float(kw.get("stream_velocity", 30.0))
         self._batch_resolution = int(kw.get("batch_resolution", 2048))
+        self._cuda_bf16_autocast = _parse_bool(kw.pop("cuda_bf16_autocast", None), default=False)
         # Benchmark inference uses all mesh points; ``TransolverDataPipe`` is always built with
         # ``resolution=None`` (ignore any ``resolution`` in model kwargs so Hydra does not error).
         kw.pop("resolution", None)
@@ -248,7 +260,7 @@ class TransolverWrapper(CFDModel):
         if epoch is not None:
             ckpt_args["epoch"] = epoch
         with trusted_torch_load_context():
-            loaded_epoch = load_checkpoint(device=dev, **ckpt_args)
+            _ = load_checkpoint(device=dev, **ckpt_args)
         self._model = self._model.to(dev)
         self._model.eval()
         log_inference("transolver", "Checkpoint loaded; model ready for inference.")
@@ -306,16 +318,20 @@ class TransolverWrapper(CFDModel):
         indices = torch.randperm(N, device=batch["embeddings"].device)
         index_blocks = torch.split(indices, batch_res)
         preds_list = []
+        ac_ctx = (
+            cuda_bf16_autocast(self._device) if self._cuda_bf16_autocast else nullcontext()
+        )
         with torch.no_grad():
-            for index_block in index_blocks:
-                local_embeddings = batch["embeddings"][:, index_block]
-                local_fx = batch["fx"][:, index_block]
-                outputs = self._model(fx=local_fx, embedding=local_embeddings)
-                preds_list.append(outputs)
-            predictions = torch.cat(preds_list, dim=1)
-            inverse_indices = torch.empty_like(indices)
-            inverse_indices[indices] = torch.arange(N, device=indices.device)
-            predictions = predictions[:, inverse_indices]
+            with ac_ctx:
+                for index_block in index_blocks:
+                    local_embeddings = batch["embeddings"][:, index_block]
+                    local_fx = batch["fx"][:, index_block]
+                    outputs = self._model(fx=local_fx, embedding=local_embeddings)
+                    preds_list.append(outputs)
+                predictions = torch.cat(preds_list, dim=1)
+                inverse_indices = torch.empty_like(indices)
+                inverse_indices[indices] = torch.arange(N, device=indices.device)
+                predictions = predictions[:, inverse_indices]
         predictions = predictions.squeeze(0)
 
         if self._inference_mode == "volume":

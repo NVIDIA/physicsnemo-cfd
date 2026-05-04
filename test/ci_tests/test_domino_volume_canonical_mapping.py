@@ -41,6 +41,14 @@ def test_domino_volume_predictions_duplicate_canonical_pressure_raises() -> None
         domino_volume_predictions_to_canonical(pred, cfg)
 
 
+def test_domino_volume_predictions_unknown_vector_field_raises() -> None:
+    """Non-velocity vector channels have no physical scaling — misconfiguration must not pass silently."""
+    cfg = _vol_cfg({"vorticity": "vector", "p": "scalar", "nut": "scalar"})
+    pred = torch.zeros(6, 5)
+    with pytest.raises(ValueError, match="not classified as velocity"):
+        domino_volume_predictions_to_canonical(pred, cfg)
+
+
 def test_domino_volume_predictions_drivaer_like_mapping_ok() -> None:
     cfg = _vol_cfg(
         {

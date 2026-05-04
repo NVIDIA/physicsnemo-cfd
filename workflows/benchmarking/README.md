@@ -208,12 +208,10 @@ The **`notebooks/`** directory (`surface_benchmarking.ipynb`, `volume_benchmarki
 
 ## Exit codes (automation)
 
-- By default, **`main.py`** exits **0** when `run_benchmark` completes without raising.
-- Set **`run.fail_on_all_skipped: true`** to exit **1** if every model×dataset run was skipped (e.g. domain mismatch in matrix mode).
-- Set **`run.fail_on_any_metric_nan: true`** to exit **1** if any aggregate metric in `metrics` is NaN.
+- **`main.py`** and **`python -m physicsnemo.cfd.evaluation.benchmarks.run`** both call **`run_benchmark_cli`**, which runs **`run_benchmark`** and maps **`BenchmarkPolicyError`** to process exit **1** (message on stderr). Exit **0** when the benchmark completes without that policy exit; other exceptions propagate to Hydra / Python as usual.
+- Set **`run.fail_on_all_skipped: true`** so **`BenchmarkPolicyError`** (exit **1**) applies if every model×dataset run was skipped (e.g. domain mismatch in matrix mode).
+- Set **`run.fail_on_any_metric_nan: true`** so **`BenchmarkPolicyError`** (exit **1**) applies if any non-skipped aggregate metric in **`metrics`** is NaN.
 - Override on the CLI: `run.fail_on_all_skipped=true`.
-
-The flat CLI **`python -m physicsnemo.cfd.evaluation.benchmarks.run`** applies the same policy.
 
 ---
 
@@ -297,17 +295,17 @@ metrics:
   - l2_pressure
   - l2_turbulent_viscosity
   - l2_velocity
-  - continuity_residual_l2
-  - momentum_residual_l2
 ```
+
+**Also available for volume benchmarks** (registered built-ins; append to **`metrics:`** when you want them): **`continuity_residual_l2`**, **`momentum_residual_l2`**. They are omitted from the shipped volume matrix YAMLs above but work when your config and fields support those residuals.
 
 | Name | Meaning |
 | ---- | ------- |
 | `l2_pressure`, `l2_shear_stress` | Surface L2 |
 | `l2_pressure_area_weighted` | Area-weighted L2 pressure |
 | `drag`, `lift` | Coefficient errors (surface inference only); expands to `drag_error`, etc. |
-| `l2_pressure`, `l2_velocity`, `l2_turbulent_viscosity` (volume) | Volume-field L2 (see **`l2.py`**, `domain="volume"`) |
-| `continuity_residual_l2`, `momentum_residual_l2` | Volume residuals (volume configs) |
+| `l2_pressure`, `l2_velocity`, `l2_turbulent_viscosity` (volume) | Volume-field L2 (see **`l2.py`**, `domain="volume"`) — same trio as **`config_matrix_volume_custom.yaml`** / **`config_matrix_volume_hf.yaml`**. |
+| `continuity_residual_l2`, `momentum_residual_l2` | Volume residual L2 (see note above). |
 
 ---
 

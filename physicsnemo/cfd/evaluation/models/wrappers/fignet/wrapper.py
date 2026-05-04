@@ -16,6 +16,7 @@
 
 """FIGConvUNet (fignet) model wrapper for DrivAerML-style inference."""
 
+from contextlib import nullcontext
 from typing import Any, ClassVar, List, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -26,6 +27,7 @@ from physicsnemo.models.figconvnet import FIGConvUNet
 from physicsnemo.models.figconvnet.components.reductions import REDUCTION_TYPES
 from physicsnemo.models.figconvnet.geometries import GridFeaturesMemoryFormat
 
+from physicsnemo.cfd.evaluation.config import _parse_bool
 from physicsnemo.cfd.evaluation.common.checkpoint_compat import trusted_torch_load_context
 from physicsnemo.cfd.evaluation.common.io import load_global_stats, surface_polydata_from_case
 from physicsnemo.cfd.evaluation.common.interpolation import interpolate_to_mesh
@@ -83,11 +85,10 @@ def _fignet_state_dict_from_checkpoint(checkpoint: object) -> dict[str, Any]:
 
 
 class FIGConvUNetDrivAerML(FIGConvUNet):
-    """FIGConvUNet variant for DrivAerML; in_channels remapped to hidden_channels[0]."""
+    """FIGConvUNet variant for DrivAerML; parent ``in_channels`` is ``hidden_channels[0]`` (not a separate arg)."""
 
     def __init__(
         self,
-        in_channels: int,
         out_channels: int,
         kernel_size: int,
         hidden_channels: List[int],
@@ -149,7 +150,13 @@ class FIGConvUNetDrivAerML(FIGConvUNet):
 
 
 class FIGNetWrapper(CFDModel):
-    """Wrapper for FIGConvUNet: cell-center points, pressure + WSS output."""
+    """Wrapper for FIGConvUNet: cell-center points, pressure + WSS output.
+
+    **Model kwargs**
+
+    ``cuda_bf16_autocast`` (bool or string, default ``True``)
+        CUDA bf16 autocast around the forward pass; set ``false`` for full fp32. Hydra-safe boolean parsing.
+    """
 
     INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "surface"
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
@@ -164,6 +171,7 @@ class FIGNetWrapper(CFDModel):
         self._device: str = "cuda:0"
         self._max_points: Optional[int] = None
         self._interpolation_k: int = 4
+        self._cuda_bf16_autocast: bool = True
 
     def load(
         self,
@@ -173,6 +181,7 @@ class FIGNetWrapper(CFDModel):
         **kwargs: Any,
     ) -> "FIGNetWrapper":
         self._device = device
+        self._cuda_bf16_autocast = _parse_bool(kwargs.pop("cuda_bf16_autocast", None), default=True)
         self._max_points = kwargs.get("max_points")
         self._interpolation_k = kwargs.get("interpolation_k", 4)
         log_inference("fignet", f"Loading normalization stats from {stats_path}")
@@ -182,7 +191,6 @@ class FIGNetWrapper(CFDModel):
             aabb_max=[2.0, 1.8, 2.6],
             aabb_min=[-2.0, -1.8, -1.5],
             hidden_channels=[16, 16, 16],
-            in_channels=1,
             kernel_size=5,
             mlp_channels=[512, 512],
             neighbor_search_type="radius",
@@ -242,8 +250,11 @@ class FIGNetWrapper(CFDModel):
         if self._model is None:
             raise RuntimeError("FIGNetWrapper: call load() first")
         log_inference("fignet", "Running forward pass (predicting fields)…")
+        ac_ctx = (
+            cuda_bf16_autocast(self._device) if self._cuda_bf16_autocast else nullcontext()
+        )
         with torch.inference_mode():
-            with cuda_bf16_autocast(self._device):
+            with ac_ctx:
                 pred, _ = self._model(model_input["vertices"])
         return pred
 

@@ -400,59 +400,17 @@ def test_build_comparison_mesh_volume_point_dtype_matches_n_points() -> None:
     assert abs(float(d[f"{gtn}_l2_error"])) < 1e-10
 
 
-def test_extract_volume_fields_generic_uses_vanilla_cfd_names() -> None:
-    """Generic extractor defaults are dataset-agnostic (``UMean`` / ``nutMean`` / ``pMean``)."""
-    grid = pv.ImageData(dimensions=(4, 4, 4))
-    n = grid.n_cells
-    rng = np.random.default_rng(0)
-    grid.cell_data["pMean"] = rng.standard_normal(n).astype(np.float32)
-    grid.cell_data["UMean"] = rng.standard_normal((n, 3)).astype(np.float32)
-    grid.cell_data["nutMean"] = rng.standard_normal(n).astype(np.float32)
-
-    gt, loc = extract_volume_fields_from_mesh(grid, data_type="auto")
-    assert loc == "cell"
-    assert gt is not None
-    assert set(gt.keys()) == {"pressure", "velocity", "turbulent_viscosity"}
-
-
-def test_drivaerml_adapter_finds_trim_only_volume_fields(tmp_path) -> None:
-    """DrivAer adapter ships ``*MeanTrim`` defaults so Trim-only VTUs populate velocity / νₜ
-    without requiring per-config ``velocity_field_names`` / ``turbulent_viscosity_field_names``.
-    """
-    assert "UMeanTrim" in DRIVAER_VOLUME_VELOCITY_NAMES
-    assert "nutMeanTrim" in DRIVAER_TURBULENT_VISCOSITY_NAMES
-
-    run_dir = tmp_path / "run_1"
-    run_dir.mkdir()
-    grid = pv.ImageData(dimensions=(4, 4, 4))
-    n = grid.n_cells
-    rng = np.random.default_rng(0)
-    grid.cell_data["pMeanTrim"] = rng.standard_normal(n).astype(np.float32)
-    grid.cell_data["UMeanTrim"] = rng.standard_normal((n, 3)).astype(np.float32)
-    grid.cell_data["nutMeanTrim"] = rng.standard_normal(n).astype(np.float32)
-    ugrid = grid.cast_to_unstructured_grid()
-    ugrid.save(str(run_dir / "volume_1.vtu"))
-
-    adapter = DrivAerMLAdapter(root=str(tmp_path), inference_domain="volume")
-    case = adapter.load_case("run_1")
-    assert case.inference_domain == "volume"
-    assert case.ground_truth is not None
-    assert set(case.ground_truth.keys()) == {"pressure", "velocity", "turbulent_viscosity"}
-    assert case.ground_truth["velocity"].shape == (n, 3)
-    assert case.ground_truth["turbulent_viscosity"].shape == (n,)
-
-
-def test_build_comparison_mesh_volume_cell_dtype_matches_n_cells() -> None:
-    """Volume VTU-style fields on cells (DrivAerML default): lengths match ``n_cells``, not ``n_points``."""
+def test_build_comparison_mesh_volume_raises_when_reference_length_matches_neither_points_nor_cells() -> None:
+    """Fail fast when volume GT/pred length disagrees with topology (mirrors surface mesh_bridge)."""
     grid = pv.ImageData(dimensions=(5, 6, 7))
     nc, np_ = grid.n_cells, grid.n_points
     assert nc != np_
-    pr = np.random.randn(nc).astype(np.float64)
-    vel = np.random.randn(nc, 3).astype(np.float64)
-    nut = np.random.randn(nc).astype(np.float64)
-
+    bad_n = 1
+    pr = np.random.randn(bad_n).astype(np.float64)
+    vel = np.random.randn(bad_n, 3).astype(np.float64)
+    nut = np.random.randn(bad_n).astype(np.float64)
     case = CanonicalCase(
-        case_id="vol_cell",
+        case_id="vol_bad_dof",
         mesh_path="",
         mesh_type="cell",
         ground_truth={"pressure": pr, "velocity": vel, "turbulent_viscosity": nut},
@@ -464,42 +422,8 @@ def test_build_comparison_mesh_volume_cell_dtype_matches_n_cells() -> None:
         "turbulent_viscosity": nut.copy(),
     }
     output = OutputConfig()
-    mesh, dtype = build_comparison_mesh(case, pred, output, mesh_override=grid)
-    assert dtype == "cell"
-    gtn = output.ground_truth_volume_mesh_field_names["pressure"]
-    prn = output.volume_mesh_field_names["pressure"]
-    d = compute_l2_errors(mesh, [gtn], [prn], dtype=dtype)
-    assert abs(float(d[f"{gtn}_l2_error"])) < 1e-10
-
-
-def test_build_comparison_mesh_volume_point_dtype_matches_n_points() -> None:
-    """Point-centered volume fields (``mesh_type: point`` or array length == ``n_points``)."""
-    grid = pv.ImageData(dimensions=(5, 6, 7))
-    nc, np_ = grid.n_cells, grid.n_points
-    assert nc != np_
-    pr = np.random.randn(np_).astype(np.float64)
-    vel = np.random.randn(np_, 3).astype(np.float64)
-    nut = np.random.randn(np_).astype(np.float64)
-
-    case = CanonicalCase(
-        case_id="vol_pt",
-        mesh_path="",
-        mesh_type="point",
-        ground_truth={"pressure": pr, "velocity": vel, "turbulent_viscosity": nut},
-        inference_domain="volume",
-    )
-    pred = {
-        "pressure": pr.copy(),
-        "velocity": vel.copy(),
-        "turbulent_viscosity": nut.copy(),
-    }
-    output = OutputConfig()
-    mesh, dtype = build_comparison_mesh(case, pred, output, mesh_override=grid)
-    assert dtype == "point"
-    gtn = output.ground_truth_volume_mesh_field_names["pressure"]
-    prn = output.volume_mesh_field_names["pressure"]
-    d = compute_l2_errors(mesh, [gtn], [prn], dtype=dtype)
-    assert abs(float(d[f"{gtn}_l2_error"])) < 1e-10
+    with pytest.raises(ValueError, match="volume field sample count"):
+        build_comparison_mesh(case, pred, output, mesh_override=grid)
 
 
 def test_extract_volume_fields_generic_uses_vanilla_cfd_names() -> None:

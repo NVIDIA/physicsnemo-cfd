@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Optional
 
@@ -28,6 +29,7 @@ from physicsnemo.distributed import DistributedManager
 from physicsnemo.models.domino.model import DoMINO
 
 from physicsnemo.cfd.evaluation.common.checkpoint_compat import parse_checkpoint_epoch, trusted_torch_load_context
+from physicsnemo.cfd.evaluation.config import _parse_bool
 from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, build_predictions_dict, normalize_inference_domain_str
 from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
 from physicsnemo.cfd.evaluation.models.common_wrapper_utils.vtk_datapipe_io import (
@@ -61,6 +63,8 @@ class DominoWrapper(CFDModel):
     - ``domino_config`` (str): Path to ``config.yaml`` (same schema as domino training / test).
       ``model.model_type`` must be ``surface`` or ``volume`` (``combined`` is not supported here).
     - ``point_batch_size`` (int, optional): Subdomain batch size (default 256000).
+    - ``cuda_bf16_autocast`` (bool or string, optional, default ``True``): CUDA bf16 autocast around the
+      forward pass; set ``false`` for full fp32. Hydra-safe boolean parsing.
 
     **Benchmark ``model.stats_path``:** When non-empty, overrides the ``data.scaling_factors`` entry in
     ``domino_config`` and any engine-passed ``_resolved_scaling_factors`` (HF package cache path).
@@ -90,10 +94,9 @@ class DominoWrapper(CFDModel):
         cfg_path = kwargs.get("domino_config") or kwargs.get("config_path")
         if not cfg_path:
             return None
-        try:
-            dom_cfg = OmegaConf.load(str(cfg_path))
-        except Exception:
-            return None
+        # Do not swallow OmegaConf / OS errors: bad YAML, permissions, or typos should surface here,
+        # not as a vague dual-mode ``INFERENCE_DOMAIN is None`` failure downstream.
+        dom_cfg = OmegaConf.load(str(cfg_path))
         mtype_raw = OmegaConf.select(dom_cfg, "model.model_type")
         if isinstance(mtype_raw, str):
             return normalize_inference_domain_str(
@@ -114,6 +117,7 @@ class DominoWrapper(CFDModel):
         self._device: str = "cuda:0"
         self._point_batch_size: int = 256_000
         self._inference_mode: Literal["surface", "volume"] = "surface"
+        self._cuda_bf16_autocast: bool = True
 
     def load(
         self,
@@ -132,6 +136,7 @@ class DominoWrapper(CFDModel):
             )
         self._device = device
         self._point_batch_size = int(kw.get("point_batch_size", 256_000))
+        self._cuda_bf16_autocast = _parse_bool(kw.pop("cuda_bf16_autocast", None), default=True)
 
         if not DistributedManager.is_initialized():
             DistributedManager.initialize()
@@ -327,10 +332,11 @@ class DominoWrapper(CFDModel):
         if self._model is None:
             raise RuntimeError("DominoWrapper: call load() first")
         dev = torch.device(self._device)
+        ac_ctx = cuda_bf16_autocast(dev) if self._cuda_bf16_autocast else nullcontext()
         if model_input.get("mode") == "volume":
             log_inference("domino", "Running forward pass (predicting volume fields)…")
             with torch.no_grad():
-                with cuda_bf16_autocast(dev):
+                with ac_ctx:
                     pred = domino_volume_test_step(
                         model_input["data_dict"],
                         self._model,
@@ -343,7 +349,7 @@ class DominoWrapper(CFDModel):
 
         log_inference("domino", "Running forward pass (predicting surface fields)…")
         with torch.no_grad():
-            with cuda_bf16_autocast(dev):
+            with ac_ctx:
                 pred = domino_surface_test_step(
                     model_input["data_dict"],
                     self._model,

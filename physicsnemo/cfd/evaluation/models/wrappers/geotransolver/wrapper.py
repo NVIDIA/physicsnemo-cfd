@@ -22,6 +22,7 @@ Volume: velocity + pressure + turbulent viscosity on volume VTU (``inference_dom
 aligned with ``examples/cfd/external_aerodynamics/transformer_models/src/inference_on_vtk.py``.
 """
 
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Optional
 
@@ -34,6 +35,7 @@ from physicsnemo.cfd.evaluation.datasets.schema import (
     build_predictions_dict,
     coerce_inference_domain_or_default,
 )
+from physicsnemo.cfd.evaluation.config import _parse_bool
 from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
 from physicsnemo.cfd.evaluation.models.model_registry import (
     CFDModel,
@@ -154,7 +156,14 @@ def _volume_datapipe_static_kw() -> dict[str, Any]:
 
 
 class GeoTransolverWrapper(CFDModel):
-    """GeoTransolver: VTP+STL (surface) or VTU+STL (volume) via ``inference_domain`` in load kwargs."""
+    """GeoTransolver: VTP+STL (surface) or VTU+STL (volume) via ``inference_domain`` in load kwargs.
+
+    **Model kwargs**
+
+    ``cuda_bf16_autocast`` (bool or string, default ``False``)
+        When ``true``, CUDA inference runs under bf16 autocast (matches FiGNet / XmGN / DoMINO defaults).
+        Default is fp32 forwards; enable explicitly for speed. Parsed with Hydra-safe boolean rules.
+    """
 
     INFERENCE_DOMAIN: ClassVar[InferenceDomain | None] = None
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
@@ -190,6 +199,7 @@ class GeoTransolverWrapper(CFDModel):
         # STL bounding-box max extent for the most recent volume case; used by ``decode_outputs``
         # to unscale νₜ (kinematic viscosity) by ``u * L`` — same reference scale as DoMINO volume.
         self._volume_length_scale: Optional[float] = None
+        self._cuda_bf16_autocast: bool = False
 
     def load(
         self,
@@ -214,6 +224,7 @@ class GeoTransolverWrapper(CFDModel):
         self._air_density = float(kw.get("air_density", 1.205))
         self._stream_velocity = float(kw.get("stream_velocity", 30.0))
         self._batch_resolution = int(kw.get("batch_resolution", 2048))
+        self._cuda_bf16_autocast = _parse_bool(kw.pop("cuda_bf16_autocast", None), default=False)
 
         checkpoint_dir = Path(checkpoint_path)
         if checkpoint_dir.is_file():
@@ -378,23 +389,27 @@ class GeoTransolverWrapper(CFDModel):
         preds_list = []
         use_full_fx = "geometry" in batch
 
+        ac_ctx = (
+            cuda_bf16_autocast(self._device) if self._cuda_bf16_autocast else nullcontext()
+        )
         with torch.no_grad():
-            for index_block in index_blocks:
-                local_embeddings = batch["embeddings"][:, index_block]
-                local_fx = fx_bn_c if use_full_fx else fx_bn_c[:, index_block]
-                local_positions = local_embeddings[:, :, :3]
-                geometry_kw = batch["geometry"] if "geometry" in batch else None
-                outputs = self._model(
-                    local_embedding=local_embeddings,
-                    local_positions=local_positions,
-                    global_embedding=local_fx,
-                    geometry=geometry_kw,
-                )
-                preds_list.append(outputs)
-            predictions = torch.cat(preds_list, dim=1)
-            inverse_indices = torch.empty_like(indices)
-            inverse_indices[indices] = torch.arange(N, device=indices.device)
-            predictions = predictions[:, inverse_indices]
+            with ac_ctx:
+                for index_block in index_blocks:
+                    local_embeddings = batch["embeddings"][:, index_block]
+                    local_fx = fx_bn_c if use_full_fx else fx_bn_c[:, index_block]
+                    local_positions = local_embeddings[:, :, :3]
+                    geometry_kw = batch["geometry"] if "geometry" in batch else None
+                    outputs = self._model(
+                        local_embedding=local_embeddings,
+                        local_positions=local_positions,
+                        global_embedding=local_fx,
+                        geometry=geometry_kw,
+                    )
+                    preds_list.append(outputs)
+                predictions = torch.cat(preds_list, dim=1)
+                inverse_indices = torch.empty_like(indices)
+                inverse_indices[indices] = torch.arange(N, device=indices.device)
+                predictions = predictions[:, inverse_indices]
         predictions = predictions.squeeze(0)
 
         if self._inference_mode == "volume":

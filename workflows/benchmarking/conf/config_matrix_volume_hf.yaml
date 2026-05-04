@@ -6,7 +6,8 @@
 # Same structure as ``config_matrix_volume_custom.yaml`` but checkpoints resolve from Hub via
 # ``builtin_packages`` — omit ``checkpoint`` / ``stats_path`` / ``domino_config`` kwargs when using defaults.
 #
-# Reports/visuals: ``reports.enabled: true``.
+# Reports/visuals: ``reports.enabled: false`` by default (metrics still run). Set to ``true`` to
+# generate PNGs from the ``reports.visuals`` block below.
 #
 # XMGN / FIGConvNet have no volume checkpoints on Hub — omit them here.
 #
@@ -56,7 +57,7 @@ benchmark:
       # GT and predictions live on the same dofs (``compute_l2_errors`` runs with dtype="point").
       kwargs: { gt_data_type: point, inference_domain: volume }
   reproducibility:
-    log_env: true
+    log_env: false
     save_artifacts: true
 
 output:
@@ -79,7 +80,7 @@ metrics:
   - l2_velocity
 
 
-# Reports/visuals aligned with volume custom matrix; ``reports.enabled: true``.
+# Reports/visuals aligned with volume custom matrix; ``reports.enabled: false`` here (enable to run visuals).
 reports:
   enabled: false
   save_comparison_meshes: false

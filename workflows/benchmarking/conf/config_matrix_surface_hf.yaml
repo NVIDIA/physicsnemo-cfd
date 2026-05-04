@@ -5,7 +5,8 @@
 # Matrix surface benchmark using HF-hosted checkpoints (same layout as ``config_matrix_surface_custom.yaml``,
 # but checkpoints resolve from Hub via ``builtin_packages`` — omit ``checkpoint`` / ``stats_path``).
 #
-# Reports/visuals: ``reports.enabled: true`` (see custom matrix config for the same structure).
+# Reports/visuals: ``reports.enabled: false`` by default (metrics still run). Set to ``true`` to
+# generate PNGs from the ``reports.visuals`` block below (same structure as the custom matrix configs).
 #
 # Run:
 #   python main.py --config-name=config_matrix_surface_hf
