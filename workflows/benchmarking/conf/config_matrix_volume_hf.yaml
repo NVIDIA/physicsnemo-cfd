@@ -73,7 +73,9 @@ output:
     velocity: "velocity_true"
   streamlines_vector_canonical: velocity
 
-# Matches ``config_matrix_volume_custom.yaml`` field metrics; omit ``drag`` / ``lift`` (surface-domain metrics).
+# Subset of ``config_matrix_volume_custom.yaml`` field metrics (L2 trio only). Residual metrics
+# ``continuity_residual_l2`` / ``momentum_residual_l2`` are omitted here; add them if your config supports them.
+# Omit ``drag`` / ``lift`` (surface-domain metrics).
 metrics:
   - l2_pressure
   - l2_turbulent_viscosity

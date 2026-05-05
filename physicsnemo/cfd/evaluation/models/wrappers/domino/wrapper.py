@@ -283,7 +283,7 @@ class DominoWrapper(CFDModel):
             ckpt_args["epoch"] = epoch
 
         with trusted_torch_load_context():
-            loaded_epoch = load_checkpoint(device=dev, **ckpt_args)
+            _ = load_checkpoint(device=dev, **ckpt_args)
         self._model.eval()
         log_inference("domino", "Checkpoint loaded; model ready for inference.")
         return self

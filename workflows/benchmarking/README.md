@@ -288,7 +288,7 @@ metrics:
   - lift
 ```
 
-**Volume example** (`config_matrix_volume_custom.yaml` / `config_matrix_volume_hf.yaml`):
+**Volume — HF matrix** (`config_matrix_volume_hf.yaml`): L2 field trio only (subset of the custom matrix).
 
 ```yaml
 metrics:
@@ -297,15 +297,26 @@ metrics:
   - l2_velocity
 ```
 
-**Also available for volume benchmarks** (registered built-ins; append to **`metrics:`** when you want them): **`continuity_residual_l2`**, **`momentum_residual_l2`**. They are omitted from the shipped volume matrix YAMLs above but work when your config and fields support those residuals.
+**Volume — custom matrix** (`config_matrix_volume_custom.yaml`): same trio **plus** residual metrics in the shipped config.
+
+```yaml
+metrics:
+  - l2_pressure
+  - l2_turbulent_viscosity
+  - l2_velocity
+  - continuity_residual_l2
+  - momentum_residual_l2
+```
+
+**Residual metrics:** **`continuity_residual_l2`** and **`momentum_residual_l2`** are registered built-ins; use them when your config and fields support those residuals. The shipped HF volume matrix omits them; the shipped custom volume matrix includes them. You can append them to any volume **`metrics:`** list when appropriate.
 
 | Name | Meaning |
 | ---- | ------- |
 | `l2_pressure`, `l2_shear_stress` | Surface L2 |
 | `l2_pressure_area_weighted` | Area-weighted L2 pressure |
 | `drag`, `lift` | Coefficient errors (surface inference only); expands to `drag_error`, etc. |
-| `l2_pressure`, `l2_velocity`, `l2_turbulent_viscosity` (volume) | Volume-field L2 (see **`l2.py`**, `domain="volume"`) — same trio as **`config_matrix_volume_custom.yaml`** / **`config_matrix_volume_hf.yaml`**. |
-| `continuity_residual_l2`, `momentum_residual_l2` | Volume residual L2 (see note above). |
+| `l2_pressure`, `l2_velocity`, `l2_turbulent_viscosity` (volume) | Volume-field L2 (see **`l2.py`**, `domain="volume"`). Shipped in both volume matrix YAMLs above. |
+| `continuity_residual_l2`, `momentum_residual_l2` | Volume residual L2; shipped in **`config_matrix_volume_custom.yaml`** only among the two matrix examples. |
 
 ---
 
