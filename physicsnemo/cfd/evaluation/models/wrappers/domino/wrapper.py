@@ -119,6 +119,7 @@ class DominoWrapper(CFDModel):
 
     @property
     def output_location(self) -> OutputLocation:
+        """See :attr:`CFDModel.output_location` (DoMINO predicts at mesh point locations)."""
         return self.OUTPUT_LOCATION
 
     def __init__(self) -> None:
@@ -138,6 +139,7 @@ class DominoWrapper(CFDModel):
         device: str,
         **kwargs: Any,
     ) -> "DominoWrapper":
+        """Load DoMINO config + scaling factors + checkpoint and route surface/volume mode."""
         kw = dict(kwargs)
         # Exact HF-cache path from ``resolve_model_assets`` (overrides stale paths inside shipped ``config.yaml``).
         _resolved_sf = kw.pop("_resolved_scaling_factors", None)
@@ -303,6 +305,7 @@ class DominoWrapper(CFDModel):
         return self
 
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:
+        """Build the DoMINO surface/volume data dict from the case (mesh + run dir)."""
         if self._model is None or self._cfg is None:
             raise RuntimeError("DominoWrapper: call load() first")
         log_inference(
@@ -343,6 +346,7 @@ class DominoWrapper(CFDModel):
         }
 
     def predict(self, model_input: ModelInput) -> RawOutput:
+        """Run the DoMINO forward pass under the configured autocast context."""
         if self._model is None:
             raise RuntimeError("DominoWrapper: call load() first")
         dev = torch.device(self._device)
@@ -380,6 +384,7 @@ class DominoWrapper(CFDModel):
         case: CanonicalCase,
         model_input: Optional[ModelInput] = None,
     ) -> Predictions:
+        """Map DoMINO raw outputs to canonical predictions (pressure + WSS or volume fields)."""
         if self._inference_mode == "volume":
             if self._cfg is None:
                 raise RuntimeError("DominoWrapper: call load() first")

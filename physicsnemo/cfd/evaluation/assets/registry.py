@@ -39,6 +39,7 @@ def register_default_asset(model_name: str, spec: AssetSpec) -> None:
 
 
 def get_default_asset(model_name: str) -> AssetSpec | None:
+    """Return the registered default asset for ``model_name`` (or ``None`` if unknown)."""
     return _DEFAULT_ASSETS.get(model_name)
 
 

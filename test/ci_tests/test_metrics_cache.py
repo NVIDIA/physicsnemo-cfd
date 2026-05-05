@@ -25,6 +25,7 @@ from physicsnemo.cfd.evaluation.config import Config, OutputConfig
 
 
 def test_resolve_metrics_cache_root_disabled() -> None:
+    """Disabled cache always resolves to ``None``."""
     assert (
         resolve_metrics_cache_root(enabled=False, path="", output_dir="/tmp/out")
         is None
@@ -32,6 +33,7 @@ def test_resolve_metrics_cache_root_disabled() -> None:
 
 
 def test_resolve_metrics_cache_default_dir(tmp_path: Path) -> None:
+    """Without an explicit path the cache lives at ``<output_dir>/.metrics_cache``."""
     root = resolve_metrics_cache_root(
         enabled=True, path="", output_dir=str(tmp_path / "results")
     )
@@ -41,6 +43,7 @@ def test_resolve_metrics_cache_default_dir(tmp_path: Path) -> None:
 
 
 def test_resolve_metrics_cache_explicit_path(tmp_path: Path) -> None:
+    """An explicit path is honored verbatim (resolved to absolute)."""
     p = tmp_path / "my_cache"
     root = resolve_metrics_cache_root(
         enabled=True, path=str(p), output_dir=str(tmp_path)
@@ -49,6 +52,7 @@ def test_resolve_metrics_cache_explicit_path(tmp_path: Path) -> None:
 
 
 def test_fingerprint_changes_with_checkpoint() -> None:
+    """Fingerprint changes when the checkpoint path changes; identical inputs reproduce digests."""
     base = dict(
         model_name="m",
         model_checkpoint="a.pt",
@@ -89,6 +93,7 @@ def test_fingerprint_canonical_dataset_root() -> None:
 
 
 def test_fingerprint_changes_with_run_seed() -> None:
+    """Adding ``run_seed`` to the fingerprint changes the digest."""
     out = output_config_to_fingerprint_dict(OutputConfig())
     base = dict(
         model_name="m",
@@ -108,6 +113,7 @@ def test_fingerprint_changes_with_run_seed() -> None:
 
 
 def test_fingerprint_numpy_model_kwargs_stable() -> None:
+    """Numpy scalars in ``model_kwargs`` produce the same digest as native Python ints."""
     np = pytest.importorskip("numpy")
     out = output_config_to_fingerprint_dict(OutputConfig())
     base = dict(
@@ -130,6 +136,7 @@ def test_fingerprint_numpy_model_kwargs_stable() -> None:
 
 
 def test_fingerprint_metric_spec_kwargs_order() -> None:
+    """Metric-spec kwargs are sorted before hashing so ordering does not affect the digest."""
     out = output_config_to_fingerprint_dict(OutputConfig())
     base = dict(
         model_name="m",
@@ -151,6 +158,7 @@ def test_fingerprint_metric_spec_kwargs_order() -> None:
 
 
 def test_write_read_roundtrip(tmp_path: Path) -> None:
+    """Writing then reading a cache file round-trips fingerprints, metrics, and NaNs."""
     fp = "a" * 64
     path = metrics_cache_file_path(tmp_path / "root", fp, "run_1")
     write_metrics_cache(
@@ -173,10 +181,12 @@ def test_write_read_roundtrip(tmp_path: Path) -> None:
 
 
 def test_read_missing_returns_none(tmp_path: Path) -> None:
+    """Reading a non-existent cache file returns ``None``."""
     assert read_metrics_cache(tmp_path / "nope.json") is None
 
 
 def test_read_bad_json_returns_none(tmp_path: Path) -> None:
+    """Corrupted JSON in the cache file returns ``None`` rather than raising."""
     p = tmp_path / "bad.json"
     p.write_text("not json {", encoding="utf-8")
     assert read_metrics_cache(p) is None
@@ -190,10 +200,12 @@ def test_read_bad_json_returns_none(tmp_path: Path) -> None:
     ],
 )
 def test_case_id_cache_filename(cid: str, expected: str) -> None:
+    """``case_id`` strings are sanitized into safe ``.json`` filenames."""
     assert case_id_cache_filename(cid) == expected
 
 
 def test_config_from_dict_metrics_cache() -> None:
+    """``run.metrics_cache`` settings load through :meth:`Config.from_dict`."""
     cfg = Config.from_dict(
         {
             "run": {
@@ -206,6 +218,7 @@ def test_config_from_dict_metrics_cache() -> None:
 
 
 def test_config_metrics_cache_enabled_string_false() -> None:
+    """``metrics_cache.enabled`` accepts string ``"false"`` as Boolean false (Hydra-safe)."""
     cfg = Config.from_dict(
         {"run": {"metrics_cache": {"enabled": "false", "path": ""}}},
     )

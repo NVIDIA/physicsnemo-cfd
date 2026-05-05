@@ -67,6 +67,7 @@ def continuity_residual_l2(
     device: str = "cpu",
     **_: object,
 ) -> dict[str, float]:
+    """L2 error of the continuity-equation residual computed on the volume comparison mesh."""
     mesh, _ = resolve_comparison_mesh_for_metric(
         predictions,
         case=case,
@@ -117,6 +118,7 @@ def momentum_residual_l2(
     device: str = "cpu",
     **_: object,
 ) -> dict[str, float]:
+    """L2 error of the per-component momentum-equation residual on the volume comparison mesh."""
     mesh, _ = resolve_comparison_mesh_for_metric(
         predictions,
         case=case,
@@ -172,5 +174,6 @@ def momentum_residual_l2(
 
 
 def register_physics_metrics() -> None:
+    """Register the built-in volume continuity / momentum residual metrics."""
     register_metric("continuity_residual_l2", continuity_residual_l2, domain="volume")
     register_metric("momentum_residual_l2", momentum_residual_l2, domain="volume")

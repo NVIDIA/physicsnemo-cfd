@@ -32,6 +32,7 @@ from physicsnemo.cfd.evaluation.models.wrappers.surface_baseline import (
 
 
 def test_package_resolve_local_file(tmp_path: Path) -> None:
+    """``Package.resolve`` returns the absolute path for files inside a local package root."""
     root = tmp_path / "pkg"
     root.mkdir()
     f = root / "global_stats.json"
@@ -41,6 +42,7 @@ def test_package_resolve_local_file(tmp_path: Path) -> None:
 
 
 def test_package_resolve_local_missing(tmp_path: Path) -> None:
+    """Resolving a missing relpath inside a local package raises ``FileNotFoundError``."""
     pkg = Package(str(tmp_path))
     with pytest.raises(FileNotFoundError):
         pkg.resolve("missing.pt")
@@ -51,6 +53,7 @@ class _TrainedStub:
 
 
 def test_builtin_geotransolver_surface_asset_registered() -> None:
+    """The built-in registry exposes a surface GeoTransolver asset with the expected layout."""
     spec = get_default_asset("geotransolver_surface")
     assert spec is not None
     assert spec.package_root == BENCHMARK_CHECKPOINTS_HF_ROOT
@@ -61,6 +64,7 @@ def test_builtin_geotransolver_surface_asset_registered() -> None:
 
 
 def test_builtin_transolver_uses_per_model_package_root() -> None:
+    """Transolver uses its own per-model package root rather than the shared benchmark root."""
     spec = get_default_asset("transolver_surface")
     assert spec is not None
     assert spec.package_root == TRANSOLVER_PACKAGE_ROOT
@@ -68,6 +72,7 @@ def test_builtin_transolver_uses_per_model_package_root() -> None:
 
 
 def test_builtin_xmgn_fignet_surface_assets_registered() -> None:
+    """Surface XMGN and FIGNet built-in assets are registered under the expected package roots."""
     xspec = get_default_asset("xmgn_surface")
     assert xspec is not None
     assert xspec.package_root == BUILTIN_MODEL_PACKAGE_ROOTS["xmgn_surface"]
@@ -79,6 +84,7 @@ def test_builtin_xmgn_fignet_surface_assets_registered() -> None:
 
 
 def test_builtin_geotransolver_volume_asset_registered() -> None:
+    """The built-in registry exposes a volume GeoTransolver asset with the expected layout."""
     spec = get_default_asset("geotransolver_volume")
     assert spec is not None
     assert spec.package_root == BUILTIN_MODEL_PACKAGE_ROOTS["geotransolver_volume"]
@@ -98,6 +104,7 @@ def test_builtin_domino_extra_assets_use_checkpoint_parent_placeholder() -> None
 
 
 def test_resolve_model_assets_explicit_paths() -> None:
+    """Explicit ``checkpoint``/``stats_path`` are returned verbatim with no asset identity."""
     cfg = ModelConfig(
         name="fignet_surface",
         checkpoint="/abs/ck.pt",
@@ -117,12 +124,14 @@ def test_resolve_model_assets_missing_raises() -> None:
 
 
 def test_resolve_model_assets_baseline_no_paths() -> None:
+    """Baseline wrappers (``REQUIRES_REMOTE_ASSETS=False``) resolve to empty paths."""
     cfg = ModelConfig(name="surface_baseline", checkpoint="", stats_path="")
     ck, st, aid, xkw = resolve_model_assets(cfg, SurfaceBaselineWrapper)
     assert ck == "" and st == "" and aid is None and xkw == {}
 
 
 def test_resolve_model_assets_via_registry(tmp_path: Path) -> None:
+    """Registered :class:`AssetSpec` resolves checkpoint, stats, and extra-resolve relpaths."""
     clear_default_assets_for_testing()
     root = tmp_path / "hub_sim"
     root.mkdir()
@@ -151,6 +160,7 @@ def test_resolve_model_assets_via_registry(tmp_path: Path) -> None:
 
 
 def test_metrics_cache_fingerprint_asset_identity_changes_digest() -> None:
+    """Asset-identity changes feed into the cache fingerprint and produce different digests."""
     base = dict(
         model_name="m",
         model_checkpoint="",

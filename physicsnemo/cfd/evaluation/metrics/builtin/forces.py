@@ -74,6 +74,7 @@ def drag_error(
     drag_direction: list[float] | None = None,
     **_: object,
 ) -> dict[str, float]:
+    """Drag coefficient relative error plus integrated ``Cd`` (true / pred) on the comparison mesh."""
     mesh, dtype = resolve_comparison_mesh_for_metric(
         predictions,
         case=case,
@@ -128,6 +129,7 @@ def lift_error(
     lift_direction: list[float] | None = None,
     **_: object,
 ) -> dict[str, float]:
+    """Lift coefficient relative error plus integrated ``Cl`` (true / pred) on the comparison mesh."""
     mesh, dtype = resolve_comparison_mesh_for_metric(
         predictions,
         case=case,
@@ -173,5 +175,6 @@ def lift_error(
 
 
 def register_force_metrics() -> None:
+    """Register the built-in surface ``drag`` / ``lift`` metrics."""
     register_metric("drag", drag_error, domain="surface")
     register_metric("lift", lift_error, domain="surface")

@@ -34,6 +34,7 @@ def _restore_global_rng_state() -> Iterator[None]:
 
 
 def test_inference_seed_stable_across_calls() -> None:
+    """``inference_seed`` is deterministic per ``(base, case_id)`` and varies across cases."""
     a = inference_seed(42, "case_a")
     b = inference_seed(42, "case_a")
     c = inference_seed(42, "case_b")
@@ -42,6 +43,7 @@ def test_inference_seed_stable_across_calls() -> None:
 
 
 def test_seed_inference_rng_np_and_torch_match_rerun() -> None:
+    """Re-seeding ``numpy``/``torch`` with the same key reproduces the same draws."""
     seed_inference_rng(7, "x")
     ta = np.random.randint(0, 10_000, size=5)
     tb = torch.randn(3)

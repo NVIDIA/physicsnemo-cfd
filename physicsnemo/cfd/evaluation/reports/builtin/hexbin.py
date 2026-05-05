@@ -63,4 +63,5 @@ def projections_hexbin(
 
 
 def register_projections_hexbin() -> None:
+    """Register the ``projections_hexbin`` visual."""
     register_visual("projections_hexbin", projections_hexbin)

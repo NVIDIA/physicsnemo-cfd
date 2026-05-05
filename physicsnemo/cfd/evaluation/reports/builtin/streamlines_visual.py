@@ -130,6 +130,7 @@ def streamlines_comparison(
 
 
 def register_streamlines_visual() -> None:
+    """Register the ``streamlines_comparison`` visual (and back-compat alias)."""
     register_visual("streamlines_comparison", streamlines_comparison)
     # Backward-compatible alias (same implementation; surface uses cell dtype + surface field maps).
     register_visual("streamlines_comparison_surface", streamlines_comparison)

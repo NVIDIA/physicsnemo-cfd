@@ -94,6 +94,8 @@ class MetricsCacheConfig:
 
 @dataclass
 class RunConfig:
+    """Top-level run controls (device, output dir, seed, sharding, fail-on policies)."""
+
     device: str = "cuda:0"
     output_dir: str = "benchmark_results"
     #: Base seed combined with ``case_id`` (SHA256) before each ``prepare_inputs → predict`` (:func:`~physicsnemo.cfd.evaluation.common.inference_seed.seed_inference_rng`).
@@ -113,6 +115,8 @@ class RunConfig:
 
 @dataclass
 class ModelConfig:
+    """Model identity + asset paths + free-form ``kwargs`` consumed by wrappers on load."""
+
     name: str = "fignet_surface"
     checkpoint: str = ""
     stats_path: str = ""
@@ -169,6 +173,8 @@ class DatasetConfig:
 
 @dataclass
 class ReproducibilityConfig:
+    """Toggles for environment logging and artifact persistence (``run_config.json``, ``env.json``)."""
+
     #: When True, write full ``os.environ`` to ``env.json`` under ``run.output_dir`` (avoid in shared CI; may leak secrets).
     log_env: bool = False
     save_artifacts: bool = True
@@ -176,6 +182,8 @@ class ReproducibilityConfig:
 
 @dataclass
 class BenchmarkConfig:
+    """Benchmark sweep configuration: mode (``single`` vs ``matrix``), models, datasets, reproducibility."""
+
     mode: str = "single"  # "single" | "matrix"
     models: list[ModelConfig] = field(default_factory=list)
     datasets: list[DatasetConfig] = field(default_factory=list)

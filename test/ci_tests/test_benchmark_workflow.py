@@ -33,6 +33,7 @@ _BENCHMARK_CONF = (
     ],
 )
 def test_hydra_config_loads_into_config(config_name: str) -> None:
+    """Each shipped benchmarking Hydra config composes and loads into :class:`Config`."""
     if not _BENCHMARK_CONF.is_dir():
         pytest.skip("benchmarking/conf not in tree")
     with initialize_config_dir(version_base="1.3", config_dir=str(_BENCHMARK_CONF)):
@@ -44,6 +45,7 @@ def test_hydra_config_loads_into_config(config_name: str) -> None:
 
 
 def test_hydra_config_to_benchmark_dict_case_id_variants() -> None:
+    """``case_id`` is extracted from the hydra config and stripped from the returned dict."""
     from omegaconf import OmegaConf
 
     base = {"run": {"device": "cpu", "output_dir": "out"}, "metrics": ["l2_pressure"]}
@@ -54,6 +56,7 @@ def test_hydra_config_to_benchmark_dict_case_id_variants() -> None:
 
 
 def test_benchmark_policy_fail_on_all_skipped() -> None:
+    """``run.fail_on_all_skipped`` raises :class:`BenchmarkPolicyError` when every run was skipped."""
     from physicsnemo.cfd.evaluation.benchmarks.engine import (
         BenchmarkPolicyError,
         _enforce_benchmark_policy,

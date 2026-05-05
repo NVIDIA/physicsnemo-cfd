@@ -331,6 +331,7 @@ def line_plot(
 
 
 def register_line_plot() -> None:
+    """Register the ``line_plot`` (and ``plot_line`` alias) visual."""
     register_visual("line_plot", line_plot)
     register_visual("plot_line", line_plot)  # alias (same implementation)
     register_visual(

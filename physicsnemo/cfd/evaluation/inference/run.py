@@ -21,6 +21,7 @@ import physicsnemo.cfd.evaluation.models.wrappers  # noqa: F401 — register bui
 
 
 def _parse_overrides(args: list[str]) -> dict[str, str]:
+    """Parse trailing ``key=value`` (or ``--key=value``) tokens into an overrides dict."""
     overrides = {}
     for a in args:
         if "=" in a:
@@ -42,6 +43,7 @@ def _first_case_id(config: Config) -> str | None:
 
 
 def main() -> None:
+    """CLI entrypoint: forward a flat-YAML config to the benchmark engine for a single case."""
     parser = argparse.ArgumentParser(
         description=(
             "Compatibility wrapper for the benchmark evaluation engine (flat YAML only). "

@@ -150,6 +150,7 @@ class XMGNWrapper(CFDModel):
 
     @property
     def output_location(self) -> OutputLocation:
+        """See :attr:`CFDModel.output_location` (MeshGraphNet predicts at mesh points)."""
         return self.OUTPUT_LOCATION
 
     def __init__(self) -> None:
@@ -170,6 +171,7 @@ class XMGNWrapper(CFDModel):
         device: str,
         **kwargs: Any,
     ) -> "XMGNWrapper":
+        """Load MeshGraphNet weights and ``global_stats.json`` normalization onto ``device``."""
         self._device = device
         self._cuda_bf16_autocast = _parse_bool(
             kwargs.pop("cuda_bf16_autocast", None), default=True
@@ -230,6 +232,7 @@ class XMGNWrapper(CFDModel):
         return self
 
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:
+        """Read the surface mesh, build the PyG graph, and normalize node features."""
         if self._model is None or self._stats is None:
             raise RuntimeError("XMGNWrapper: call load() first")
         log_inference(
@@ -264,6 +267,7 @@ class XMGNWrapper(CFDModel):
         }
 
     def predict(self, model_input: ModelInput) -> RawOutput:
+        """Run MeshGraphNet on normalized node/edge features under the configured autocast context."""
         if self._model is None or self._stats is None:
             raise RuntimeError("XMGNWrapper: call load() first")
         log_inference("xmgn", "Running forward pass (predicting fields)…")
@@ -286,6 +290,7 @@ class XMGNWrapper(CFDModel):
         case: CanonicalCase,
         model_input: Optional[ModelInput] = None,
     ) -> Predictions:
+        """Denormalize predictions and interpolate (when subsampled) back to all mesh points."""
         if self._stats is None:
             raise RuntimeError("XMGNWrapper: call load() first")
         log_inference(

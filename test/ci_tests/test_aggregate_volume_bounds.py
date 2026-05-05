@@ -18,6 +18,7 @@ from physicsnemo.cfd.evaluation.reports.builtin.aggregate_volume import (
 
 
 def test_aggregate_filename_stem_sanitized() -> None:
+    """Filename stem replaces unsafe characters with ``_`` before suffixing ``_aggregate``."""
     assert (
         _aggregate_filename_stem("geo/trans", "data:set")
         == "geo_trans_data_set_aggregate"
@@ -25,6 +26,7 @@ def test_aggregate_filename_stem_sanitized() -> None:
 
 
 def test_union_axis_aligned_bounds_two_meshes() -> None:
+    """Axis-aligned bounds union of two meshes spans both bounding boxes."""
     a = pv.Sphere(center=(0.0, 0.0, 0.0), radius=1.0)
     b = pv.Sphere(center=(3.0, 0.0, 0.0), radius=1.0)
     u = _union_axis_aligned_bounds([a, b])
@@ -34,6 +36,7 @@ def test_union_axis_aligned_bounds_two_meshes() -> None:
 
 
 def test_axis_linspace_known_count_and_endpoints() -> None:
+    """Axis linspace returns the expected count and exact endpoints."""
     x = _axis_linspace(-3.5, 8.5, 0.03)
     expected_n = max(2, int(round(12.0 / 0.03)) + 1)
     assert len(x) == expected_n == 401
@@ -42,11 +45,13 @@ def test_axis_linspace_known_count_and_endpoints() -> None:
 
 
 def test_axis_linspace_zero_extent() -> None:
+    """Zero-extent input produces a single-point axis at the input value."""
     x = _axis_linspace(1.0, 1.0, 0.03)
     assert len(x) == 1 and float(x[0]) == pytest.approx(1.0)
 
 
 def test_axis_linspace_rejects_nonpositive_spacing() -> None:
+    """Zero or negative spacing raises ``ValueError``."""
     with pytest.raises(ValueError, match="positive"):
         _axis_linspace(0.0, 1.0, 0.0)
     with pytest.raises(ValueError, match="positive"):
@@ -54,6 +59,7 @@ def test_axis_linspace_rejects_nonpositive_spacing() -> None:
 
 
 def test_build_structured_grid_point_count_stable_for_near_identical_bounds() -> None:
+    """Floating-point-noise-sized differences in bounds do not change grid point count."""
     voxel = 0.1
     b1 = [0.0, 1.0, 0.0, 1.0, 0.0, 1.0]
     b2 = [0.0, 1.0 + 1e-15, 0.0, 1.0 + 1e-15, 0.0, 1.0 + 1e-15]

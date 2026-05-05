@@ -51,6 +51,7 @@ class VolumeBaselineWrapper(CFDModel):
 
     @property
     def output_location(self) -> OutputLocation:
+        """See :attr:`CFDModel.output_location` (point-located for the volume baseline)."""
         return self.OUTPUT_LOCATION
 
     def load(
@@ -60,6 +61,7 @@ class VolumeBaselineWrapper(CFDModel):
         device: str,
         **kwargs: Any,
     ) -> VolumeBaselineWrapper:
+        """No-op load; baseline stub keeps no state."""
         log_inference(
             "volume_baseline",
             "No checkpoint to load (baseline stub).",
@@ -67,6 +69,7 @@ class VolumeBaselineWrapper(CFDModel):
         return self
 
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:
+        """No-op for the baseline; returns ``None`` (no model input is constructed)."""
         log_inference(
             "volume_baseline",
             f"Preparing inputs (case {case.case_id}; mesh read in decode step).",
@@ -74,6 +77,7 @@ class VolumeBaselineWrapper(CFDModel):
         return None
 
     def predict(self, model_input: ModelInput) -> RawOutput:
+        """No-op forward pass; outputs are produced directly in :meth:`decode_outputs`."""
         log_inference("volume_baseline", "Running forward pass (no-op for baseline)…")
         return None
 
@@ -83,6 +87,7 @@ class VolumeBaselineWrapper(CFDModel):
         case: CanonicalCase,
         model_input: Optional[ModelInput] = None,
     ) -> Predictions:
+        """Return zeros for ``pressure``, ``velocity``, ``turbulent_viscosity`` sized to the volume mesh."""
         log_inference(
             "volume_baseline",
             f"Reading volume mesh and building baseline fields: {case.mesh_path}",

@@ -151,6 +151,7 @@ class TransolverWrapper(CFDModel):
 
     @property
     def output_location(self) -> OutputLocation:
+        """See :attr:`CFDModel.output_location` (Transolver predicts at cell centers)."""
         return self.OUTPUT_LOCATION
 
     @classmethod
@@ -185,6 +186,7 @@ class TransolverWrapper(CFDModel):
         device: str,
         **kwargs: Any,
     ) -> "TransolverWrapper":
+        """Load Transolver weights, datapipe, and surface/volume normalization onto ``device``."""
         if not _PHYSICSNEMO_AVAILABLE:
             raise RuntimeError(
                 "Transolver wrapper requires physicsnemo (Transolver, TransolverDataPipe, load_checkpoint)."
@@ -284,6 +286,7 @@ class TransolverWrapper(CFDModel):
         return self
 
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:
+        """Build the surface/volume data dict for the case and run it through the datapipe."""
         if self._datapipe is None:
             raise RuntimeError("TransolverWrapper: call load() first")
         log_inference(
@@ -325,6 +328,7 @@ class TransolverWrapper(CFDModel):
         return {"batch": batch, "datapipe": self._datapipe}
 
     def predict(self, model_input: ModelInput) -> RawOutput:
+        """Run blocked Transolver forward passes and return unscaled targets."""
         if self._model is None or self._datapipe is None:
             raise RuntimeError("TransolverWrapper: call load() first")
         log_inference("transolver", "Running forward pass (predicting fields)…")
@@ -375,6 +379,7 @@ class TransolverWrapper(CFDModel):
         case: CanonicalCase,
         model_input: Optional[ModelInput] = None,
     ) -> Predictions:
+        """Apply physical scales (``u``, ``ρu²``, ``u·L``) and emit canonical surface or volume keys."""
         pred = raw_output
         if pred.dim() == 3:
             pred = pred.squeeze(0)

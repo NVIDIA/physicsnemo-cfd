@@ -133,8 +133,10 @@ def plot_fields_volume(
 
 
 def register_field_comparison_surface() -> None:
+    """Register the ``field_comparison_surface`` visual."""
     register_visual("field_comparison_surface", field_comparison_surface)
 
 
 def register_plot_fields_volume() -> None:
+    """Register the ``plot_fields_volume`` visual."""
     register_visual("plot_fields_volume", plot_fields_volume)

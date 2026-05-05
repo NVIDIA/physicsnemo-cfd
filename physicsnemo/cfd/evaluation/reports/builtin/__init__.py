@@ -24,6 +24,7 @@ from physicsnemo.cfd.evaluation.reports.builtin.aggregate_volume import (
 
 
 def register_all_builtin_visuals() -> None:
+    """Register every built-in visual (surface/volume comparisons, line plots, hexbin, streamlines, aggregate)."""
     register_field_comparison_surface()
     register_plot_fields_volume()
     register_line_plot()

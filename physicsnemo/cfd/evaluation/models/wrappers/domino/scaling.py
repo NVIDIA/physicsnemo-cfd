@@ -41,6 +41,7 @@ class ScalingFactors:
 
     @classmethod
     def load(cls, filepath: str | Path) -> "ScalingFactors":
+        """Load a pickled :class:`ScalingFactors` instance from ``filepath``."""
         with open(filepath, "rb") as f:
             return pickle.load(f)
 

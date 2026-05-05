@@ -167,5 +167,6 @@ def design_trend(
 
 
 def register_design_visuals() -> None:
+    """Register the ``design_scatter`` and ``design_trend`` visuals."""
     register_visual("design_scatter", design_scatter)
     register_visual("design_trend", design_trend)

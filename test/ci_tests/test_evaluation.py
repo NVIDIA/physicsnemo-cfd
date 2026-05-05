@@ -57,6 +57,7 @@ def ci_test_legacy_metric() -> Iterator[None]:
     """Register a domain-agnostic legacy metric only for one test and remove after."""
 
     def legacy(_gt: dict, _pred: dict) -> float:
+        """Trivial legacy-style metric returning a constant for fixture wiring."""
         return 1.0
 
     register_metric(_CI_TEST_LEGACY_METRIC_NAME, legacy)
@@ -65,6 +66,7 @@ def ci_test_legacy_metric() -> Iterator[None]:
 
 
 def test_normalize_metrics_config_strings_and_dicts() -> None:
+    """Mixed string/dict metric specs normalize to ``(name, kwargs)`` pairs."""
     specs = _normalize_metrics_config(
         [
             "l2_pressure",
@@ -75,6 +77,7 @@ def test_normalize_metrics_config_strings_and_dicts() -> None:
 
 
 def test_reports_visual_case_ids_and_mesh_retention() -> None:
+    """Comparison-mesh retention honors ``visual_case_ids`` and the global ``enabled`` flag."""
     rep_all = ReportsConfig(
         enabled=True, visuals=["field_comparison_surface"], visual_case_ids=None
     )
@@ -93,6 +96,7 @@ def test_reports_visual_case_ids_and_mesh_retention() -> None:
 
 
 def test_apply_default_case_ids_to_visuals() -> None:
+    """Visuals without explicit ``case_ids`` inherit from ``reports.visual_case_ids``."""
     cfg = Config(
         reports=ReportsConfig(visual_case_ids=["a", "b"], visuals=[], enabled=True),
     )
@@ -108,6 +112,7 @@ def test_apply_default_case_ids_to_visuals() -> None:
 
 
 def test_config_from_dict_merges_output_and_reports() -> None:
+    """``Config.from_dict`` merges ``output`` field-name overrides and ``reports`` settings."""
     cfg = Config.from_dict(
         {
             "metrics": ["l2_pressure"],
@@ -128,6 +133,7 @@ def test_config_from_dict_merges_output_and_reports() -> None:
 
 
 def test_config_from_dict_surface_interpolate_output_keys() -> None:
+    """``output.surface_interpolate_*`` keys round-trip through ``Config.from_dict``."""
     cfg = Config.from_dict(
         {
             "output": {
@@ -143,6 +149,7 @@ def test_config_from_dict_surface_interpolate_output_keys() -> None:
 
 
 def test_config_from_dict_model_package_keys() -> None:
+    """``model.package`` and ``*_relpath`` keys load and are stripped from merged load kwargs."""
     cfg = Config.from_dict(
         {
             "model": {
@@ -160,6 +167,7 @@ def test_config_from_dict_model_package_keys() -> None:
 
 
 def test_list_metrics_includes_core_builtin() -> None:
+    """Built-in core metrics (``l2_pressure``, ``drag``) are visible to :func:`list_metrics`."""
     names = list_metrics()
     assert "l2_pressure" in names
     assert "drag" in names

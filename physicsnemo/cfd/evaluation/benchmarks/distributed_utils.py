@@ -162,6 +162,7 @@ def gather_merge_benchmark_outputs(
 
 
 def log_distributed_context(dm: Any | None, shard: tuple[int, int] | None) -> None:
+    """Log the current distributed rank/world-size and whether case sharding is active."""
     if dm is None:
         return
     if shard is None:

@@ -16,6 +16,7 @@ from physicsnemo.cfd.evaluation.models.wrappers.domino.inference import (
 
 
 def _vol_cfg(solution: dict[str, str]) -> OmegaConf:
+    """Build a minimal OmegaConf config with the given ``variables.volume.solution`` mapping."""
     return OmegaConf.create({"variables": {"volume": {"solution": solution}}})
 
 
@@ -50,6 +51,7 @@ def test_domino_volume_predictions_unknown_vector_field_raises() -> None:
 
 
 def test_domino_volume_predictions_drivaer_like_mapping_ok() -> None:
+    """A DrivAer-like config maps to canonical velocity/pressure/turbulent_viscosity outputs."""
     cfg = _vol_cfg(
         {
             "velocity": "vector",

@@ -11,12 +11,14 @@ from physicsnemo.cfd.postprocessing_tools.visualization import utils as viz_util
 
 
 def test_parse_hexbin_direction_basic() -> None:
+    """Direction string parses into ``(plane, is_neg)`` and is case-insensitive."""
     assert viz_utils._parse_hexbin_direction("XY") == ("XY", False)
     assert viz_utils._parse_hexbin_direction("-YZ") == ("YZ", True)
     assert viz_utils._parse_hexbin_direction("xz") == ("XZ", False)
 
 
 def test_parse_hexbin_direction_rejects_unknown() -> None:
+    """Unknown direction strings raise ``ValueError``."""
     with pytest.raises(ValueError, match="Unknown plot_projections_hexbin"):
         viz_utils._parse_hexbin_direction("XYZZ")
 
@@ -31,6 +33,7 @@ def test_parse_hexbin_direction_rejects_unknown() -> None:
     ],
 )
 def test_world_indices_for_plane(plane: str, expected: tuple[int, int]) -> None:
+    """Each plane name maps to the expected ``(x_idx, y_idx)`` world coordinate indices."""
     assert viz_utils._world_indices_for_plane(plane) == expected
 
 
@@ -48,4 +51,5 @@ def test_world_indices_for_plane(plane: str, expected: tuple[int, int]) -> None:
     ],
 )
 def test_matplotlib_inverts(plane: str, is_neg: bool, inv_x: bool, inv_y: bool) -> None:
+    """Negative-direction planes invert the matplotlib axis as expected."""
     assert viz_utils._matplotlib_inverts(plane, is_neg) == (inv_x, inv_y)

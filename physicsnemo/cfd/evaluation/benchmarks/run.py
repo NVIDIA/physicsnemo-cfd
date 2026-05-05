@@ -37,6 +37,7 @@ def _parse_overrides(args: list[str]) -> dict[str, str]:
 
 
 def main() -> None:
+    """CLI entrypoint: parse args, load config, and dispatch to :func:`run_benchmark_cli`."""
     parser = argparse.ArgumentParser(description="Run benchmark from config.")
     parser.add_argument(
         "--config",

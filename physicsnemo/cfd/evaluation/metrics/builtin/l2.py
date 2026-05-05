@@ -98,6 +98,7 @@ def l2_pressure_surface(
     mask: np.ndarray | None = None,
     **_: object,
 ) -> float:
+    """Relative L2 error of surface pressure (mesh-aware when ``comparison_mesh`` is available)."""
     mesh, dtype = resolve_comparison_mesh_for_metric(
         predictions,
         case=case,
@@ -142,6 +143,7 @@ def l2_pressure_volume(
     mask: np.ndarray | None = None,
     **_: object,
 ) -> float:
+    """Relative L2 error of volume pressure (mesh-aware when ``comparison_mesh`` is available)."""
     mesh, dtype = resolve_comparison_mesh_for_metric(
         predictions,
         case=case,
@@ -185,6 +187,7 @@ def l2_shear_stress(
     mask: np.ndarray | None = None,
     **_: object,
 ) -> dict[str, float]:
+    """Relative L2 error of surface shear stress (vector); returns ``{component: value}`` dict."""
     mesh, dtype = resolve_comparison_mesh_for_metric(
         predictions,
         case=case,
@@ -219,6 +222,7 @@ def l2_pressure_area_weighted(
     output: Any = None,
     **_: object,
 ) -> float:
+    """Area-weighted relative L2 error of surface pressure on the comparison mesh."""
     mesh, dtype = resolve_comparison_mesh_for_metric(
         predictions,
         case=case,
@@ -254,6 +258,7 @@ def l2_velocity(
     output: Any = None,
     **_: object,
 ) -> dict[str, float]:
+    """Relative L2 error of volume velocity (vector); returns ``{component: value}`` dict."""
     mesh, dtype = resolve_comparison_mesh_for_metric(
         predictions,
         case=case,
@@ -296,6 +301,7 @@ def l2_turbulent_viscosity(
     mask: np.ndarray | None = None,
     **_: object,
 ) -> float:
+    """Relative L2 error of volume turbulent viscosity (mesh-aware when available)."""
     mesh, dtype = resolve_comparison_mesh_for_metric(
         predictions,
         case=case,
@@ -329,7 +335,7 @@ def l2_turbulent_viscosity(
 
 
 def register_l2_metrics() -> None:
-    # Surface metrics
+    """Register the built-in surface and volume L2 metrics with the metric registry."""
     register_metric("l2_pressure", l2_pressure_surface, domain="surface")
     register_metric("l2_shear_stress", l2_shear_stress, domain="surface")
     register_metric(

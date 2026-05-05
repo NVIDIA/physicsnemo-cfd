@@ -366,4 +366,5 @@ def aggregate_volume_errors(
 
 
 def register_aggregate_volume() -> None:
+    """Register the ``aggregate_volume_errors`` visual."""
     register_visual("aggregate_volume_errors", aggregate_volume_errors)

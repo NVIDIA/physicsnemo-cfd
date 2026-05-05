@@ -176,6 +176,7 @@ class FIGNetWrapper(CFDModel):
 
     @property
     def output_location(self) -> OutputLocation:
+        """See :attr:`CFDModel.output_location` (FIGNet predicts at surface cell centers)."""
         return self.OUTPUT_LOCATION
 
     def __init__(self) -> None:
@@ -193,6 +194,7 @@ class FIGNetWrapper(CFDModel):
         device: str,
         **kwargs: Any,
     ) -> "FIGNetWrapper":
+        """Load FIGNet weights and ``global_stats.json`` normalization tensors onto ``device``."""
         self._device = device
         self._cuda_bf16_autocast = _parse_bool(
             kwargs.pop("cuda_bf16_autocast", None), default=True
@@ -235,6 +237,7 @@ class FIGNetWrapper(CFDModel):
         return self
 
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:
+        """Read surface mesh, compute normals/sizes, and normalize cell-center coordinates."""
         if self._model is None or self._stats is None:
             raise RuntimeError("FIGNetWrapper: call load() first")
         log_inference(
@@ -262,6 +265,7 @@ class FIGNetWrapper(CFDModel):
         }
 
     def predict(self, model_input: ModelInput) -> RawOutput:
+        """Run the FIGNet forward pass under the configured autocast context."""
         if self._model is None:
             raise RuntimeError("FIGNetWrapper: call load() first")
         log_inference("fignet", "Running forward pass (predicting fields)…")
@@ -281,6 +285,7 @@ class FIGNetWrapper(CFDModel):
         case: CanonicalCase,
         model_input: Optional[ModelInput] = None,
     ) -> Predictions:
+        """Denormalize predictions and interpolate (when subsampled) back to all surface cells."""
         if self._stats is None:
             raise RuntimeError("FIGNetWrapper: call load() first")
         log_inference(

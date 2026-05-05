@@ -52,6 +52,7 @@ class SurfaceBaselineWrapper(CFDModel):
 
     @property
     def output_location(self) -> OutputLocation:
+        """See :attr:`CFDModel.output_location` (cell-centered for the surface baseline)."""
         return self.OUTPUT_LOCATION
 
     def load(
@@ -61,6 +62,7 @@ class SurfaceBaselineWrapper(CFDModel):
         device: str,
         **kwargs: Any,
     ) -> SurfaceBaselineWrapper:
+        """No-op load; baseline stub keeps no state."""
         log_inference(
             "surface_baseline",
             "No checkpoint to load (baseline stub).",
@@ -68,6 +70,7 @@ class SurfaceBaselineWrapper(CFDModel):
         return self
 
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:
+        """No-op for the baseline; returns ``None`` (no model input is constructed)."""
         log_inference(
             "surface_baseline",
             f"Preparing inputs (case {case.case_id}; mesh read in decode step).",
@@ -75,6 +78,7 @@ class SurfaceBaselineWrapper(CFDModel):
         return None
 
     def predict(self, model_input: ModelInput) -> RawOutput:
+        """No-op forward pass; outputs are produced directly in :meth:`decode_outputs`."""
         log_inference("surface_baseline", "Running forward pass (no-op for baseline)…")
         return None
 
@@ -84,6 +88,7 @@ class SurfaceBaselineWrapper(CFDModel):
         case: CanonicalCase,
         model_input: Optional[ModelInput] = None,
     ) -> Predictions:
+        """Return zeros for ``pressure`` / ``shear_stress`` sized to surface cell or point count."""
         log_inference(
             "surface_baseline",
             f"Reading surface mesh and building baseline fields: {case.mesh_path}",

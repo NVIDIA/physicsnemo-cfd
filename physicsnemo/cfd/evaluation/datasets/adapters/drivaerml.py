@@ -96,12 +96,14 @@ class DrivAerMLAdapter(DatasetAdapter):
 
     @classmethod
     def inference_domain(cls) -> InferenceDomain:
+        """Class-level default inference domain (DrivAerML is surface-first)."""
         return "surface"
 
     @classmethod
     def inference_domain_from_kwargs(
         cls, kwargs: dict[str, Any] | None
     ) -> InferenceDomain:
+        """Resolve the inference domain from ``dataset.kwargs`` (defaults to ``surface``)."""
         kw = kwargs or {}
         raw = kw.get("inference_domain")
         return coerce_inference_domain_or_default(

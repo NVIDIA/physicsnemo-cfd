@@ -177,6 +177,7 @@ class GeoTransolverWrapper(CFDModel):
 
     @property
     def output_location(self) -> OutputLocation:
+        """See :attr:`CFDModel.output_location` (GeoTransolver predicts at cell centers)."""
         return self.OUTPUT_LOCATION
 
     @classmethod
@@ -215,6 +216,7 @@ class GeoTransolverWrapper(CFDModel):
         device: str,
         **kwargs: Any,
     ) -> "GeoTransolverWrapper":
+        """Load GeoTransolver weights and surface/volume normalization factors onto ``device``."""
         if not _PHYSICSNEMO_AVAILABLE:
             raise RuntimeError(
                 "GeoTransolver wrapper requires physicsnemo (GeoTransolver, TransolverDataPipe, load_checkpoint)."
@@ -334,6 +336,7 @@ class GeoTransolverWrapper(CFDModel):
         return dp
 
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:
+        """Build the surface/volume data dict, lazily (re)create the datapipe, and run it."""
         if self._model is None:
             raise RuntimeError("GeoTransolverWrapper: call load() first")
         log_inference(
@@ -389,6 +392,7 @@ class GeoTransolverWrapper(CFDModel):
         return {"batch": batch, "datapipe": self._datapipe}
 
     def predict(self, model_input: ModelInput) -> RawOutput:
+        """Run blocked GeoTransolver forward passes and return unscaled targets."""
         if self._model is None or self._datapipe is None:
             raise RuntimeError("GeoTransolverWrapper: call load() first")
         log_inference("geotransolver", "Running forward pass (predicting fields)…")
@@ -450,6 +454,7 @@ class GeoTransolverWrapper(CFDModel):
         case: CanonicalCase,
         model_input: Optional[ModelInput] = None,
     ) -> Predictions:
+        """Apply physical scales (``u``, ``ρu²``, ``u·L``) and emit canonical surface or volume keys."""
         pred = raw_output
         if pred.dim() == 3:
             pred = pred.squeeze(0)

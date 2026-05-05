@@ -14,6 +14,7 @@ from physicsnemo.cfd.evaluation.models.common_wrapper_utils.vtk_datapipe_io impo
 
 
 def test_run_id_from_case_id_accepts_run_prefix_and_integers() -> None:
+    """``run_<n>`` and bare integers (with surrounding whitespace) parse to the integer index."""
     assert run_id_from_case_id("run_1") == 1
     assert run_id_from_case_id("run_42") == 42
     assert run_id_from_case_id("7") == 7
@@ -33,5 +34,6 @@ def test_run_id_from_case_id_accepts_run_prefix_and_integers() -> None:
     ],
 )
 def test_run_id_from_case_id_rejects_unknown_forms(bad: str) -> None:
+    """Malformed case-id strings raise ``ValueError`` rather than silently returning ``None``."""
     with pytest.raises(ValueError):
         run_id_from_case_id(bad)
