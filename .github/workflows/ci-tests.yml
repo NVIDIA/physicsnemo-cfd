@@ -24,7 +24,7 @@ jobs:
           enable-cache: true
       - name: Install package and dev deps
         run: |
-          uv venv --python ${{ matrix.python-version }}
+          uv venv --clear --python ${{ matrix.python-version }}
           uv pip install --python .venv/bin/python -e ".[dev]"
       - name: Run CI tests
         run: .venv/bin/pytest -q test/ci_tests/
