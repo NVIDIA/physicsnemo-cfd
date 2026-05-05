@@ -28,11 +28,20 @@ from torch_geometric.data import Data as PyGData
 
 from physicsnemo.models.meshgraphnet import MeshGraphNet
 
-from physicsnemo.cfd.evaluation.common.checkpoint_compat import trusted_torch_load_context
-from physicsnemo.cfd.evaluation.common.io import load_global_stats, surface_polydata_from_case
+from physicsnemo.cfd.evaluation.common.checkpoint_compat import (
+    trusted_torch_load_context,
+)
+from physicsnemo.cfd.evaluation.common.io import (
+    load_global_stats,
+    surface_polydata_from_case,
+)
 from physicsnemo.cfd.evaluation.config import _parse_bool
 from physicsnemo.cfd.evaluation.common.interpolation import interpolate_to_mesh
-from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, build_predictions_dict
+from physicsnemo.cfd.evaluation.datasets.schema import (
+    CanonicalCase,
+    InferenceDomain,
+    build_predictions_dict,
+)
 from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
 from physicsnemo.cfd.evaluation.models.model_registry import (
     CFDModel,
@@ -66,7 +75,9 @@ def _build_pyg_graph(
     node_degree: int,
 ) -> tuple[PyGData, torch.Tensor, torch.Tensor, torch.Tensor]:
     n_points = len(points)
-    nbrs = NearestNeighbors(n_neighbors=node_degree + 1, algorithm="ball_tree").fit(points)
+    nbrs = NearestNeighbors(n_neighbors=node_degree + 1, algorithm="ball_tree").fit(
+        points
+    )
     _, indices = nbrs.kneighbors(points)
     src = np.repeat(np.arange(n_points), node_degree)
     dst = indices[:, 1:].flatten()
@@ -74,7 +85,9 @@ def _build_pyg_graph(
     dst_bi = np.concatenate([dst, src])
     edges = np.unique(np.stack([src_bi, dst_bi], axis=0), axis=1)
     self_loops = np.stack([np.arange(n_points), np.arange(n_points)], axis=0)
-    edge_index = torch.tensor(np.concatenate([edges, self_loops], axis=1), dtype=torch.long)
+    edge_index = torch.tensor(
+        np.concatenate([edges, self_loops], axis=1), dtype=torch.long
+    )
     coordinates = torch.tensor(points, dtype=torch.float32)
     normals_t = torch.tensor(normals, dtype=torch.float32)
     disp = coordinates[edge_index[0]] - coordinates[edge_index[1]]
@@ -94,16 +107,19 @@ def _prepare_node_features(
     normals = normals.to(device)
     coords_norm = (coords - stats["mean"]["coordinates"]) / stats["std"]["coordinates"]
     normals_norm = (normals - stats["mean"]["normals"]) / stats["std"]["normals"]
-    ndata = torch.cat([
-        coords_norm,
-        normals_norm,
-        torch.sin(2 * np.pi * coords_norm),
-        torch.cos(2 * np.pi * coords_norm),
-        torch.sin(4 * np.pi * coords_norm),
-        torch.cos(4 * np.pi * coords_norm),
-        torch.sin(8 * np.pi * coords_norm),
-        torch.cos(8 * np.pi * coords_norm),
-    ], dim=1)
+    ndata = torch.cat(
+        [
+            coords_norm,
+            normals_norm,
+            torch.sin(2 * np.pi * coords_norm),
+            torch.cos(2 * np.pi * coords_norm),
+            torch.sin(4 * np.pi * coords_norm),
+            torch.cos(4 * np.pi * coords_norm),
+            torch.sin(8 * np.pi * coords_norm),
+            torch.cos(8 * np.pi * coords_norm),
+        ],
+        dim=1,
+    )
     return ndata
 
 
@@ -155,11 +171,15 @@ class XMGNWrapper(CFDModel):
         **kwargs: Any,
     ) -> "XMGNWrapper":
         self._device = device
-        self._cuda_bf16_autocast = _parse_bool(kwargs.pop("cuda_bf16_autocast", None), default=True)
+        self._cuda_bf16_autocast = _parse_bool(
+            kwargs.pop("cuda_bf16_autocast", None), default=True
+        )
         self._max_points = kwargs.get("max_points")
         self._node_degree = kwargs.get("node_degree", 6)
         self._interpolation_k = kwargs.get("interpolation_k", 5)
-        self._surface_flip_normals = _parse_bool(kwargs.get("surface_flip_normals"), default=False)
+        self._surface_flip_normals = _parse_bool(
+            kwargs.get("surface_flip_normals"), default=False
+        )
         self._surface_auto_orient_normals = _parse_bool(
             kwargs.get("surface_auto_orient_normals"), default=True
         )
@@ -195,9 +215,13 @@ class XMGNWrapper(CFDModel):
                 norm_type="LayerNorm",
             ).to(device)
             with trusted_torch_load_context():
-                checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+                checkpoint = torch.load(
+                    checkpoint_path, map_location=device, weights_only=False
+                )
                 state_dict = checkpoint["model_state_dict"]
-                state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+                state_dict = {
+                    k.replace("module.", ""): v for k, v in state_dict.items()
+                }
                 model.load_state_dict(state_dict)
             model.eval()
             self._model = model
@@ -247,7 +271,9 @@ class XMGNWrapper(CFDModel):
         edata = model_input["edata"].to(self._device)
         edata_norm = (edata - self._stats["mean"]["x"]) / self._stats["std"]["x"]
         ac_ctx = (
-            cuda_bf16_autocast(self._device) if self._cuda_bf16_autocast else nullcontext()
+            cuda_bf16_autocast(self._device)
+            if self._cuda_bf16_autocast
+            else nullcontext()
         )
         with torch.inference_mode():
             with ac_ctx:
@@ -267,8 +293,14 @@ class XMGNWrapper(CFDModel):
             "Decoding outputs (denormalize + interpolate to mesh points)…",
         )
         pred = raw_output
-        pressure = pred[:, 0:1] * self._stats["std"]["pressure"] + self._stats["mean"]["pressure"]
-        wss = pred[:, 1:] * self._stats["std"]["shear_stress"] + self._stats["mean"]["shear_stress"]
+        pressure = (
+            pred[:, 0:1] * self._stats["std"]["pressure"]
+            + self._stats["mean"]["pressure"]
+        )
+        wss = (
+            pred[:, 1:] * self._stats["std"]["shear_stress"]
+            + self._stats["mean"]["shear_stress"]
+        )
         mesh = model_input.get("mesh") if model_input else None
         pred_coords = model_input.get("pred_coords") if model_input else None
 

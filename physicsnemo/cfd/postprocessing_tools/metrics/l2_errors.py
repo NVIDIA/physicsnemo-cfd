@@ -119,15 +119,9 @@ def compute_l2_errors(data, true_fields, pred_fields, bounds=None, dtype="point"
 
         if field_type[true] == "vector":
             # vector quantity
-            err_x = _relative_l2_normalized(
-                true_field[:, 0:1], pred_field[:, 0:1]
-            )
-            err_y = _relative_l2_normalized(
-                true_field[:, 1:2], pred_field[:, 1:2]
-            )
-            err_z = _relative_l2_normalized(
-                true_field[:, 2:3], pred_field[:, 2:3]
-            )
+            err_x = _relative_l2_normalized(true_field[:, 0:1], pred_field[:, 0:1])
+            err_y = _relative_l2_normalized(true_field[:, 1:2], pred_field[:, 1:2])
+            err_z = _relative_l2_normalized(true_field[:, 2:3], pred_field[:, 2:3])
 
             output_dict[f"{true}_x_l2_error"] = err_x
             output_dict[f"{true}_y_l2_error"] = err_y
@@ -190,15 +184,9 @@ def compute_area_weighted_l2_errors(data, true_fields, pred_fields, dtype="point
         if field_type[true] == "vector":
             ta = data.get_array(true, preference=dtype)
             pa = data.get_array(pred, preference=dtype)
-            err_x = _relative_l2_weighted_sqrt(
-                sw_areas, ta[:, 0:1], pa[:, 0:1]
-            )
-            err_y = _relative_l2_weighted_sqrt(
-                sw_areas, ta[:, 1:2], pa[:, 1:2]
-            )
-            err_z = _relative_l2_weighted_sqrt(
-                sw_areas, ta[:, 2:3], pa[:, 2:3]
-            )
+            err_x = _relative_l2_weighted_sqrt(sw_areas, ta[:, 0:1], pa[:, 0:1])
+            err_y = _relative_l2_weighted_sqrt(sw_areas, ta[:, 1:2], pa[:, 1:2])
+            err_z = _relative_l2_weighted_sqrt(sw_areas, ta[:, 2:3], pa[:, 2:3])
 
             output_dict[f"{true}_x_area_wt_l2_error"] = err_x
             output_dict[f"{true}_y_area_wt_l2_error"] = err_y

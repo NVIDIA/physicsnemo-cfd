@@ -21,7 +21,9 @@ from physicsnemo.cfd.evaluation.models.wrappers.domino.inference import (
     domino_count_output_features,
     domino_surface_test_step,
 )
-from physicsnemo.cfd.evaluation.models.wrappers.domino.scaling import load_scaling_factors_tensors
+from physicsnemo.cfd.evaluation.models.wrappers.domino.scaling import (
+    load_scaling_factors_tensors,
+)
 from physicsnemo.cfd.evaluation.models.wrappers.domino.wrapper import DominoWrapper
 
 __all__ = [

@@ -152,7 +152,9 @@ def _assign_field(
                 )
             mesh.point_data[name] = data
         else:
-            raise ValueError(f"Unsupported point array shape for {name!r}: {data.shape}")
+            raise ValueError(
+                f"Unsupported point array shape for {name!r}: {data.shape}"
+            )
 
 
 def build_comparison_mesh(
@@ -221,7 +223,11 @@ def build_comparison_mesh(
     for canonical, _ in pairs:
         if canonical in gt_map and canonical in gt and gt[canonical] is not None:
             _assign_field(mesh, preference, gt_map[canonical], gt[canonical])
-        if canonical in pred_map and canonical in predictions and predictions[canonical] is not None:
+        if (
+            canonical in pred_map
+            and canonical in predictions
+            and predictions[canonical] is not None
+        ):
             _assign_field(mesh, preference, pred_map[canonical], predictions[canonical])
 
     if (

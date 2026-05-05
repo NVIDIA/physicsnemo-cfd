@@ -11,7 +11,9 @@ from typing import Any
 from omegaconf import DictConfig, OmegaConf
 
 
-def hydra_config_to_benchmark_dict(cfg: DictConfig) -> tuple[dict[str, Any], str | list[str] | None]:
+def hydra_config_to_benchmark_dict(
+    cfg: DictConfig,
+) -> tuple[dict[str, Any], str | list[str] | None]:
     """
     Convert a composed Hydra ``DictConfig`` into a plain dict for ``Config.from_dict``
     and normalized ``case_id`` (same rules as ``workflows/benchmarking/main.py``).

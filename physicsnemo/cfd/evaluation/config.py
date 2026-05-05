@@ -64,11 +64,7 @@ def deep_merge_dict(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, 
     """Recursively merge ``overlay`` into ``base``; overlay wins for non-dict values and new keys."""
     result = dict(base)
     for key, val in overlay.items():
-        if (
-            key in result
-            and isinstance(result[key], dict)
-            and isinstance(val, dict)
-        ):
+        if key in result and isinstance(result[key], dict) and isinstance(val, dict):
             result[key] = deep_merge_dict(result[key], val)
         else:
             result[key] = val
@@ -183,7 +179,9 @@ class BenchmarkConfig:
     mode: str = "single"  # "single" | "matrix"
     models: list[ModelConfig] = field(default_factory=list)
     datasets: list[DatasetConfig] = field(default_factory=list)
-    reproducibility: ReproducibilityConfig = field(default_factory=ReproducibilityConfig)
+    reproducibility: ReproducibilityConfig = field(
+        default_factory=ReproducibilityConfig
+    )
 
 
 @dataclass
@@ -242,7 +240,9 @@ class OutputConfig:
     you want artifacts (PNGs, comparison meshes) to use a specific naming convention.
     """
 
-    mesh_field_names: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_MESH_FIELD_NAMES))
+    mesh_field_names: dict[str, str] = field(
+        default_factory=lambda: dict(DEFAULT_MESH_FIELD_NAMES)
+    )
     volume_mesh_field_names: dict[str, str] = field(
         default_factory=lambda: dict(DEFAULT_VOLUME_MESH_FIELD_NAMES)
     )
@@ -299,7 +299,9 @@ class Config:
             fail_on_all_skipped=bool(run_raw.get("fail_on_all_skipped", False)),
             fail_on_any_metric_nan=bool(run_raw.get("fail_on_any_metric_nan", False)),
         )
-        model = ModelConfig(**_strip_none_model_path_keys(dict(data.get("model") or {})))
+        model = ModelConfig(
+            **_strip_none_model_path_keys(dict(data.get("model") or {}))
+        )
         dataset = DatasetConfig(**(data.get("dataset") or {}))
         out = data.get("output") or {}
         mesh_fn = dict(DEFAULT_MESH_FIELD_NAMES)
@@ -326,7 +328,9 @@ class Config:
                 out.get("surface_interpolate_point_to_cell_for_metrics", False)
             ),
             surface_metrics_idw_k=int(out.get("surface_metrics_idw_k", 5)),
-            surface_metrics_idw_device=str(out.get("surface_metrics_idw_device", "cpu")),
+            surface_metrics_idw_device=str(
+                out.get("surface_metrics_idw_device", "cpu")
+            ),
         )
         metrics = data.get("metrics", ["l2_pressure"])
         bench = data.get("benchmark") or {}
@@ -359,7 +363,9 @@ class Config:
             reports = ReportsConfig(
                 enabled=bool(reports_raw.get("enabled", False)),
                 plugins=list(reports_raw.get("plugins") or []),
-                save_comparison_meshes=bool(reports_raw.get("save_comparison_meshes", False)),
+                save_comparison_meshes=bool(
+                    reports_raw.get("save_comparison_meshes", False)
+                ),
                 comparison_mesh_subdir=str(
                     reports_raw.get("comparison_mesh_subdir") or "comparison_meshes"
                 ),
@@ -388,6 +394,7 @@ class Config:
                 data = yaml.safe_load(f)
             else:
                 import json
+
                 data = json.load(f)
         if data is None:
             data = {}

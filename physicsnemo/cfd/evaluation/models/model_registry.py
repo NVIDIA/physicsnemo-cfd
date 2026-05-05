@@ -53,7 +53,9 @@ class CFDModel(ABC):
     REQUIRES_REMOTE_ASSETS: ClassVar[bool] = True
 
     @classmethod
-    def inference_domain_from_kwargs(cls, kwargs: dict[str, Any]) -> InferenceDomain | None:
+    def inference_domain_from_kwargs(
+        cls, kwargs: dict[str, Any]
+    ) -> InferenceDomain | None:
         """Deduce ``surface``/``volume`` before :meth:`load` when ``model.inference_domain`` is omitted.
 
         Return ``None`` to fall back to a **fixed** :attr:`INFERENCE_DOMAIN` on the class.

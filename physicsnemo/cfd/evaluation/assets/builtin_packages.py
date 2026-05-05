@@ -117,7 +117,10 @@ def register_builtin_model_packages() -> None:
             stats_relpath="domino_drivaerml_surface_checkpoint/global_stats.json",
             extra_resolve_relpaths=(
                 ("domino_config", "{checkpoint_parent}/config.yaml"),
-                ("_resolved_scaling_factors", "{checkpoint_parent}/scaling_factors.pkl"),
+                (
+                    "_resolved_scaling_factors",
+                    "{checkpoint_parent}/scaling_factors.pkl",
+                ),
             ),
         ),
     )
@@ -129,7 +132,10 @@ def register_builtin_model_packages() -> None:
             stats_relpath="domino_drivaerml_volume_checkpoint/global_stats.json",
             extra_resolve_relpaths=(
                 ("domino_config", "{checkpoint_parent}/config.yaml"),
-                ("_resolved_scaling_factors", "{checkpoint_parent}/scaling_factors.pkl"),
+                (
+                    "_resolved_scaling_factors",
+                    "{checkpoint_parent}/scaling_factors.pkl",
+                ),
             ),
         ),
     )

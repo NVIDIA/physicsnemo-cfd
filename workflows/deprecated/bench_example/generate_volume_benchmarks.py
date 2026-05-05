@@ -32,7 +32,10 @@ import numpy as np
 vtk.vtkObject.GlobalWarningDisplayOff()
 
 
-from physicsnemo.cfd.postprocessing_tools.visualization.utils import plot_line, plot_fields
+from physicsnemo.cfd.postprocessing_tools.visualization.utils import (
+    plot_line,
+    plot_fields,
+)
 from utils import (
     load_mapping,
     process_volume_results,

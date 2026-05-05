@@ -28,10 +28,19 @@ from physicsnemo.models.figconvnet.components.reductions import REDUCTION_TYPES
 from physicsnemo.models.figconvnet.geometries import GridFeaturesMemoryFormat
 
 from physicsnemo.cfd.evaluation.config import _parse_bool
-from physicsnemo.cfd.evaluation.common.checkpoint_compat import trusted_torch_load_context
-from physicsnemo.cfd.evaluation.common.io import load_global_stats, surface_polydata_from_case
+from physicsnemo.cfd.evaluation.common.checkpoint_compat import (
+    trusted_torch_load_context,
+)
+from physicsnemo.cfd.evaluation.common.io import (
+    load_global_stats,
+    surface_polydata_from_case,
+)
 from physicsnemo.cfd.evaluation.common.interpolation import interpolate_to_mesh
-from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, build_predictions_dict
+from physicsnemo.cfd.evaluation.datasets.schema import (
+    CanonicalCase,
+    InferenceDomain,
+    build_predictions_dict,
+)
 from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
 from physicsnemo.cfd.evaluation.models.model_registry import (
     CFDModel,
@@ -75,7 +84,11 @@ def _fignet_state_dict_from_checkpoint(checkpoint: object) -> dict[str, Any]:
     # Flat state_dict file: keys are parameter names, values are tensors.
     sample = [(k, v) for k, v in list(checkpoint.items())[:32] if torch.is_tensor(v)]
     if len(sample) >= 2 and all(isinstance(k, str) for k, _ in sample):
-        return {k.replace("module.", ""): v for k, v in checkpoint.items() if torch.is_tensor(v)}
+        return {
+            k.replace("module.", ""): v
+            for k, v in checkpoint.items()
+            if torch.is_tensor(v)
+        }
 
     keys_preview = list(checkpoint.keys())[:24]
     raise KeyError(
@@ -181,7 +194,9 @@ class FIGNetWrapper(CFDModel):
         **kwargs: Any,
     ) -> "FIGNetWrapper":
         self._device = device
-        self._cuda_bf16_autocast = _parse_bool(kwargs.pop("cuda_bf16_autocast", None), default=True)
+        self._cuda_bf16_autocast = _parse_bool(
+            kwargs.pop("cuda_bf16_autocast", None), default=True
+        )
         self._max_points = kwargs.get("max_points")
         self._interpolation_k = kwargs.get("interpolation_k", 4)
         log_inference("fignet", f"Loading normalization stats from {stats_path}")
@@ -251,7 +266,9 @@ class FIGNetWrapper(CFDModel):
             raise RuntimeError("FIGNetWrapper: call load() first")
         log_inference("fignet", "Running forward pass (predicting fields)…")
         ac_ctx = (
-            cuda_bf16_autocast(self._device) if self._cuda_bf16_autocast else nullcontext()
+            cuda_bf16_autocast(self._device)
+            if self._cuda_bf16_autocast
+            else nullcontext()
         )
         with torch.inference_mode():
             with ac_ctx:
@@ -283,12 +300,20 @@ class FIGNetWrapper(CFDModel):
             mesh = surface_polydata_from_case(case)
             mesh = mesh.compute_normals()
             mesh = mesh.compute_cell_sizes()
-            coords_denorm = torch.from_numpy(mesh.cell_centers().points).to(
-                self._device, dtype=torch.float32
-            ).unsqueeze(0)
+            coords_denorm = (
+                torch.from_numpy(mesh.cell_centers().points)
+                .to(self._device, dtype=torch.float32)
+                .unsqueeze(0)
+            )
         pred = raw_output
-        pressure = pred[..., :1] * self._stats["std"]["pressure"] + self._stats["mean"]["pressure"]
-        wss = pred[..., 1:] * self._stats["std"]["shear_stress"] + self._stats["mean"]["shear_stress"]
+        pressure = (
+            pred[..., :1] * self._stats["std"]["pressure"]
+            + self._stats["mean"]["pressure"]
+        )
+        wss = (
+            pred[..., 1:] * self._stats["std"]["shear_stress"]
+            + self._stats["mean"]["shear_stress"]
+        )
         target_points = mesh.cell_centers().points
         p_mesh, wss_mesh = interpolate_to_mesh(
             target_points,

@@ -28,19 +28,29 @@ import pyvista as pv
 from physicsnemo.cfd.postprocessing_tools.visualization.utils import plot_line
 from physicsnemo.cfd.evaluation.config import Config, OutputConfig
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
-from physicsnemo.cfd.evaluation.reports.context_helpers import get_comparison_mesh_for_case
+from physicsnemo.cfd.evaluation.reports.context_helpers import (
+    get_comparison_mesh_for_case,
+)
 from physicsnemo.cfd.evaluation.reports.registry import register_visual
 from physicsnemo.cfd.evaluation.reports.visual_filenames import benchmark_visual_png
 
 
-def _resolve_gt_pred_fields(output: OutputConfig, canonical_key: str) -> tuple[str, str]:
+def _resolve_gt_pred_fields(
+    output: OutputConfig, canonical_key: str
+) -> tuple[str, str]:
     """Surface or volume VTK names for a canonical key."""
-    if canonical_key in output.ground_truth_mesh_field_names and canonical_key in output.mesh_field_names:
+    if (
+        canonical_key in output.ground_truth_mesh_field_names
+        and canonical_key in output.mesh_field_names
+    ):
         return (
             output.ground_truth_mesh_field_names[canonical_key],
             output.mesh_field_names[canonical_key],
         )
-    if canonical_key in output.ground_truth_volume_mesh_field_names and canonical_key in output.volume_mesh_field_names:
+    if (
+        canonical_key in output.ground_truth_volume_mesh_field_names
+        and canonical_key in output.volume_mesh_field_names
+    ):
         return (
             output.ground_truth_volume_mesh_field_names[canonical_key],
             output.volume_mesh_field_names[canonical_key],
@@ -144,12 +154,24 @@ def line_plot_centerlines(
     output: OutputConfig = config.output
     field_true, field_pred = _resolve_gt_pred_fields(output, canonical_key)
 
-    yo = tuple(y_slice_origin) if y_slice_origin is not None and len(y_slice_origin) == 3 else (0.0, 0.0, 0.0)
+    yo = (
+        tuple(y_slice_origin)
+        if y_slice_origin is not None and len(y_slice_origin) == 3
+        else (0.0, 0.0, 0.0)
+    )
 
     ct_raw = coord_trim if coord_trim is not None else (None, None)
     ft_raw = field_trim if field_trim is not None else (None, None)
-    ct = (ct_raw[0], ct_raw[1]) if isinstance(ct_raw, (list, tuple)) and len(ct_raw) == 2 else (None, None)
-    ft = (ft_raw[0], ft_raw[1]) if isinstance(ft_raw, (list, tuple)) and len(ft_raw) == 2 else (None, None)
+    ct = (
+        (ct_raw[0], ct_raw[1])
+        if isinstance(ct_raw, (list, tuple)) and len(ct_raw) == 2
+        else (None, None)
+    )
+    ft = (
+        (ft_raw[0], ft_raw[1])
+        if isinstance(ft_raw, (list, tuple)) and len(ft_raw) == 2
+        else (None, None)
+    )
 
     for run_idx, run in enumerate(results):
         if run.get("skipped"):
@@ -178,7 +200,9 @@ def line_plot_centerlines(
                     mesh, y_slice_origin=yo, z_clip=z_clip
                 )
             except Exception as ex:
-                log_dataset("benchmark", f"line_plot_centerlines slice failed for {cid!r}: {ex}")
+                log_dataset(
+                    "benchmark", f"line_plot_centerlines slice failed for {cid!r}: {ex}"
+                )
                 continue
 
             for label, strip in (("top", top_raw), ("bottom", bottom_raw)):
@@ -189,7 +213,10 @@ def line_plot_centerlines(
                         f"Skip line_plot_centerlines {label} for {cid!r}: empty slice",
                     )
                     continue
-                if field_true not in line_pd.point_data or field_pred not in line_pd.point_data:
+                if (
+                    field_true not in line_pd.point_data
+                    or field_pred not in line_pd.point_data
+                ):
                     log_dataset(
                         "benchmark",
                         f"Skip line_plot_centerlines {label} for {cid!r}: missing {field_true!r} or {field_pred!r} on slice",
@@ -255,8 +282,16 @@ def line_plot(
 
     ct_raw = coord_trim if coord_trim is not None else (None, None)
     ft_raw = field_trim if field_trim is not None else (None, None)
-    ct = (ct_raw[0], ct_raw[1]) if isinstance(ct_raw, (list, tuple)) and len(ct_raw) == 2 else (None, None)
-    ft = (ft_raw[0], ft_raw[1]) if isinstance(ft_raw, (list, tuple)) and len(ft_raw) == 2 else (None, None)
+    ct = (
+        (ct_raw[0], ct_raw[1])
+        if isinstance(ct_raw, (list, tuple)) and len(ct_raw) == 2
+        else (None, None)
+    )
+    ft = (
+        (ft_raw[0], ft_raw[1])
+        if isinstance(ft_raw, (list, tuple)) and len(ft_raw) == 2
+        else (None, None)
+    )
 
     for run_idx, run in enumerate(results):
         if run.get("skipped"):
@@ -286,7 +321,9 @@ def line_plot(
                 flip=flip,
                 **kwargs,
             )
-            safe = benchmark_visual_png(model, dataset, cid, "line", canonical_key, plot_coord)
+            safe = benchmark_visual_png(
+                model, dataset, cid, "line", canonical_key, plot_coord
+            )
             out_png = vis_dir / safe
             fig.savefig(str(out_png), bbox_inches="tight", dpi=150)
             plt.close(fig)
@@ -296,5 +333,7 @@ def line_plot(
 def register_line_plot() -> None:
     register_visual("line_plot", line_plot)
     register_visual("plot_line", line_plot)  # alias (same implementation)
-    register_visual("line_plot_surface", line_plot)  # alias: same as line_plot for surface comparison meshes
+    register_visual(
+        "line_plot_surface", line_plot
+    )  # alias: same as line_plot for surface comparison meshes
     register_visual("line_plot_centerlines", line_plot_centerlines)

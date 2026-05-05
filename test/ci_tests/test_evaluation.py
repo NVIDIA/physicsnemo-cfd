@@ -13,11 +13,20 @@ import pytest
 import numpy as np
 import pyvista as pv
 
-from physicsnemo.cfd.postprocessing_tools.metrics.aero_forces import compute_drag_and_lift
+from physicsnemo.cfd.postprocessing_tools.metrics.aero_forces import (
+    compute_drag_and_lift,
+)
 from physicsnemo.cfd.postprocessing_tools.metrics.l2_errors import compute_l2_errors
-from physicsnemo.cfd.evaluation.benchmarks.engine import _call_metric, _normalize_metrics_config
-from physicsnemo.cfd.evaluation.benchmarks.report_plugins import _apply_default_case_ids_to_visuals
-from physicsnemo.cfd.evaluation.benchmarks.engine import _retain_comparison_mesh_for_visual_context
+from physicsnemo.cfd.evaluation.benchmarks.engine import (
+    _call_metric,
+    _normalize_metrics_config,
+)
+from physicsnemo.cfd.evaluation.benchmarks.report_plugins import (
+    _apply_default_case_ids_to_visuals,
+)
+from physicsnemo.cfd.evaluation.benchmarks.engine import (
+    _retain_comparison_mesh_for_visual_context,
+)
 from physicsnemo.cfd.evaluation.config import Config, OutputConfig, ReportsConfig
 from physicsnemo.cfd.evaluation.datasets.adapters.drivaerml import (
     DRIVAER_TURBULENT_VISCOSITY_NAMES,
@@ -25,7 +34,9 @@ from physicsnemo.cfd.evaluation.datasets.adapters.drivaerml import (
     DrivAerMLAdapter,
 )
 from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase
-from physicsnemo.cfd.evaluation.datasets.vtk_ground_truth import extract_volume_fields_from_mesh
+from physicsnemo.cfd.evaluation.datasets.vtk_ground_truth import (
+    extract_volume_fields_from_mesh,
+)
 from physicsnemo.cfd.evaluation.metrics import get_metric, list_metrics
 from physicsnemo.cfd.evaluation.metrics.builtin.l2 import (
     l2_pressure_surface,
@@ -33,7 +44,10 @@ from physicsnemo.cfd.evaluation.metrics.builtin.l2 import (
 )
 from physicsnemo.cfd.evaluation.common.io import surface_polydata_from_case
 from physicsnemo.cfd.evaluation.metrics.mesh_bridge import build_comparison_mesh
-from physicsnemo.cfd.evaluation.metrics.registry import register_metric, unregister_metric
+from physicsnemo.cfd.evaluation.metrics.registry import (
+    register_metric,
+    unregister_metric,
+)
 
 _CI_TEST_LEGACY_METRIC_NAME = "_ci_test_legacy_metric"
 
@@ -61,7 +75,9 @@ def test_normalize_metrics_config_strings_and_dicts() -> None:
 
 
 def test_reports_visual_case_ids_and_mesh_retention() -> None:
-    rep_all = ReportsConfig(enabled=True, visuals=["field_comparison_surface"], visual_case_ids=None)
+    rep_all = ReportsConfig(
+        enabled=True, visuals=["field_comparison_surface"], visual_case_ids=None
+    )
     assert _retain_comparison_mesh_for_visual_context(rep_all, "run_1") is True
     rep_sub = ReportsConfig(
         enabled=True,
@@ -70,7 +86,9 @@ def test_reports_visual_case_ids_and_mesh_retention() -> None:
     )
     assert _retain_comparison_mesh_for_visual_context(rep_sub, "run_1") is True
     assert _retain_comparison_mesh_for_visual_context(rep_sub, "run_99") is False
-    rep_off = ReportsConfig(enabled=False, visuals=["field_comparison_surface"], visual_case_ids=["run_1"])
+    rep_off = ReportsConfig(
+        enabled=False, visuals=["field_comparison_surface"], visual_case_ids=["run_1"]
+    )
     assert _retain_comparison_mesh_for_visual_context(rep_off, "run_1") is False
 
 
@@ -78,7 +96,10 @@ def test_apply_default_case_ids_to_visuals() -> None:
     cfg = Config(
         reports=ReportsConfig(visual_case_ids=["a", "b"], visuals=[], enabled=True),
     )
-    specs = [("line_plot", {"canonical_key": "pressure"}), ("line_plot", {"case_ids": ["c"], "canonical_key": "p"})]
+    specs = [
+        ("line_plot", {"canonical_key": "pressure"}),
+        ("line_plot", {"case_ids": ["c"], "canonical_key": "p"}),
+    ]
     out = _apply_default_case_ids_to_visuals(cfg, specs)
     assert out[0][1]["case_ids"] == ["a", "b"]
     assert out[1][1]["case_ids"] == ["c"]
@@ -168,6 +189,7 @@ def test_build_comparison_mesh_with_case_reference_geometry_skips_pv_read(
     monkeypatch, tmp_path
 ) -> None:
     """Benchmark path passes ``mesh_override=case.reference_geometry``; parity with explicit override."""
+
     def _fail_read(*args, **kwargs):
         raise AssertionError("comparison mesh load must not pv.read case.mesh_path")
 
@@ -233,7 +255,9 @@ def test_build_comparison_mesh_surface_zero_l2_when_identical() -> None:
 
 def test_build_comparison_mesh_volume_zero_l2_when_identical() -> None:
     """In-memory volume grid + synthetic numpy fields; matches surface zero-L2 regression for volume."""
-    volume = pv.ImageData(dimensions=(6, 5, 4), spacing=(1.0, 1.0, 1.0), origin=(0.0, 0.0, 0.0))
+    volume = pv.ImageData(
+        dimensions=(6, 5, 4), spacing=(1.0, 1.0, 1.0), origin=(0.0, 0.0, 0.0)
+    )
     n_pts = volume.n_points
     p = np.random.randn(n_pts).astype(np.float64)
     vel = np.random.randn(n_pts, 3).astype(np.float64)
@@ -400,7 +424,9 @@ def test_build_comparison_mesh_volume_point_dtype_matches_n_points() -> None:
     assert abs(float(d[f"{gtn}_l2_error"])) < 1e-10
 
 
-def test_build_comparison_mesh_volume_raises_when_reference_length_matches_neither_points_nor_cells() -> None:
+def test_build_comparison_mesh_volume_raises_when_reference_length_matches_neither_points_nor_cells() -> (
+    None
+):
     """Fail fast when volume GT/pred length disagrees with topology (mirrors surface mesh_bridge)."""
     grid = pv.ImageData(dimensions=(5, 6, 7))
     nc, np_ = grid.n_cells, grid.n_points
@@ -463,12 +489,18 @@ def test_drivaerml_adapter_finds_trim_only_volume_fields(tmp_path) -> None:
     case = adapter.load_case("run_1")
     assert case.inference_domain == "volume"
     assert case.ground_truth is not None
-    assert set(case.ground_truth.keys()) == {"pressure", "velocity", "turbulent_viscosity"}
+    assert set(case.ground_truth.keys()) == {
+        "pressure",
+        "velocity",
+        "turbulent_viscosity",
+    }
     assert case.ground_truth["velocity"].shape == (n, 3)
     assert case.ground_truth["turbulent_viscosity"].shape == (n,)
 
 
-def test_legacy_metric_call_without_extended_kwargs(ci_test_legacy_metric: None) -> None:
+def test_legacy_metric_call_without_extended_kwargs(
+    ci_test_legacy_metric: None,
+) -> None:
     """Metrics with a fixed (gt, pred) signature fall back when extended kwargs are rejected."""
     fn = get_metric(_CI_TEST_LEGACY_METRIC_NAME)
     out = _call_metric(

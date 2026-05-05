@@ -53,7 +53,9 @@ def main() -> None:
         default=None,
         help="Run only this case ID (overrides dataset.case_ids in config).",
     )
-    parser.add_argument("overrides", nargs="*", help="Key=value overrides, e.g. run.device=cuda:1")
+    parser.add_argument(
+        "overrides", nargs="*", help="Key=value overrides, e.g. run.device=cuda:1"
+    )
     args = parser.parse_args()
     overrides = _parse_overrides(getattr(args, "overrides", []))
     config = load_config(args.config, overrides, base=args.base_config)

@@ -10,7 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from physicsnemo.cfd.evaluation.benchmarks.hydra_utils import hydra_config_to_benchmark_dict
+from physicsnemo.cfd.evaluation.benchmarks.hydra_utils import (
+    hydra_config_to_benchmark_dict,
+)
 from physicsnemo.cfd.evaluation.config import Config
 
 pytest.importorskip("hydra")
@@ -52,7 +54,10 @@ def test_hydra_config_to_benchmark_dict_case_id_variants() -> None:
 
 
 def test_benchmark_policy_fail_on_all_skipped() -> None:
-    from physicsnemo.cfd.evaluation.benchmarks.engine import BenchmarkPolicyError, _enforce_benchmark_policy
+    from physicsnemo.cfd.evaluation.benchmarks.engine import (
+        BenchmarkPolicyError,
+        _enforce_benchmark_policy,
+    )
 
     cfg = Config.from_dict(
         {

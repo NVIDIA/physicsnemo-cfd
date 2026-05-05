@@ -12,7 +12,9 @@ from physicsnemo.cfd.evaluation.benchmarks.engine import _effective_inference_do
 from physicsnemo.cfd.evaluation.config import ModelConfig
 from physicsnemo.cfd.evaluation.datasets.adapters.drivaerml import DrivAerMLAdapter
 from physicsnemo.cfd.evaluation.models import get_model_wrapper
-from physicsnemo.cfd.evaluation.models.model_registry import get_inference_domain_for_model
+from physicsnemo.cfd.evaluation.models.model_registry import (
+    get_inference_domain_for_model,
+)
 
 
 def test_get_inference_domain_for_model_rejects_wrong_class_inference_domain() -> None:
@@ -33,7 +35,9 @@ def test_get_inference_domain_for_model_dual_mode_without_static_attr_raises() -
         get_inference_domain_for_model("transolver_surface")
 
 
-def test_effective_inference_domain_transolver_omitted_matches_load_default_surface() -> None:
+def test_effective_inference_domain_transolver_omitted_matches_load_default_surface() -> (
+    None
+):
     """No YAML inference_domain → same ``surface`` default as ``TransolverWrapper.load``."""
     mc = ModelConfig(name="transolver_surface", kwargs={})
     assert _effective_inference_domain(mc) == "surface"
@@ -75,7 +79,9 @@ def test_effective_inference_domain_domino_explicit_overrides_yaml(tmp_path) -> 
 
 
 def test_effective_inference_domain_normalizes_whitespace() -> None:
-    mc = ModelConfig(name="transolver_surface", kwargs={"inference_domain": "  Volume "})
+    mc = ModelConfig(
+        name="transolver_surface", kwargs={"inference_domain": "  Volume "}
+    )
     assert _effective_inference_domain(mc) == "volume"
 
 

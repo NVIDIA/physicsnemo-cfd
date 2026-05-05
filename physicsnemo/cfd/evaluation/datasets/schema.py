@@ -29,13 +29,13 @@ InferenceDomain = Literal["surface", "volume"]
 _VALID_INFERENCE_DOMAINS = frozenset({"surface", "volume"})
 
 
-def normalize_inference_domain_str(value: str, *, parameter: str = "inference_domain") -> InferenceDomain:
+def normalize_inference_domain_str(
+    value: str, *, parameter: str = "inference_domain"
+) -> InferenceDomain:
     """Return ``surface`` or ``volume`` after strip/lowercase; raise on typos."""
     normalized = value.strip().lower()
     if normalized not in _VALID_INFERENCE_DOMAINS:
-        raise ValueError(
-            f"{parameter} must be 'surface' or 'volume'; got {value!r}"
-        )
+        raise ValueError(f"{parameter} must be 'surface' or 'volume'; got {value!r}")
     return normalized  # type: ignore[return-value]
 
 
@@ -65,7 +65,9 @@ class CanonicalCase:
     case_id: str
     mesh_path: str
     mesh_type: str  # "point" | "cell" — field dof; "unknown" when GT extractor did not set location
-    ground_truth: dict[str, Any] | None = None  # surface: pressure, shear_stress; volume: pressure, velocity, …
+    ground_truth: dict[str, Any] | None = (
+        None  # surface: pressure, shear_stress; volume: pressure, velocity, …
+    )
     metadata: dict[str, Any] = field(default_factory=dict)
     inference_domain: InferenceDomain = "surface"
     #: Optional mesh already loaded by the dataset adapter (e.g. :class:`pyvista.PolyData` for

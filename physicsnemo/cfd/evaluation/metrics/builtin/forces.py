@@ -21,9 +21,15 @@ import traceback
 from typing import Any
 
 from physicsnemo.cfd.postprocessing_tools.metric_registry import register_metric
-from physicsnemo.cfd.postprocessing_tools.metrics.aero_forces import compute_drag_and_lift
-from physicsnemo.cfd.evaluation.metrics.mesh_bridge import resolve_comparison_mesh_for_metric
-from physicsnemo.cfd.evaluation.metrics.metric_exceptions import RECOVERABLE_MESH_METRIC_ERRORS
+from physicsnemo.cfd.postprocessing_tools.metrics.aero_forces import (
+    compute_drag_and_lift,
+)
+from physicsnemo.cfd.evaluation.metrics.mesh_bridge import (
+    resolve_comparison_mesh_for_metric,
+)
+from physicsnemo.cfd.evaluation.metrics.metric_exceptions import (
+    RECOVERABLE_MESH_METRIC_ERRORS,
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -69,7 +75,11 @@ def drag_error(
     **_: object,
 ) -> dict[str, float]:
     mesh, dtype = resolve_comparison_mesh_for_metric(
-        predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
+        predictions,
+        case=case,
+        comparison_mesh=comparison_mesh,
+        metric_dtype=metric_dtype,
+        output=output,
     )
     dd = drag_direction if drag_direction is not None else [1.0, 0.0, 0.0]
     if mesh is None or output is None:
@@ -119,7 +129,11 @@ def lift_error(
     **_: object,
 ) -> dict[str, float]:
     mesh, dtype = resolve_comparison_mesh_for_metric(
-        predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
+        predictions,
+        case=case,
+        comparison_mesh=comparison_mesh,
+        metric_dtype=metric_dtype,
+        output=output,
     )
     ld = lift_direction if lift_direction is not None else [0.0, 0.0, 1.0]
     if mesh is None or output is None:

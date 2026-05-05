@@ -14,7 +14,9 @@ from physicsnemo.cfd.evaluation.common.natural_sort import natural_sorted
 from physicsnemo.cfd.evaluation.config import Config, load_config
 import physicsnemo.cfd.evaluation.datasets.adapters  # noqa: F401
 from physicsnemo.cfd.evaluation.datasets import get_adapter
-from physicsnemo.cfd.evaluation.datasets.gt_alignment import resolve_dataset_kwargs_for_model
+from physicsnemo.cfd.evaluation.datasets.gt_alignment import (
+    resolve_dataset_kwargs_for_model,
+)
 import physicsnemo.cfd.evaluation.models.wrappers  # noqa: F401 — register built-in models
 
 
@@ -60,7 +62,9 @@ def main() -> None:
             "same order as the benchmark engine)."
         ),
     )
-    parser.add_argument("overrides", nargs="*", help="Key=value overrides, e.g. run.device=cuda:1")
+    parser.add_argument(
+        "overrides", nargs="*", help="Key=value overrides, e.g. run.device=cuda:1"
+    )
     args = parser.parse_args()
     overrides = _parse_overrides(getattr(args, "overrides", []))
     config = load_config(args.config, overrides, base=args.base_config)

@@ -157,9 +157,13 @@ def resample_cell_ground_truth_to_points(
 
     out: dict[str, np.ndarray] = {}
     if "_cfd_gt_pressure" in m_pt.point_data:
-        out["pressure"] = np.asarray(m_pt.point_data["_cfd_gt_pressure"], dtype=np.float32).ravel()
+        out["pressure"] = np.asarray(
+            m_pt.point_data["_cfd_gt_pressure"], dtype=np.float32
+        ).ravel()
     if "_cfd_gt_shear" in m_pt.point_data:
-        out["shear_stress"] = np.asarray(m_pt.point_data["_cfd_gt_shear"], dtype=np.float32)
+        out["shear_stress"] = np.asarray(
+            m_pt.point_data["_cfd_gt_shear"], dtype=np.float32
+        )
 
     if set(out.keys()) == set(ground_truth_cell.keys()):
         return out
@@ -207,7 +211,9 @@ def extract_pressure_wss_from_mesh(
             pt = _extract_fields_at_location(mesh, "point", pressure_names, shear_names)
             if pt:
                 return (pt, "point")
-            cell_gt = _extract_fields_at_location(mesh, "cell", pressure_names, shear_names)
+            cell_gt = _extract_fields_at_location(
+                mesh, "cell", pressure_names, shear_names
+            )
             if cell_gt:
                 try:
                     pt_resampled = resample_cell_ground_truth_to_points(mesh, cell_gt)
@@ -308,7 +314,9 @@ def extract_volume_fields_from_mesh(
         if turbulent_viscosity_names is None
         else turbulent_viscosity_names
     )
-    vel_names = DEFAULT_VOLUME_VELOCITY_NAMES if velocity_names is None else velocity_names
+    vel_names = (
+        DEFAULT_VOLUME_VELOCITY_NAMES if velocity_names is None else velocity_names
+    )
 
     match data_type:
         case "cell":

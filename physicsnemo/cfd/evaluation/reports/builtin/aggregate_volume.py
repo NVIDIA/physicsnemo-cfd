@@ -18,9 +18,13 @@ from physicsnemo.cfd.postprocessing_tools.interpolation.interpolate_mesh_to_pc i
 from physicsnemo.cfd.postprocessing_tools.visualization.utils import plot_fields
 from physicsnemo.cfd.evaluation.config import Config, OutputConfig
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
-from physicsnemo.cfd.evaluation.reports.context_helpers import get_comparison_mesh_for_case
+from physicsnemo.cfd.evaluation.reports.context_helpers import (
+    get_comparison_mesh_for_case,
+)
 from physicsnemo.cfd.evaluation.reports.registry import register_visual
-from physicsnemo.cfd.evaluation.reports.visual_filenames import join_benchmark_visual_segments
+from physicsnemo.cfd.evaluation.reports.visual_filenames import (
+    join_benchmark_visual_segments,
+)
 
 
 def _aggregate_filename_stem(model: str, dataset: str) -> str:
@@ -34,7 +38,14 @@ def _union_axis_aligned_bounds(meshes: Iterable[pv.DataSet]) -> list[float]:
     for mesh in meshes:
         b = mesh.bounds
         if u is None:
-            u = [float(b[0]), float(b[1]), float(b[2]), float(b[3]), float(b[4]), float(b[5])]
+            u = [
+                float(b[0]),
+                float(b[1]),
+                float(b[2]),
+                float(b[3]),
+                float(b[4]),
+                float(b[5]),
+            ]
             continue
         u[0] = min(u[0], float(b[0]))
         u[1] = max(u[1], float(b[1]))
@@ -85,9 +96,7 @@ def _axis_linspace(start: float, stop: float, spacing: float) -> np.ndarray:
     return np.linspace(lo, hi, n, dtype=np.float64)
 
 
-def _build_structured_grid(
-    bounds: list[float], voxel_size: float
-) -> pv.StructuredGrid:
+def _build_structured_grid(bounds: list[float], voxel_size: float) -> pv.StructuredGrid:
     """Create an axis-aligned structured grid from bounds and voxel size."""
     x = _axis_linspace(bounds[0], bounds[1], voxel_size)
     y = _axis_linspace(bounds[2], bounds[3], voxel_size)
@@ -147,10 +156,16 @@ def _run_aggregate_pipeline_for_meshes(
                 "[xmin, xmax, ymin, ymax, zmin, zmax]; "
                 f"got length {len(effective_bounds)}"
             )
-        log_dataset("benchmark", f"aggregate_volume_errors: bounds from config {effective_bounds}")
+        log_dataset(
+            "benchmark",
+            f"aggregate_volume_errors: bounds from config {effective_bounds}",
+        )
     else:
         effective_bounds = _union_axis_aligned_bounds(meshes)
-        log_dataset("benchmark", f"aggregate_volume_errors: bounds mesh union {effective_bounds}")
+        log_dataset(
+            "benchmark",
+            f"aggregate_volume_errors: bounds mesh union {effective_bounds}",
+        )
 
     all_vtk_names: list[str] = []
     for _, gt_name, pred_name in field_pairs:
@@ -163,15 +178,15 @@ def _run_aggregate_pipeline_for_meshes(
     template_grid: pv.StructuredGrid | None = None
     for mesh in meshes:
         grid = _build_structured_grid(effective_bounds, voxel_size)
-        grid = interpolate_mesh_to_pc(grid, mesh, all_vtk_names, mesh_dtype="point", device=interp_device)
+        grid = interpolate_mesh_to_pc(
+            grid, mesh, all_vtk_names, mesh_dtype="point", device=interp_device
+        )
 
         if template_grid is None:
             template_grid = grid
 
         for _, gt_name, pred_name in field_pairs:
-            error = np.abs(
-                grid.point_data[gt_name] - grid.point_data[pred_name]
-            )
+            error = np.abs(grid.point_data[gt_name] - grid.point_data[pred_name])
             error_arrays[f"{gt_name}_error"].append(error)
 
     case_count = len(meshes)
@@ -179,7 +194,9 @@ def _run_aggregate_pipeline_for_meshes(
         raise RuntimeError(
             "aggregate_volume_errors: template grid is unset after processing meshes (internal error)."
         )
-    log_dataset("benchmark", f"aggregate_volume_errors: aggregating over {case_count} cases.")
+    log_dataset(
+        "benchmark", f"aggregate_volume_errors: aggregating over {case_count} cases."
+    )
 
     fields_to_plot: list[str] = []
     for key, arrays in error_arrays.items():
@@ -281,11 +298,15 @@ def aggregate_volume_errors(
     vis_dir.mkdir(parents=True, exist_ok=True)
 
     interp_device = device if device is not None else config.run.device
-    log_dataset("benchmark", f"aggregate_volume_errors: interpolation device={interp_device!r}")
+    log_dataset(
+        "benchmark", f"aggregate_volume_errors: interpolation device={interp_device!r}"
+    )
 
     field_pairs = _resolve_volume_field_pairs(config.output, canonical_keys)
     if not field_pairs:
-        log_dataset("benchmark", "aggregate_volume_errors: no valid field pairs; skipping.")
+        log_dataset(
+            "benchmark", "aggregate_volume_errors: no valid field pairs; skipping."
+        )
         return
 
     meshes_by_run = (context or {}).get("comparison_meshes_by_run")
@@ -338,7 +359,10 @@ def aggregate_volume_errors(
         processed += 1
 
     if processed == 0:
-        log_dataset("benchmark", "aggregate_volume_errors: no benchmark rows produced outputs; skipping.")
+        log_dataset(
+            "benchmark",
+            "aggregate_volume_errors: no benchmark rows produced outputs; skipping.",
+        )
 
 
 def register_aggregate_volume() -> None:

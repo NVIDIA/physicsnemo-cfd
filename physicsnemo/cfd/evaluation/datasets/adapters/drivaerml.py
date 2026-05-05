@@ -22,7 +22,11 @@ from typing import Any
 import pyvista as pv
 
 from physicsnemo.cfd.evaluation.datasets.adapter_registry import DatasetAdapter
-from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, coerce_inference_domain_or_default
+from physicsnemo.cfd.evaluation.datasets.schema import (
+    CanonicalCase,
+    InferenceDomain,
+    coerce_inference_domain_or_default,
+)
 from physicsnemo.cfd.evaluation.common.natural_sort import natural_sorted
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.datasets.vtk_ground_truth import (
@@ -36,7 +40,13 @@ from physicsnemo.cfd.evaluation.datasets.vtk_ground_truth import (
 #: DrivAer/OpenFOAM volume VTUs commonly expose ``*MeanTrim`` (truncated-domain time averages).
 #: The adapter prepends these to the generic CFD names so default DrivAer runs find velocity
 #: and νₜ without requiring per-config ``dataset.kwargs.velocity_field_names`` overrides.
-DRIVAER_VOLUME_VELOCITY_NAMES: tuple[str, ...] = ("UMeanTrim", "UMean", "U", "velocity", "Velocity")
+DRIVAER_VOLUME_VELOCITY_NAMES: tuple[str, ...] = (
+    "UMeanTrim",
+    "UMean",
+    "U",
+    "velocity",
+    "Velocity",
+)
 DRIVAER_TURBULENT_VISCOSITY_NAMES: tuple[str, ...] = (
     "nutMeanTrim",
     "nutMean",
@@ -89,7 +99,9 @@ class DrivAerMLAdapter(DatasetAdapter):
         return "surface"
 
     @classmethod
-    def inference_domain_from_kwargs(cls, kwargs: dict[str, Any] | None) -> InferenceDomain:
+    def inference_domain_from_kwargs(
+        cls, kwargs: dict[str, Any] | None
+    ) -> InferenceDomain:
         kw = kwargs or {}
         raw = kw.get("inference_domain")
         return coerce_inference_domain_or_default(
@@ -102,7 +114,9 @@ class DrivAerMLAdapter(DatasetAdapter):
         self.root = Path(root)
         if not self.root.exists():
             raise FileNotFoundError(f"DrivAerML root not found: {self.root}")
-        self._inference_mode: InferenceDomain = self.inference_domain_from_kwargs(kwargs)
+        self._inference_mode: InferenceDomain = self.inference_domain_from_kwargs(
+            kwargs
+        )
 
         self._gt_data_type = kwargs.get("gt_data_type", kwargs.get("gt_prefer", "auto"))
         pn = kwargs.get("pressure_field_names")
@@ -241,10 +255,14 @@ class DrivAerMLAdapter(DatasetAdapter):
             data_type=v_gt_type,
             turbulent_viscosity_names=self._nut_names if self._nut_names else None,
             velocity_names=self._vel_names if self._vel_names else None,
-            pressure_names=self._volume_pressure_names if self._volume_pressure_names else None,
+            pressure_names=(
+                self._volume_pressure_names if self._volume_pressure_names else None
+            ),
         )
         ground_truth = gt_dict if gt_dict else None
-        mesh_type = gt_loc if gt_loc is not None else "point"  # nodal VTU default; matches mesh_bridge volume
+        mesh_type = (
+            gt_loc if gt_loc is not None else "point"
+        )  # nodal VTU default; matches mesh_bridge volume
 
         meta: dict[str, Any] = {
             "dataset": "drivaerml",

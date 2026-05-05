@@ -92,9 +92,9 @@ def interpolate_to_mesh(
     pred_coords = np.asarray(pred_coords, dtype=np.float64)
     mesh_points = np.asarray(mesh_points, dtype=np.float64)
 
-    nbrs = NearestNeighbors(n_neighbors=min(k, len(pred_coords)), algorithm="ball_tree").fit(
-        pred_coords
-    )
+    nbrs = NearestNeighbors(
+        n_neighbors=min(k, len(pred_coords)), algorithm="ball_tree"
+    ).fit(pred_coords)
     distances, indices = nbrs.kneighbors(mesh_points)
 
     if k == 1:
@@ -107,7 +107,9 @@ def interpolate_to_mesh(
     return p_mesh.astype(np.float32), wss_mesh.astype(np.float32)
 
 
-def surface_interp_meta_from_data_dict(data_dict: dict[str, Any], dp: Any) -> dict[str, Any]:
+def surface_interp_meta_from_data_dict(
+    data_dict: dict[str, Any], dp: Any
+) -> dict[str, Any]:
     """Build normalization metadata matching ``TransolverDataPipe.preprocess_surface_data``.
 
     Embeddings store translated / scale-normalized coordinates; full mesh cell centers must use

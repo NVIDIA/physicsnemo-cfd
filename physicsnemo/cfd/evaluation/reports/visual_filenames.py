@@ -12,7 +12,9 @@ def sanitize_visual_fragment(s: str) -> str:
 
     Mirrors the logic used for aggregate-volume stems so benchmarks across plot types stay consistent.
     """
-    return "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "_" for ch in str(s))
+    return "".join(
+        ch if ch.isalnum() or ch in ("-", "_", ".") else "_" for ch in str(s)
+    )
 
 
 def join_benchmark_visual_segments(*segments: str) -> str:
@@ -23,4 +25,3 @@ def join_benchmark_visual_segments(*segments: str) -> str:
 def benchmark_visual_png(*segments: str) -> str:
     """basename for ``.png`` under ``visuals/`` (suffix included)."""
     return join_benchmark_visual_segments(*segments) + ".png"
-

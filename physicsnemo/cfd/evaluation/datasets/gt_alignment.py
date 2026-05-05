@@ -21,7 +21,9 @@ from __future__ import annotations
 from typing import Any
 
 from physicsnemo.cfd.evaluation.config import _parse_bool
-from physicsnemo.cfd.evaluation.models.model_registry import get_output_location_for_model
+from physicsnemo.cfd.evaluation.models.model_registry import (
+    get_output_location_for_model,
+)
 
 # Keys used only for resolution; stripped before passing kwargs to dataset adapters.
 _ALIGN_KEYS = frozenset({"align_ground_truth_to_model"})

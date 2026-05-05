@@ -14,7 +14,10 @@ import re
 from pathlib import Path
 from typing import Any, Type
 
-from physicsnemo.cfd.evaluation.assets.package import Package, maybe_touch_hf_config_json
+from physicsnemo.cfd.evaluation.assets.package import (
+    Package,
+    maybe_touch_hf_config_json,
+)
 from physicsnemo.cfd.evaluation.assets.registry import AssetSpec, get_default_asset
 from physicsnemo.cfd.evaluation.config import ModelConfig
 
@@ -42,7 +45,9 @@ def _expand_checkpoint_parent(rel_template: str, ck_rel: str) -> str:
     return rel_template.replace(_CHECKPOINT_PARENT, parent)
 
 
-def _asset_identity(pkg_root: str, ck_rel: str, st_rel: str, spec: AssetSpec | None) -> str:
+def _asset_identity(
+    pkg_root: str, ck_rel: str, st_rel: str, spec: AssetSpec | None
+) -> str:
     ident = f"package:{pkg_root}|{ck_rel}|{st_rel}"
     if spec and spec.extra_resolve_relpaths:
         for k, rel_t in spec.extra_resolve_relpaths:
@@ -96,14 +101,12 @@ def resolve_model_assets(
             f"``register_default_asset`` for this model name."
         )
 
-    yaml_ck = (
-        (model_config.checkpoint_relpath or "").strip()
-        or str(model_config.kwargs.get("checkpoint_relpath") or "").strip()
-    )
-    yaml_st = (
-        (model_config.stats_relpath or "").strip()
-        or str(model_config.kwargs.get("stats_relpath") or "").strip()
-    )
+    yaml_ck = (model_config.checkpoint_relpath or "").strip() or str(
+        model_config.kwargs.get("checkpoint_relpath") or ""
+    ).strip()
+    yaml_st = (model_config.stats_relpath or "").strip() or str(
+        model_config.kwargs.get("stats_relpath") or ""
+    ).strip()
     if bool(yaml_ck) ^ bool(yaml_st):
         raise ValueError(
             f"Model {model_config.name!r}: set both ``checkpoint_relpath`` and ``stats_relpath``, "

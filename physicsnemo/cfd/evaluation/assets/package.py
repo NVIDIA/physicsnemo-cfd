@@ -26,7 +26,9 @@ def _parse_hf_uri(root: str) -> tuple[str, str]:
     """Return (repo_id, revision) from ``hf://org/name@rev``."""
     m = _HF_URI_RE.match(root.strip())
     if not m:
-        raise ValueError(f"Invalid hf:// URI: {root!r} (expected hf://org/repo@revision)")
+        raise ValueError(
+            f"Invalid hf:// URI: {root!r} (expected hf://org/repo@revision)"
+        )
     repo = m.group("repo").strip("/")
     rev = (m.group("rev") or "main").strip()
     return repo, rev
@@ -58,7 +60,9 @@ class Package:
         """Default under ``~/.cache/physicsnemo-cfd/models`` or ``PHYSICSNEMO_CFD_MODEL_CACHE``."""
         base = os.environ.get(
             "PHYSICSNEMO_CFD_MODEL_CACHE",
-            os.path.join(os.path.expanduser("~"), ".cache", "physicsnemo-cfd", "models"),
+            os.path.join(
+                os.path.expanduser("~"), ".cache", "physicsnemo-cfd", "models"
+            ),
         )
         path = os.path.join(base, subpath) if subpath else base
         os.makedirs(path, exist_ok=True)

@@ -63,6 +63,7 @@ import torch
 class BenchmarkPolicyError(RuntimeError):
     """Raised when :func:`run_benchmark` policy flags reject the result (e.g. all runs skipped)."""
 
+
 from physicsnemo.cfd.evaluation.benchmarks.distributed_utils import (
     effective_device_str,
     gather_merge_benchmark_outputs,
@@ -90,14 +91,18 @@ from physicsnemo.cfd.evaluation.config import (
     RunConfig,
 )
 from physicsnemo.cfd.evaluation.datasets import get_adapter
-from physicsnemo.cfd.evaluation.datasets.gt_alignment import resolve_dataset_kwargs_for_model
+from physicsnemo.cfd.evaluation.datasets.gt_alignment import (
+    resolve_dataset_kwargs_for_model,
+)
 from physicsnemo.cfd.evaluation.assets import resolve_model_assets
 from physicsnemo.cfd.evaluation.common.inference_seed import seed_inference_rng
 from physicsnemo.cfd.evaluation.common.natural_sort import natural_sorted
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.datasets.schema import normalize_inference_domain_str
 from physicsnemo.cfd.evaluation.models import get_model_wrapper
-from physicsnemo.cfd.evaluation.models.model_registry import get_inference_domain_for_model
+from physicsnemo.cfd.evaluation.models.model_registry import (
+    get_inference_domain_for_model,
+)
 from physicsnemo.cfd.evaluation.metrics import get_metric
 from physicsnemo.cfd.evaluation.metrics.mesh_bridge import build_comparison_mesh
 
@@ -177,7 +182,9 @@ def _audit_traceback_entries(
     return out
 
 
-def _retain_comparison_mesh_for_visual_context(reports: ReportsConfig | None, case_id: str) -> bool:
+def _retain_comparison_mesh_for_visual_context(
+    reports: ReportsConfig | None, case_id: str
+) -> bool:
     """
     Determine if the comparison mesh for this case should be kept for report visuals.
 
@@ -303,7 +310,10 @@ def _save_inference_mesh_if_requested(
     import pyvista as pv
 
     m_dom = case.inference_domain
-    out_path = Path(output_dir) / f"inference_{model_config.name}_{case_id}{'.vtp' if m_dom == 'surface' else '.vtu'}"
+    out_path = (
+        Path(output_dir)
+        / f"inference_{model_config.name}_{case_id}{'.vtp' if m_dom == 'surface' else '.vtu'}"
+    )
     log_dataset(
         dataset_name,
         f"Writing inference mesh (predictions only) to {out_path}…",
@@ -331,7 +341,9 @@ def _save_inference_mesh_if_requested(
                     mesh = mesh.cast_to_unstructured_grid()
             names = output_config.volume_mesh_field_names
 
-        data_target = mesh.cell_data if wrapper.output_location == "cell" else mesh.point_data
+        data_target = (
+            mesh.cell_data if wrapper.output_location == "cell" else mesh.point_data
+        )
         for canonical_key, mesh_name in names.items():
             if canonical_key in predictions:
                 data_target[mesh_name] = predictions[canonical_key]
@@ -883,16 +895,24 @@ def run_benchmark(
         matrix_case_cache.clear()
 
     if dm is not None and dm.world_size > 1 and config.run.distributed:
-        results, meshes_by_run = gather_merge_benchmark_outputs(dm, results, meshes_by_run)
+        results, meshes_by_run = gather_merge_benchmark_outputs(
+            dm, results, meshes_by_run
+        )
 
     if is_rank0 and config.benchmark.reproducibility.save_artifacts:
         artifacts = Path(output_dir) / "benchmark_artifacts.json"
         skipped = [r for r in results if r.get("skipped")]
         log_dataset("benchmark", f"Writing artifacts to {artifacts}…")
         with open(artifacts, "w") as f:
-            inference_failures = _audit_traceback_entries(results, "inference_mesh_write_error")
-            cmp_build_failures = _audit_traceback_entries(results, "comparison_mesh_build_error")
-            cmp_save_failures = _audit_traceback_entries(results, "comparison_mesh_save_error")
+            inference_failures = _audit_traceback_entries(
+                results, "inference_mesh_write_error"
+            )
+            cmp_build_failures = _audit_traceback_entries(
+                results, "comparison_mesh_build_error"
+            )
+            cmp_save_failures = _audit_traceback_entries(
+                results, "comparison_mesh_save_error"
+            )
             payload: dict[str, Any] = {
                 "config": _config_to_dict(config),
                 "results_summary": [
@@ -921,7 +941,9 @@ def run_benchmark(
     if is_rank0 and config.reports.enabled and config.reports.visuals:
         import physicsnemo.cfd.evaluation.reports  # noqa: F401 — register built-in visuals
 
-        from physicsnemo.cfd.evaluation.benchmarks.report_plugins import run_optional_report_plugins
+        from physicsnemo.cfd.evaluation.benchmarks.report_plugins import (
+            run_optional_report_plugins,
+        )
 
         log_dataset("benchmark", "Running reports.visuals from benchmark results…")
         run_optional_report_plugins(

@@ -22,7 +22,9 @@ import pandas as pd
 import warnings
 import numpy as np
 
-from physicsnemo.cfd.postprocessing_tools.metrics.aero_forces import compute_drag_and_lift
+from physicsnemo.cfd.postprocessing_tools.metrics.aero_forces import (
+    compute_drag_and_lift,
+)
 from physicsnemo.cfd.postprocessing_tools.metrics.l2_errors import (
     compute_l2_errors,
     compute_area_weighted_l2_errors,

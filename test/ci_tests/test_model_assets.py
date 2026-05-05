@@ -22,9 +22,13 @@ from physicsnemo.cfd.evaluation.assets import (
     register_default_asset,
     resolve_model_assets,
 )
-from physicsnemo.cfd.evaluation.benchmarks.metrics_cache import metrics_cache_fingerprint
+from physicsnemo.cfd.evaluation.benchmarks.metrics_cache import (
+    metrics_cache_fingerprint,
+)
 from physicsnemo.cfd.evaluation.config import ModelConfig
-from physicsnemo.cfd.evaluation.models.wrappers.surface_baseline import SurfaceBaselineWrapper
+from physicsnemo.cfd.evaluation.models.wrappers.surface_baseline import (
+    SurfaceBaselineWrapper,
+)
 
 
 def test_package_resolve_local_file(tmp_path: Path) -> None:
@@ -88,9 +92,7 @@ def test_builtin_domino_extra_assets_use_checkpoint_parent_placeholder() -> None
     spec = get_default_asset("domino_surface")
     assert spec is not None
     assert len(spec.extra_resolve_relpaths) == 2
-    assert any(
-        "{checkpoint_parent}" in rel for _, rel in spec.extra_resolve_relpaths
-    )
+    assert any("{checkpoint_parent}" in rel for _, rel in spec.extra_resolve_relpaths)
     kinds = {k for k, _ in spec.extra_resolve_relpaths}
     assert "domino_config" in kinds and "_resolved_scaling_factors" in kinds
 
@@ -107,7 +109,9 @@ def test_resolve_model_assets_explicit_paths() -> None:
 
 def test_resolve_model_assets_missing_raises() -> None:
     """Model name with no builtin or explicit paths must raise."""
-    cfg = ModelConfig(name="_not_a_builtin_benchmark_model", checkpoint="", stats_path="")
+    cfg = ModelConfig(
+        name="_not_a_builtin_benchmark_model", checkpoint="", stats_path=""
+    )
     with pytest.raises(ValueError, match="checkpoint"):
         resolve_model_assets(cfg, _TrainedStub)
 
@@ -161,10 +165,17 @@ def test_metrics_cache_fingerprint_asset_identity_changes_digest() -> None:
         metric_specs=[("l2_pressure", {})],
     )
     fp1 = metrics_cache_fingerprint(**base)
-    fp2 = metrics_cache_fingerprint(**{**base, "model_asset_identity": "package:hf://a/b@main|ck2|st"})
+    fp2 = metrics_cache_fingerprint(
+        **{**base, "model_asset_identity": "package:hf://a/b@main|ck2|st"}
+    )
     assert fp1 != fp2
 
     fp_explicit = metrics_cache_fingerprint(
-        **{**base, "model_asset_identity": None, "model_checkpoint": "a.pt", "model_stats_path": "b.json"},
+        **{
+            **base,
+            "model_asset_identity": None,
+            "model_checkpoint": "a.pt",
+            "model_stats_path": "b.json",
+        },
     )
     assert fp_explicit != fp1

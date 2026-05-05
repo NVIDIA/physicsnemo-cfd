@@ -12,7 +12,9 @@ from typing import Any
 import matplotlib.pyplot as plt
 import pyvista as pv
 
-from physicsnemo.cfd.postprocessing_tools.visualization.utils import plot_projections_hexbin
+from physicsnemo.cfd.postprocessing_tools.visualization.utils import (
+    plot_projections_hexbin,
+)
 from physicsnemo.cfd.evaluation.config import Config
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.reports.registry import register_visual
@@ -40,7 +42,9 @@ def projections_hexbin(
     """
     del context, results, config
     if not mesh_paths:
-        raise ValueError("projections_hexbin requires non-empty ``mesh_paths`` (list of VTK paths).")
+        raise ValueError(
+            "projections_hexbin requires non-empty ``mesh_paths`` (list of VTK paths)."
+        )
     meshes = [pv.read(p) for p in mesh_paths]
     fig = plot_projections_hexbin(
         meshes,

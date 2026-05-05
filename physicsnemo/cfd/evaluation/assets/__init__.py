@@ -14,7 +14,10 @@ from physicsnemo.cfd.evaluation.assets.builtin_packages import (
     XMGN_PACKAGE_ROOT,
     register_builtin_model_packages,
 )
-from physicsnemo.cfd.evaluation.assets.package import Package, maybe_touch_hf_config_json
+from physicsnemo.cfd.evaluation.assets.package import (
+    Package,
+    maybe_touch_hf_config_json,
+)
 from physicsnemo.cfd.evaluation.assets.registry import (
     AssetSpec,
     clear_default_assets_for_testing,

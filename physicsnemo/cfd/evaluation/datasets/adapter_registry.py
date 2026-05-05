@@ -33,7 +33,9 @@ class DatasetAdapter(ABC):
         return "surface"
 
     @classmethod
-    def inference_domain_from_kwargs(cls, kwargs: dict[str, Any] | None) -> InferenceDomain:
+    def inference_domain_from_kwargs(
+        cls, kwargs: dict[str, Any] | None
+    ) -> InferenceDomain:
         """Domain for this adapter given ``dataset.kwargs`` (used before instantiation).
 
         Adapters that switch surface/volume via kwargs (e.g. DrivAerML) must override this.
@@ -63,7 +65,9 @@ def register_adapter(name: str, adapter_class: Type[DatasetAdapter]) -> None:
 def get_adapter(name: str) -> Type[DatasetAdapter]:
     """Resolve adapter class by name."""
     if name not in _REGISTRY:
-        raise KeyError(f"Unknown dataset adapter: {name}. Available: {list(_REGISTRY.keys())}")
+        raise KeyError(
+            f"Unknown dataset adapter: {name}. Available: {list(_REGISTRY.keys())}"
+        )
     return _REGISTRY[name]
 
 

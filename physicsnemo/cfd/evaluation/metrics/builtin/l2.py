@@ -18,8 +18,12 @@ from physicsnemo.cfd.postprocessing_tools.metrics.l2_errors import (
     compute_area_weighted_l2_errors,
     compute_l2_errors,
 )
-from physicsnemo.cfd.evaluation.metrics.metric_exceptions import RECOVERABLE_MESH_METRIC_ERRORS
-from physicsnemo.cfd.evaluation.metrics.mesh_bridge import resolve_comparison_mesh_for_metric
+from physicsnemo.cfd.evaluation.metrics.metric_exceptions import (
+    RECOVERABLE_MESH_METRIC_ERRORS,
+)
+from physicsnemo.cfd.evaluation.metrics.mesh_bridge import (
+    resolve_comparison_mesh_for_metric,
+)
 
 _LOG = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -82,6 +86,7 @@ def _l2_shear_numpy(
 # Surface pressure L2
 # ---------------------------------------------------------------------------
 
+
 def l2_pressure_surface(
     ground_truth: dict,
     predictions: dict,
@@ -94,7 +99,11 @@ def l2_pressure_surface(
     **_: object,
 ) -> float:
     mesh, dtype = resolve_comparison_mesh_for_metric(
-        predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
+        predictions,
+        case=case,
+        comparison_mesh=comparison_mesh,
+        metric_dtype=metric_dtype,
+        output=output,
     )
     if mesh is None or output is None:
         return _l2_pressure_numpy(ground_truth, predictions, mask=mask)
@@ -119,6 +128,7 @@ l2_pressure = l2_pressure_surface
 # Volume pressure L2
 # ---------------------------------------------------------------------------
 
+
 def l2_pressure_volume(
     ground_truth: dict,
     predictions: dict,
@@ -133,7 +143,11 @@ def l2_pressure_volume(
     **_: object,
 ) -> float:
     mesh, dtype = resolve_comparison_mesh_for_metric(
-        predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
+        predictions,
+        case=case,
+        comparison_mesh=comparison_mesh,
+        metric_dtype=metric_dtype,
+        output=output,
     )
     pk = pred_key if pred_key is not None else gt_key
     if mesh is None or output is None:
@@ -155,7 +169,10 @@ def l2_pressure_volume(
         return float(d[key]) if key in d else float("nan")
 
     return _safe_l2("l2_pressure_volume", _compute, float("nan"))
+
+
 # ---------------------------------------------------------------------------
+
 
 def l2_shear_stress(
     ground_truth: dict,
@@ -169,7 +186,11 @@ def l2_shear_stress(
     **_: object,
 ) -> dict[str, float]:
     mesh, dtype = resolve_comparison_mesh_for_metric(
-        predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
+        predictions,
+        case=case,
+        comparison_mesh=comparison_mesh,
+        metric_dtype=metric_dtype,
+        output=output,
     )
     if mesh is None or output is None:
         v = _l2_shear_numpy(ground_truth, predictions, mask=mask)
@@ -187,6 +208,7 @@ def l2_shear_stress(
 # Area-weighted L2 pressure (surface)
 # ---------------------------------------------------------------------------
 
+
 def l2_pressure_area_weighted(
     ground_truth: dict,
     predictions: dict,
@@ -198,7 +220,11 @@ def l2_pressure_area_weighted(
     **_: object,
 ) -> float:
     mesh, dtype = resolve_comparison_mesh_for_metric(
-        predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
+        predictions,
+        case=case,
+        comparison_mesh=comparison_mesh,
+        metric_dtype=metric_dtype,
+        output=output,
     )
     if mesh is None or output is None:
         return float("nan")
@@ -217,6 +243,7 @@ def l2_pressure_area_weighted(
 # Velocity L2 (volume)
 # ---------------------------------------------------------------------------
 
+
 def l2_velocity(
     ground_truth: dict,
     predictions: dict,
@@ -228,7 +255,11 @@ def l2_velocity(
     **_: object,
 ) -> dict[str, float]:
     mesh, dtype = resolve_comparison_mesh_for_metric(
-        predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
+        predictions,
+        case=case,
+        comparison_mesh=comparison_mesh,
+        metric_dtype=metric_dtype,
+        output=output,
     )
     if mesh is None or output is None:
         gt = np.asarray(ground_truth.get("velocity", []), dtype=np.float64)
@@ -251,6 +282,7 @@ def l2_velocity(
 # Turbulent viscosity L2 (volume)
 # ---------------------------------------------------------------------------
 
+
 def l2_turbulent_viscosity(
     ground_truth: dict,
     predictions: dict,
@@ -265,7 +297,11 @@ def l2_turbulent_viscosity(
     **_: object,
 ) -> float:
     mesh, dtype = resolve_comparison_mesh_for_metric(
-        predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
+        predictions,
+        case=case,
+        comparison_mesh=comparison_mesh,
+        metric_dtype=metric_dtype,
+        output=output,
     )
     pk = pred_key if pred_key is not None else gt_key
     if mesh is None or output is None:
@@ -287,13 +323,18 @@ def l2_turbulent_viscosity(
         return float(d[key]) if key in d else float("nan")
 
     return _safe_l2("l2_turbulent_viscosity", _compute, float("nan"))
+
+
 # ---------------------------------------------------------------------------
+
 
 def register_l2_metrics() -> None:
     # Surface metrics
     register_metric("l2_pressure", l2_pressure_surface, domain="surface")
     register_metric("l2_shear_stress", l2_shear_stress, domain="surface")
-    register_metric("l2_pressure_area_weighted", l2_pressure_area_weighted, domain="surface")
+    register_metric(
+        "l2_pressure_area_weighted", l2_pressure_area_weighted, domain="surface"
+    )
     register_metric("area_wt_l2_pressure", l2_pressure_area_weighted, domain="surface")
 
     # Volume metrics

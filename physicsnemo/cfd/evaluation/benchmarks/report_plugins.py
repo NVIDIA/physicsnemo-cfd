@@ -20,7 +20,10 @@ from typing import Any
 
 from physicsnemo.cfd.evaluation.config import Config
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
-from physicsnemo.cfd.evaluation.reports.registry import get_visual, normalize_visuals_config
+from physicsnemo.cfd.evaluation.reports.registry import (
+    get_visual,
+    normalize_visuals_config,
+)
 
 
 def _apply_default_case_ids_to_visuals(
@@ -108,7 +111,10 @@ def run_optional_report_plugins(
 
     visuals_list = list(config.reports.visuals or [])
     if not visuals_list:
-        log_dataset("benchmark", "reports.enabled but no reports.visuals configured; writing manifest only.")
+        log_dataset(
+            "benchmark",
+            "reports.enabled but no reports.visuals configured; writing manifest only.",
+        )
         _write_manifest(out_dir, manifest)
         return
 

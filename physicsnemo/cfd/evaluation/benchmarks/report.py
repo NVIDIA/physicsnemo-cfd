@@ -129,14 +129,32 @@ def _write_csv(results: list[dict], output_dir: Path) -> None:
         for case in r.get("per_case", []):
             cid = case.get("case_id", "")
             for mname, value in case.get("metrics", {}).items():
-                rows.append({"model": model, "dataset": dataset, "case_id": cid, "metric": mname, "value": value})
+                rows.append(
+                    {
+                        "model": model,
+                        "dataset": dataset,
+                        "case_id": cid,
+                        "metric": mname,
+                        "value": value,
+                    }
+                )
         # Also summary row (no case_id)
         for mname, value in r.get("metrics", {}).items():
-            rows.append({"model": model, "dataset": dataset, "case_id": "", "metric": mname, "value": value})
+            rows.append(
+                {
+                    "model": model,
+                    "dataset": dataset,
+                    "case_id": "",
+                    "metric": mname,
+                    "value": value,
+                }
+            )
     if not rows:
         return
     with open(path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["model", "dataset", "case_id", "metric", "value"])
+        w = csv.DictWriter(
+            f, fieldnames=["model", "dataset", "case_id", "metric", "value"]
+        )
         w.writeheader()
         w.writerows(rows)
 
@@ -164,7 +182,9 @@ def _write_html(results: list[dict], output_dir: Path) -> None:
             continue
         metrics = r.get("metrics", {})
         if metrics:
-            lines.append("<table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>")
+            lines.append(
+                "<table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>"
+            )
             for mname, value in metrics.items():
                 lines.append(
                     f"<tr><td>{html.escape(str(mname))}</td><td>"

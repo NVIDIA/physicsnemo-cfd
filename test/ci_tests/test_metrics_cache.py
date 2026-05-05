@@ -25,11 +25,16 @@ from physicsnemo.cfd.evaluation.config import Config, OutputConfig
 
 
 def test_resolve_metrics_cache_root_disabled() -> None:
-    assert resolve_metrics_cache_root(enabled=False, path="", output_dir="/tmp/out") is None
+    assert (
+        resolve_metrics_cache_root(enabled=False, path="", output_dir="/tmp/out")
+        is None
+    )
 
 
 def test_resolve_metrics_cache_default_dir(tmp_path: Path) -> None:
-    root = resolve_metrics_cache_root(enabled=True, path="", output_dir=str(tmp_path / "results"))
+    root = resolve_metrics_cache_root(
+        enabled=True, path="", output_dir=str(tmp_path / "results")
+    )
     assert root is not None
     assert root.name == ".metrics_cache"
     assert root.parent.name == "results"
@@ -37,7 +42,9 @@ def test_resolve_metrics_cache_default_dir(tmp_path: Path) -> None:
 
 def test_resolve_metrics_cache_explicit_path(tmp_path: Path) -> None:
     p = tmp_path / "my_cache"
-    root = resolve_metrics_cache_root(enabled=True, path=str(p), output_dir=str(tmp_path))
+    root = resolve_metrics_cache_root(
+        enabled=True, path=str(p), output_dir=str(tmp_path)
+    )
     assert root == p.resolve()
 
 
@@ -116,8 +123,11 @@ def test_fingerprint_numpy_model_kwargs_stable() -> None:
         metric_specs=[("l2_pressure", {})],
     )
     fp_np = metrics_cache_fingerprint(**base)
-    fp_py = metrics_cache_fingerprint(**{**base, "model_kwargs": {"batch_resolution": 60000}})
+    fp_py = metrics_cache_fingerprint(
+        **{**base, "model_kwargs": {"batch_resolution": 60000}}
+    )
     assert fp_np == fp_py
+
 
 def test_fingerprint_metric_spec_kwargs_order() -> None:
     out = output_config_to_fingerprint_dict(OutputConfig())
@@ -134,7 +144,9 @@ def test_fingerprint_metric_spec_kwargs_order() -> None:
         metric_specs=[("l2_pressure", {"foo": 1, "bar": 2})],
     )
     fp_a = metrics_cache_fingerprint(**base)
-    fp_b = metrics_cache_fingerprint(**{**base, "metric_specs": [("l2_pressure", {"bar": 2, "foo": 1})]})
+    fp_b = metrics_cache_fingerprint(
+        **{**base, "metric_specs": [("l2_pressure", {"bar": 2, "foo": 1})]}
+    )
     assert fp_a == fp_b
 
 

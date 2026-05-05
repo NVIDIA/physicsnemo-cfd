@@ -29,7 +29,9 @@ import numpy as np
 import pyvista as pv
 import torch
 
-from physicsnemo.cfd.postprocessing_tools.metrics.l2_errors import triangulate_surface_mesh
+from physicsnemo.cfd.postprocessing_tools.metrics.l2_errors import (
+    triangulate_surface_mesh,
+)
 
 
 def read_stl_geometry(stl_path: str, device: torch.device) -> dict[str, torch.Tensor]:
@@ -185,7 +187,9 @@ def build_volume_data_dict(
             mesh=reference_mesh,
         )
     )
-    data_dict["air_density"] = torch.tensor([air_density], device=device, dtype=torch.float32)
+    data_dict["air_density"] = torch.tensor(
+        [air_density], device=device, dtype=torch.float32
+    )
     data_dict["stream_velocity"] = torch.tensor(
         [stream_velocity], device=device, dtype=torch.float32
     )
@@ -206,7 +210,9 @@ def build_surface_data_dict(
     stl_path = _find_stl_in_dir(run_dir, run_idx)
     data_dict = read_stl_geometry(str(stl_path), device)
     data_dict.update(read_surface_from_vtp(vtp_path, device, mesh=reference_mesh))
-    data_dict["air_density"] = torch.tensor([air_density], device=device, dtype=torch.float32)
+    data_dict["air_density"] = torch.tensor(
+        [air_density], device=device, dtype=torch.float32
+    )
     data_dict["stream_velocity"] = torch.tensor(
         [stream_velocity], device=device, dtype=torch.float32
     )

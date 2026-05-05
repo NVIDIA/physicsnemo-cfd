@@ -36,11 +36,15 @@ import hydra
 from omegaconf import DictConfig
 
 from physicsnemo.cfd.evaluation.benchmarks.engine import run_benchmark_cli
-from physicsnemo.cfd.evaluation.benchmarks.hydra_utils import hydra_config_to_benchmark_dict
+from physicsnemo.cfd.evaluation.benchmarks.hydra_utils import (
+    hydra_config_to_benchmark_dict,
+)
 from physicsnemo.cfd.evaluation.config import Config
 
 
-@hydra.main(version_base="1.3", config_path="conf", config_name="config_matrix_surface_hf")
+@hydra.main(
+    version_base="1.3", config_path="conf", config_name="config_matrix_surface_hf"
+)
 def main(cfg: DictConfig) -> None:
     """
     Load benchmark configuration with Hydra/OmegaConf interpolation and run.

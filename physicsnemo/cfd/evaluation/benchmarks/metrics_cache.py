@@ -134,12 +134,18 @@ def metrics_cache_fingerprint(
         64-character lowercase hex SHA-256 digest.
     """
     specs_serializable: list[Any] = []
-    for name, kw in sorted(metric_specs, key=lambda x: (x[0], tuple(sorted(x[1].keys())))):
+    for name, kw in sorted(
+        metric_specs, key=lambda x: (x[0], tuple(sorted(x[1].keys())))
+    ):
         specs_serializable.append(
             [name, _fingerprint_jsonify({k: kw[k] for k in sorted(kw.keys())})]
         )
-    ck_fp = "" if model_asset_identity else _canonical_fingerprint_path(model_checkpoint)
-    st_fp = "" if model_asset_identity else _canonical_fingerprint_path(model_stats_path)
+    ck_fp = (
+        "" if model_asset_identity else _canonical_fingerprint_path(model_checkpoint)
+    )
+    st_fp = (
+        "" if model_asset_identity else _canonical_fingerprint_path(model_stats_path)
+    )
     payload = {
         "fingerprint_schema": CACHE_FORMAT_VERSION,
         "model": {
@@ -156,7 +162,10 @@ def metrics_cache_fingerprint(
             "name": dataset_name,
             "root": _canonical_fingerprint_path(dataset_root),
             "kwargs": _fingerprint_jsonify(
-                {k: dataset_kwargs_resolved[k] for k in sorted(dataset_kwargs_resolved.keys())}
+                {
+                    k: dataset_kwargs_resolved[k]
+                    for k in sorted(dataset_kwargs_resolved.keys())
+                }
             ),
         },
         "output": _fingerprint_jsonify(output_dict),
@@ -180,11 +189,15 @@ def case_id_cache_filename(case_id: str) -> str:
     str
         Filename of the form ``"<sanitized>.json"``.
     """
-    safe = "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "_" for ch in case_id)
+    safe = "".join(
+        ch if ch.isalnum() or ch in ("-", "_", ".") else "_" for ch in case_id
+    )
     return f"{safe}.json"
 
 
-def metrics_cache_file_path(cache_root: Path, fingerprint_hex: str, case_id: str) -> Path:
+def metrics_cache_file_path(
+    cache_root: Path, fingerprint_hex: str, case_id: str
+) -> Path:
     """
     Path to the cache file for one case.
 
@@ -220,9 +233,13 @@ def output_config_to_fingerprint_dict(output: Any) -> dict[str, Any]:
         Serializable mapping including mesh field names and streamlines key.
     """
     return {
-        "mesh_field_names": {k: output.mesh_field_names[k] for k in sorted(output.mesh_field_names.keys())},
+        "mesh_field_names": {
+            k: output.mesh_field_names[k]
+            for k in sorted(output.mesh_field_names.keys())
+        },
         "volume_mesh_field_names": {
-            k: output.volume_mesh_field_names[k] for k in sorted(output.volume_mesh_field_names.keys())
+            k: output.volume_mesh_field_names[k]
+            for k in sorted(output.volume_mesh_field_names.keys())
         },
         "ground_truth_mesh_field_names": {
             k: output.ground_truth_mesh_field_names[k]
@@ -387,7 +404,9 @@ def write_metrics_cache(
     tmp.replace(path)
 
 
-def resolve_metrics_cache_root(*, enabled: bool, path: str, output_dir: str) -> Path | None:
+def resolve_metrics_cache_root(
+    *, enabled: bool, path: str, output_dir: str
+) -> Path | None:
     """
     Resolve the metrics cache root directory.
 

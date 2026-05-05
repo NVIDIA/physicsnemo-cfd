@@ -14,7 +14,9 @@ from physicsnemo.cfd.postprocessing_tools.metrics.streamlines import compute_str
 from physicsnemo.cfd.postprocessing_tools.visualization.utils import plot_streamlines
 from physicsnemo.cfd.evaluation.config import Config, OutputConfig
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
-from physicsnemo.cfd.evaluation.reports.context_helpers import get_comparison_mesh_for_case
+from physicsnemo.cfd.evaluation.reports.context_helpers import (
+    get_comparison_mesh_for_case,
+)
 from physicsnemo.cfd.evaluation.reports.registry import register_visual
 from physicsnemo.cfd.evaluation.reports.visual_filenames import benchmark_visual_png
 
@@ -58,7 +60,10 @@ def streamlines_comparison(
                 continue
             md = row.get("metric_dtype")
             if md == "point":
-                if ck not in output.ground_truth_volume_mesh_field_names or ck not in output.volume_mesh_field_names:
+                if (
+                    ck not in output.ground_truth_volume_mesh_field_names
+                    or ck not in output.volume_mesh_field_names
+                ):
                     log_dataset(
                         "benchmark",
                         f"Skip streamlines_comparison for {cid!r}: canonical_key {ck!r} missing from "
@@ -69,7 +74,10 @@ def streamlines_comparison(
                 pred_name = output.volume_mesh_field_names[ck]
                 fname_tag = "streamlines"
             elif md == "cell":
-                if ck not in output.ground_truth_mesh_field_names or ck not in output.mesh_field_names:
+                if (
+                    ck not in output.ground_truth_mesh_field_names
+                    or ck not in output.mesh_field_names
+                ):
                     log_dataset(
                         "benchmark",
                         f"Skip streamlines_comparison for {cid!r}: canonical_key {ck!r} missing from "
@@ -99,8 +107,12 @@ def streamlines_comparison(
             # PyVista surface-constrained streamline mode for boundary vector fields (e.g. wall shear).
             surface_sl = md == "cell"
             try:
-                sl_true = compute_streamlines(m1, gt_name, surface_streamlines=surface_sl)
-                sl_pred = compute_streamlines(m2, pred_name, surface_streamlines=surface_sl)
+                sl_true = compute_streamlines(
+                    m1, gt_name, surface_streamlines=surface_sl
+                )
+                sl_pred = compute_streamlines(
+                    m2, pred_name, surface_streamlines=surface_sl
+                )
             except Exception:
                 log_dataset(
                     "benchmark",
@@ -108,7 +120,9 @@ def streamlines_comparison(
                     f"{traceback.format_exc()}",
                 )
                 continue
-            plotter = plot_streamlines(sl_true, sl_pred, geometry=mesh, view=view, **kwargs)
+            plotter = plot_streamlines(
+                sl_true, sl_pred, geometry=mesh, view=view, **kwargs
+            )
             safe = benchmark_visual_png(model, dataset, cid, fname_tag)
             plotter.screenshot(str(out / safe))
             plotter.close()

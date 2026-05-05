@@ -45,8 +45,14 @@ from physicsnemo.cfd.evaluation.models.model_registry import (
     Predictions,
 )
 from physicsnemo.cfd.evaluation.inference.progress import log_inference
-from physicsnemo.cfd.evaluation.common.checkpoint_compat import parse_checkpoint_epoch, trusted_torch_load_context
-from physicsnemo.cfd.evaluation.common.io import load_transolver_surface_factors, load_transolver_volume_factors
+from physicsnemo.cfd.evaluation.common.checkpoint_compat import (
+    parse_checkpoint_epoch,
+    trusted_torch_load_context,
+)
+from physicsnemo.cfd.evaluation.common.io import (
+    load_transolver_surface_factors,
+    load_transolver_volume_factors,
+)
 from physicsnemo.cfd.evaluation.models.common_wrapper_utils.vtk_datapipe_io import (
     build_surface_data_dict,
     build_volume_data_dict,
@@ -92,6 +98,7 @@ DEFAULT_GEOTRANSOLVER_VOLUME_KW = {
     "functional_dim": 7,
     "out_dim": 5,
 }
+
 
 def _global_fx_to_bnc(fx: torch.Tensor) -> torch.Tensor:
     """GeoTransolver requires ``global_embedding`` shape (B, N_g, C_g).
@@ -224,7 +231,9 @@ class GeoTransolverWrapper(CFDModel):
         self._air_density = float(kw.get("air_density", 1.205))
         self._stream_velocity = float(kw.get("stream_velocity", 30.0))
         self._batch_resolution = int(kw.get("batch_resolution", 2048))
-        self._cuda_bf16_autocast = _parse_bool(kw.pop("cuda_bf16_autocast", None), default=False)
+        self._cuda_bf16_autocast = _parse_bool(
+            kw.pop("cuda_bf16_autocast", None), default=False
+        )
 
         checkpoint_dir = Path(checkpoint_path)
         if checkpoint_dir.is_file():
@@ -233,7 +242,9 @@ class GeoTransolverWrapper(CFDModel):
         dp_user = {k: kw.pop(k) for k in list(kw.keys()) if k in _DATAPIPE_KEYS}
 
         if self._inference_mode == "volume":
-            log_inference("geotransolver", f"Loading volume normalization from {stats_path}")
+            log_inference(
+                "geotransolver", f"Loading volume normalization from {stats_path}"
+            )
             self._volume_factors = load_transolver_volume_factors(stats_path, device)
             if self._volume_factors is None:
                 raise FileNotFoundError(
@@ -244,7 +255,9 @@ class GeoTransolverWrapper(CFDModel):
             self._surface_factors = None
             model_kw = dict(DEFAULT_GEOTRANSOLVER_VOLUME_KW)
         else:
-            log_inference("geotransolver", f"Loading surface normalization from {stats_path}")
+            log_inference(
+                "geotransolver", f"Loading surface normalization from {stats_path}"
+            )
             self._surface_factors = load_transolver_surface_factors(stats_path, device)
             self._volume_factors = None
             model_kw = dict(DEFAULT_GEOTRANSOLVER_KW)
@@ -390,7 +403,9 @@ class GeoTransolverWrapper(CFDModel):
         use_full_fx = "geometry" in batch
 
         ac_ctx = (
-            cuda_bf16_autocast(self._device) if self._cuda_bf16_autocast else nullcontext()
+            cuda_bf16_autocast(self._device)
+            if self._cuda_bf16_autocast
+            else nullcontext()
         )
         with torch.no_grad():
             with ac_ctx:
@@ -455,7 +470,9 @@ class GeoTransolverWrapper(CFDModel):
             nut_scale = u * self._volume_length_scale
             velocity = (pred[:, 0:3] * u).cpu().numpy().astype(np.float32)
             pressure = (pred[:, 3] * dynamic_pressure).cpu().numpy().astype(np.float32)
-            turbulent_viscosity = (pred[:, 4] * nut_scale).cpu().numpy().astype(np.float32)
+            turbulent_viscosity = (
+                (pred[:, 4] * nut_scale).cpu().numpy().astype(np.float32)
+            )
             return build_predictions_dict(
                 velocity=velocity,
                 pressure=pressure,
@@ -463,7 +480,7 @@ class GeoTransolverWrapper(CFDModel):
             )
 
         log_inference("geotransolver", "Decoding outputs (pressure + WSS to numpy)…")
-        dynamic_pressure = self._air_density * (self._stream_velocity ** 2)
+        dynamic_pressure = self._air_density * (self._stream_velocity**2)
         pressure = (pred[:, 0] * dynamic_pressure).cpu().numpy().astype(np.float32)
         wss = (pred[:, 1:4] * dynamic_pressure).cpu().numpy().astype(np.float32)
         return build_predictions_dict(pressure=pressure, shear_stress=wss)

@@ -43,8 +43,14 @@ from physicsnemo.cfd.evaluation.models.model_registry import (
     Predictions,
 )
 from physicsnemo.cfd.evaluation.inference.progress import log_inference
-from physicsnemo.cfd.evaluation.common.checkpoint_compat import parse_checkpoint_epoch, trusted_torch_load_context
-from physicsnemo.cfd.evaluation.common.io import load_transolver_surface_factors, load_transolver_volume_factors
+from physicsnemo.cfd.evaluation.common.checkpoint_compat import (
+    parse_checkpoint_epoch,
+    trusted_torch_load_context,
+)
+from physicsnemo.cfd.evaluation.common.io import (
+    load_transolver_surface_factors,
+    load_transolver_volume_factors,
+)
 from physicsnemo.cfd.evaluation.models.common_wrapper_utils.vtk_datapipe_io import (
     build_surface_data_dict,
     build_volume_data_dict,
@@ -195,7 +201,9 @@ class TransolverWrapper(CFDModel):
         self._air_density = float(kw.get("air_density", 1.205))
         self._stream_velocity = float(kw.get("stream_velocity", 30.0))
         self._batch_resolution = int(kw.get("batch_resolution", 2048))
-        self._cuda_bf16_autocast = _parse_bool(kw.pop("cuda_bf16_autocast", None), default=False)
+        self._cuda_bf16_autocast = _parse_bool(
+            kw.pop("cuda_bf16_autocast", None), default=False
+        )
         # Benchmark inference uses all mesh points; ``TransolverDataPipe`` is always built with
         # ``resolution=None`` (ignore any ``resolution`` in model kwargs so Hydra does not error).
         kw.pop("resolution", None)
@@ -212,7 +220,9 @@ class TransolverWrapper(CFDModel):
         dev = torch.device(device)
 
         if self._inference_mode == "volume":
-            log_inference("transolver", f"Loading volume normalization from {stats_path}")
+            log_inference(
+                "transolver", f"Loading volume normalization from {stats_path}"
+            )
             volume_factors = load_transolver_volume_factors(stats_path, device)
             if volume_factors is None:
                 raise FileNotFoundError(
@@ -231,11 +241,18 @@ class TransolverWrapper(CFDModel):
                 **pipe_kw,
             )
             self._move_reference_scale_to_device(self._datapipe)
-            if self._datapipe.config.scale_invariance and self._datapipe.config.reference_scale is not None:
-                self._datapipe.config.reference_scale = self._datapipe.config.reference_scale.to(dev)
+            if (
+                self._datapipe.config.scale_invariance
+                and self._datapipe.config.reference_scale is not None
+            ):
+                self._datapipe.config.reference_scale = (
+                    self._datapipe.config.reference_scale.to(dev)
+                )
             model_kw = dict(DEFAULT_TRANSOLVER_VOLUME_KW)
         else:
-            log_inference("transolver", f"Loading surface normalization from {stats_path}")
+            log_inference(
+                "transolver", f"Loading surface normalization from {stats_path}"
+            )
             surface_factors = load_transolver_surface_factors(stats_path, device)
             pipe_kw = {**_surface_datapipe_kw(), **dp_user}
             self._datapipe = TransolverDataPipe(
@@ -319,7 +336,9 @@ class TransolverWrapper(CFDModel):
         index_blocks = torch.split(indices, batch_res)
         preds_list = []
         ac_ctx = (
-            cuda_bf16_autocast(self._device) if self._cuda_bf16_autocast else nullcontext()
+            cuda_bf16_autocast(self._device)
+            if self._cuda_bf16_autocast
+            else nullcontext()
         )
         with torch.no_grad():
             with ac_ctx:
@@ -376,7 +395,9 @@ class TransolverWrapper(CFDModel):
             nut_scale = u * self._volume_length_scale
             velocity = (pred[:, 0:3] * u).cpu().numpy().astype(np.float32)
             pressure = (pred[:, 3] * dynamic_pressure).cpu().numpy().astype(np.float32)
-            turbulent_viscosity = (pred[:, 4] * nut_scale).cpu().numpy().astype(np.float32)
+            turbulent_viscosity = (
+                (pred[:, 4] * nut_scale).cpu().numpy().astype(np.float32)
+            )
             return build_predictions_dict(
                 velocity=velocity,
                 pressure=pressure,
@@ -384,7 +405,7 @@ class TransolverWrapper(CFDModel):
             )
 
         log_inference("transolver", "Decoding outputs (pressure + WSS to numpy)…")
-        dynamic_pressure = self._air_density * (self._stream_velocity ** 2)
+        dynamic_pressure = self._air_density * (self._stream_velocity**2)
         pressure = (pred[:, 0] * dynamic_pressure).cpu().numpy().astype(np.float32)
         wss = (pred[:, 1:4] * dynamic_pressure).cpu().numpy().astype(np.float32)
         return build_predictions_dict(pressure=pressure, shear_stress=wss)

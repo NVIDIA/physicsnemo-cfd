@@ -11,14 +11,19 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 
-from physicsnemo.cfd.postprocessing_tools.visualization.utils import plot_design_scatter, plot_design_trend
+from physicsnemo.cfd.postprocessing_tools.visualization.utils import (
+    plot_design_scatter,
+    plot_design_trend,
+)
 from physicsnemo.cfd.evaluation.config import Config
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 from physicsnemo.cfd.evaluation.reports.registry import register_visual
 from physicsnemo.cfd.evaluation.reports.visual_filenames import benchmark_visual_png
 
 
-def _design_skip_hint(per_case: list[dict[str, Any]], pairs: list[dict[str, Any]]) -> str:
+def _design_skip_hint(
+    per_case: list[dict[str, Any]], pairs: list[dict[str, Any]]
+) -> str:
     """Explain why design plots may find no finite (true, pred) pairs."""
     if not per_case:
         return ""
@@ -64,7 +69,9 @@ def design_scatter(
     """
     del context, config
     if not pairs:
-        raise ValueError("design_scatter requires non-empty ``pairs`` (list of name/true_key/pred_key).")
+        raise ValueError(
+            "design_scatter requires non-empty ``pairs`` (list of name/true_key/pred_key)."
+        )
     out = Path(output_dir) / "visuals"
     out.mkdir(parents=True, exist_ok=True)
     for run in results:

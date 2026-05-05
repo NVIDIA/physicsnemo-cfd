@@ -97,11 +97,7 @@ def merge_benchmark_result_shards(shards: list[dict[str, Any]]) -> dict[str, Any
     for mname, values in all_metric_values.items():
         valid = [v for v in values if v == v]
         metrics_summary[mname] = sum(valid) / len(valid) if valid else float("nan")
-    case_ids_raw = [
-        str(r["case_id"])
-        for r in per_case
-        if r.get("case_id") is not None
-    ]
+    case_ids_raw = [str(r["case_id"]) for r in per_case if r.get("case_id") is not None]
     case_ids_no_dup = sorted(set(case_ids_raw), key=natural_sort_key)
     return {
         "model": model,
@@ -169,7 +165,10 @@ def log_distributed_context(dm: Any | None, shard: tuple[int, int] | None) -> No
     if dm is None:
         return
     if shard is None:
-        log_dataset("benchmark", f"Distributed: rank {dm.rank}/{dm.world_size} (no case sharding).")
+        log_dataset(
+            "benchmark",
+            f"Distributed: rank {dm.rank}/{dm.world_size} (no case sharding).",
+        )
     else:
         r, w = shard
         log_dataset("benchmark", f"Distributed: rank {r}/{w} (case sharding enabled).")

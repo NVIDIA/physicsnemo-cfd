@@ -43,7 +43,9 @@ def get_metric(name: str, *, domain: str | None = None) -> MetricFn:
     if fallback in _REGISTRY:
         return _REGISTRY[fallback]
     available = sorted({n for n, _ in _REGISTRY})
-    raise KeyError(f"Unknown metric: {name!r} (domain={domain!r}). Available: {available}")
+    raise KeyError(
+        f"Unknown metric: {name!r} (domain={domain!r}). Available: {available}"
+    )
 
 
 def list_metrics() -> list[str]:

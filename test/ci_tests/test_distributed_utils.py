@@ -104,7 +104,10 @@ def test_merge_benchmark_result_shards_model_mismatch() -> None:
 def test_merge_mesh_context_shards() -> None:
     a = {"run_1": "mesh_a"}
     b = {"run_2": "mesh_b", "run_1": "mesh_b_wins"}
-    assert merge_mesh_context_shards([a, b]) == {"run_1": "mesh_b_wins", "run_2": "mesh_b"}
+    assert merge_mesh_context_shards([a, b]) == {
+        "run_1": "mesh_b_wins",
+        "run_2": "mesh_b",
+    }
 
 
 def test_effective_device_str_no_dm() -> None:

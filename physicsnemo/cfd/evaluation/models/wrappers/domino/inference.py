@@ -132,12 +132,16 @@ def build_domin_surface_datadict(
 
     center_of_mass = calculate_center_of_mass(stl_centers_t, stl_sizes_t)
 
-    s_max = torch.from_numpy(np.asarray(cfg.data.bounding_box_surface.max)).to(
-        torch.float32
-    ).to(device)
-    s_min = torch.from_numpy(np.asarray(cfg.data.bounding_box_surface.min)).to(
-        torch.float32
-    ).to(device)
+    s_max = (
+        torch.from_numpy(np.asarray(cfg.data.bounding_box_surface.max))
+        .to(torch.float32)
+        .to(device)
+    )
+    s_min = (
+        torch.from_numpy(np.asarray(cfg.data.bounding_box_surface.min))
+        .to(torch.float32)
+        .to(device)
+    )
 
     nx, ny, nz = cfg.model.interp_res
     surf_grid = create_grid(
@@ -306,12 +310,16 @@ def build_domin_volume_datadict(
 
     center_of_mass = calculate_center_of_mass(stl_centers_t, stl_sizes_t)
 
-    s_max = torch.from_numpy(np.asarray(cfg.data.bounding_box_surface.max)).to(
-        torch.float32
-    ).to(device)
-    s_min = torch.from_numpy(np.asarray(cfg.data.bounding_box_surface.min)).to(
-        torch.float32
-    ).to(device)
+    s_max = (
+        torch.from_numpy(np.asarray(cfg.data.bounding_box_surface.max))
+        .to(torch.float32)
+        .to(device)
+    )
+    s_min = (
+        torch.from_numpy(np.asarray(cfg.data.bounding_box_surface.min))
+        .to(torch.float32)
+        .to(device)
+    )
 
     nx, ny, nz = cfg.model.interp_res
     surf_grid = create_grid(
@@ -394,12 +402,16 @@ def build_domin_volume_datadict(
     )
     volume_fields = torch.from_numpy(volume_fields_np).to(torch.float32).to(device)
 
-    c_max = torch.from_numpy(np.asarray(cfg.data.bounding_box.max)).to(
-        torch.float32
-    ).to(device)
-    c_min = torch.from_numpy(np.asarray(cfg.data.bounding_box.min)).to(
-        torch.float32
-    ).to(device)
+    c_max = (
+        torch.from_numpy(np.asarray(cfg.data.bounding_box.max))
+        .to(torch.float32)
+        .to(device)
+    )
+    c_min = (
+        torch.from_numpy(np.asarray(cfg.data.bounding_box.min))
+        .to(torch.float32)
+        .to(device)
+    )
 
     grid = create_grid(
         c_max, c_min, torch.from_numpy(np.asarray([nx, ny, nz])).to(device)
@@ -498,7 +510,9 @@ def domino_surface_test_step(
         surface_mesh_centers_batch = surface_mesh_centers[:, start_idx:end_idx]
         surface_mesh_neighbors_batch = surface_mesh_neighbors[:, start_idx:end_idx]
         surface_normals_batch = surface_normals[:, start_idx:end_idx]
-        surface_neighbors_normals_batch = surface_neighbors_normals[:, start_idx:end_idx]
+        surface_neighbors_normals_batch = surface_neighbors_normals[
+            :, start_idx:end_idx
+        ]
         surface_areas_batch = surface_areas[:, start_idx:end_idx]
         surface_neighbors_areas_batch = surface_neighbors_areas[:, start_idx:end_idx]
         pos_surface_center_of_mass_batch = pos_surface_center_of_mass[
@@ -530,9 +544,7 @@ def domino_surface_test_step(
         prediction_surf = unstandardize(
             prediction_surf, surf_factors[0], surf_factors[1]
         )
-    prediction_surf = (
-        prediction_surf * stream_velocity[0, 0] ** 2.0 * air_density[0, 0]
-    )
+    prediction_surf = prediction_surf * stream_velocity[0, 0] ** 2.0 * air_density[0, 0]
     return prediction_surf
 
 

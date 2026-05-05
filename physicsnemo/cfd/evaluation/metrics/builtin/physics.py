@@ -16,8 +16,12 @@ from physicsnemo.cfd.postprocessing_tools.metrics.physics import (
     compute_continuity_residuals,
     compute_momentum_residuals,
 )
-from physicsnemo.cfd.evaluation.metrics.mesh_bridge import resolve_comparison_mesh_for_metric
-from physicsnemo.cfd.evaluation.metrics.metric_exceptions import RECOVERABLE_MESH_METRIC_ERRORS
+from physicsnemo.cfd.evaluation.metrics.mesh_bridge import (
+    resolve_comparison_mesh_for_metric,
+)
+from physicsnemo.cfd.evaluation.metrics.metric_exceptions import (
+    RECOVERABLE_MESH_METRIC_ERRORS,
+)
 
 _LOG = logging.getLogger(__name__)
 TPhys = TypeVar("TPhys", bound=dict[str, float])
@@ -64,16 +68,27 @@ def continuity_residual_l2(
     **_: object,
 ) -> dict[str, float]:
     mesh, _ = resolve_comparison_mesh_for_metric(
-        predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
+        predictions,
+        case=case,
+        comparison_mesh=comparison_mesh,
+        metric_dtype=metric_dtype,
+        output=output,
     )
     if mesh is None or output is None:
         return {"Continuity_l2_error": float("nan")}
 
     def _run() -> dict[str, float]:
-        gt_velocity_name = true_velocity_field or output.ground_truth_volume_mesh_field_names["velocity"]
-        pred_velocity_name = predicted_velocity_field or output.volume_mesh_field_names["velocity"]
+        gt_velocity_name = (
+            true_velocity_field
+            or output.ground_truth_volume_mesh_field_names["velocity"]
+        )
+        pred_velocity_name = (
+            predicted_velocity_field or output.volume_mesh_field_names["velocity"]
+        )
         m = mesh.copy(deep=True)
-        m = compute_continuity_residuals(m, gt_velocity_name, pred_velocity_name, device=device)
+        m = compute_continuity_residuals(
+            m, gt_velocity_name, pred_velocity_name, device=device
+        )
         return compute_l2_errors(m, ["Continuity"], ["ContinuityPred"], dtype="point")
 
     return _safe_physics_residual(
@@ -103,18 +118,37 @@ def momentum_residual_l2(
     **_: object,
 ) -> dict[str, float]:
     mesh, _ = resolve_comparison_mesh_for_metric(
-        predictions, case=case, comparison_mesh=comparison_mesh, metric_dtype=metric_dtype, output=output
+        predictions,
+        case=case,
+        comparison_mesh=comparison_mesh,
+        metric_dtype=metric_dtype,
+        output=output,
     )
     if mesh is None or output is None:
         return _nan_momentum_component_l2_error()
 
     def _run() -> dict[str, float]:
-        gt_velocity_name = true_velocity_field or output.ground_truth_volume_mesh_field_names["velocity"]
-        pred_velocity_name = predicted_velocity_field or output.volume_mesh_field_names["velocity"]
-        gt_pressure_name = true_pressure_field or output.ground_truth_volume_mesh_field_names["pressure"]
-        pred_pressure_name = predicted_pressure_field or output.volume_mesh_field_names["pressure"]
-        gt_nu_name = true_nu_field or output.ground_truth_volume_mesh_field_names["turbulent_viscosity"]
-        pred_nu_name = predicted_nu_field or output.volume_mesh_field_names["turbulent_viscosity"]
+        gt_velocity_name = (
+            true_velocity_field
+            or output.ground_truth_volume_mesh_field_names["velocity"]
+        )
+        pred_velocity_name = (
+            predicted_velocity_field or output.volume_mesh_field_names["velocity"]
+        )
+        gt_pressure_name = (
+            true_pressure_field
+            or output.ground_truth_volume_mesh_field_names["pressure"]
+        )
+        pred_pressure_name = (
+            predicted_pressure_field or output.volume_mesh_field_names["pressure"]
+        )
+        gt_nu_name = (
+            true_nu_field
+            or output.ground_truth_volume_mesh_field_names["turbulent_viscosity"]
+        )
+        pred_nu_name = (
+            predicted_nu_field or output.volume_mesh_field_names["turbulent_viscosity"]
+        )
         m = mesh.copy(deep=True)
         m = compute_momentum_residuals(
             m,

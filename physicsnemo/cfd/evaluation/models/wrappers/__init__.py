@@ -19,10 +19,16 @@
 from physicsnemo.cfd.evaluation.models.model_registry import register_model
 from physicsnemo.cfd.evaluation.models.wrappers.domino import DominoWrapper
 from physicsnemo.cfd.evaluation.models.wrappers.fignet import FIGNetWrapper
-from physicsnemo.cfd.evaluation.models.wrappers.geotransolver import GeoTransolverWrapper
-from physicsnemo.cfd.evaluation.models.wrappers.surface_baseline import SurfaceBaselineWrapper
+from physicsnemo.cfd.evaluation.models.wrappers.geotransolver import (
+    GeoTransolverWrapper,
+)
+from physicsnemo.cfd.evaluation.models.wrappers.surface_baseline import (
+    SurfaceBaselineWrapper,
+)
 from physicsnemo.cfd.evaluation.models.wrappers.transolver import TransolverWrapper
-from physicsnemo.cfd.evaluation.models.wrappers.volume_baseline import VolumeBaselineWrapper
+from physicsnemo.cfd.evaluation.models.wrappers.volume_baseline import (
+    VolumeBaselineWrapper,
+)
 from physicsnemo.cfd.evaluation.models.wrappers.xmgn import XMGNWrapper
 
 register_model("fignet_surface", FIGNetWrapper)

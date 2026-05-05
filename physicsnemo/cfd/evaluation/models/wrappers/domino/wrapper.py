@@ -28,9 +28,17 @@ from omegaconf import DictConfig, OmegaConf
 from physicsnemo.distributed import DistributedManager
 from physicsnemo.models.domino.model import DoMINO
 
-from physicsnemo.cfd.evaluation.common.checkpoint_compat import parse_checkpoint_epoch, trusted_torch_load_context
+from physicsnemo.cfd.evaluation.common.checkpoint_compat import (
+    parse_checkpoint_epoch,
+    trusted_torch_load_context,
+)
 from physicsnemo.cfd.evaluation.config import _parse_bool
-from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase, InferenceDomain, build_predictions_dict, normalize_inference_domain_str
+from physicsnemo.cfd.evaluation.datasets.schema import (
+    CanonicalCase,
+    InferenceDomain,
+    build_predictions_dict,
+    normalize_inference_domain_str,
+)
 from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
 from physicsnemo.cfd.evaluation.models.common_wrapper_utils.vtk_datapipe_io import (
     run_id_from_case_id,
@@ -51,7 +59,9 @@ from physicsnemo.cfd.evaluation.models.wrappers.domino.inference import (
     domino_volume_predictions_to_canonical,
     domino_volume_test_step,
 )
-from physicsnemo.cfd.evaluation.models.wrappers.domino.scaling import load_scaling_factors_tensors
+from physicsnemo.cfd.evaluation.models.wrappers.domino.scaling import (
+    load_scaling_factors_tensors,
+)
 from physicsnemo.utils import load_checkpoint
 
 
@@ -83,7 +93,9 @@ class DominoWrapper(CFDModel):
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
 
     @classmethod
-    def inference_domain_from_kwargs(cls, kwargs: dict[str, Any]) -> InferenceDomain | None:
+    def inference_domain_from_kwargs(
+        cls, kwargs: dict[str, Any]
+    ) -> InferenceDomain | None:
         """Match :meth:`load`: read ``model.model_type`` when ``domino_config`` exists and inference_domain omitted."""
         dom_raw = kwargs.get("inference_domain")
         if dom_raw is not None:
@@ -136,7 +148,9 @@ class DominoWrapper(CFDModel):
             )
         self._device = device
         self._point_batch_size = int(kw.get("point_batch_size", 256_000))
-        self._cuda_bf16_autocast = _parse_bool(kw.pop("cuda_bf16_autocast", None), default=True)
+        self._cuda_bf16_autocast = _parse_bool(
+            kw.pop("cuda_bf16_autocast", None), default=True
+        )
 
         if not DistributedManager.is_initialized():
             DistributedManager.initialize()

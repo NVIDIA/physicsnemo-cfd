@@ -11,10 +11,15 @@ from typing import Any
 
 import pyvista as pv
 
-from physicsnemo.cfd.postprocessing_tools.visualization.utils import plot_field_comparisons, plot_fields
+from physicsnemo.cfd.postprocessing_tools.visualization.utils import (
+    plot_field_comparisons,
+    plot_fields,
+)
 from physicsnemo.cfd.evaluation.config import Config, OutputConfig
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
-from physicsnemo.cfd.evaluation.reports.context_helpers import get_comparison_mesh_for_case
+from physicsnemo.cfd.evaluation.reports.context_helpers import (
+    get_comparison_mesh_for_case,
+)
 from physicsnemo.cfd.evaluation.reports.registry import register_visual
 from physicsnemo.cfd.evaluation.reports.visual_filenames import benchmark_visual_png
 
@@ -58,7 +63,9 @@ def field_comparison_surface(
             pred_fields: list[str] = []
             for k in keys:
                 if k not in output.ground_truth_mesh_field_names:
-                    raise KeyError(f"output.ground_truth_mesh_field_names missing {k!r}")
+                    raise KeyError(
+                        f"output.ground_truth_mesh_field_names missing {k!r}"
+                    )
                 if k not in output.mesh_field_names:
                     raise KeyError(f"output.mesh_field_names missing {k!r}")
                 true_fields.append(output.ground_truth_mesh_field_names[k])

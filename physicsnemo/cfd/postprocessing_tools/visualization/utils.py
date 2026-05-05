@@ -23,6 +23,7 @@ from scipy.interpolate import interp1d
 import vtk
 from scipy.spatial import cKDTree
 
+
 def _configure_headless_pyvista() -> None:
     """Headless rendering: ``pv.start_xvfb()`` was removed in PyVista ~0.46+; use ``OFF_SCREEN``."""
     start_xvfb = getattr(pv, "start_xvfb", None)
@@ -1064,7 +1065,9 @@ def _parse_hexbin_direction(direction: str) -> tuple[str, bool]:
     """Return (canonical_plane, has_leading_minus) with plane one of XY, YZ, ZX, XZ."""
     s = direction.strip()
     negative = False
-    if s.startswith("-") or s.startswith("−"):  # ASCII and unicode minus (YAML / copy-paste)
+    if s.startswith("-") or s.startswith(
+        "−"
+    ):  # ASCII and unicode minus (YAML / copy-paste)
         negative = True
         s = s[1:].strip()
     plane = "".join(s.split()).upper()
@@ -1111,7 +1114,9 @@ def _axes_labels_world(plane: str) -> tuple[str, str]:
     return "X", "Z"
 
 
-def plot_projections_hexbin(meshes, field, direction, grid_size=50, *, coordinate_layout="world"):
+def plot_projections_hexbin(
+    meshes, field, direction, grid_size=50, *, coordinate_layout="world"
+):
     """Aggregate HexBin plots (mean | std dev) across meshes for a planar projection.
 
     Parameters

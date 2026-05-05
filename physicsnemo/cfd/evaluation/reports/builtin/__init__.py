@@ -4,15 +4,23 @@
 
 """Register built-in visuals."""
 
-from physicsnemo.cfd.evaluation.reports.builtin.design_plots import register_design_visuals
-from physicsnemo.cfd.evaluation.reports.builtin.hexbin import register_projections_hexbin
+from physicsnemo.cfd.evaluation.reports.builtin.design_plots import (
+    register_design_visuals,
+)
+from physicsnemo.cfd.evaluation.reports.builtin.hexbin import (
+    register_projections_hexbin,
+)
 from physicsnemo.cfd.evaluation.reports.builtin.line_plot import register_line_plot
-from physicsnemo.cfd.evaluation.reports.builtin.streamlines_visual import register_streamlines_visual
+from physicsnemo.cfd.evaluation.reports.builtin.streamlines_visual import (
+    register_streamlines_visual,
+)
 from physicsnemo.cfd.evaluation.reports.builtin.surface_volume import (
     register_plot_fields_volume,
     register_field_comparison_surface,
 )
-from physicsnemo.cfd.evaluation.reports.builtin.aggregate_volume import register_aggregate_volume
+from physicsnemo.cfd.evaluation.reports.builtin.aggregate_volume import (
+    register_aggregate_volume,
+)
 
 
 def register_all_builtin_visuals() -> None:

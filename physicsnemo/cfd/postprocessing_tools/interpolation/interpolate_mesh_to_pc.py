@@ -30,6 +30,7 @@ from physicsnemo.nn.functional.neighbors.knn import knn
 # workflows/deprecated/bench_example notebooks. Will be removed when that workflow is retired.
 # ---------------------------------------------------------------------------
 
+
 def _create_nbrs_surface(coords_source, n_neighbors=5, device="cpu"):
     """Deprecated: use ``interpolate_mesh_to_pc`` or ``physicsnemo.nn.functional.neighbors.knn``."""
     warnings.warn(
@@ -45,11 +46,20 @@ def _create_nbrs_surface(coords_source, n_neighbors=5, device="cpu"):
 
         if not isinstance(coords_source, cp.ndarray):
             coords_source = cp.asarray(coords_source)
-        return NearestNeighborsGPU(n_neighbors=n_neighbors, algorithm="auto").fit(coords_source)
+        return NearestNeighborsGPU(n_neighbors=n_neighbors, algorithm="auto").fit(
+            coords_source
+        )
     return cKDTree(coords_source)
 
 
-def _interpolate(nbrs_surface, coords_target, field, device="cpu", batch_size=1_000_000, n_neighbors=5):
+def _interpolate(
+    nbrs_surface,
+    coords_target,
+    field,
+    device="cpu",
+    batch_size=1_000_000,
+    n_neighbors=5,
+):
     """Deprecated: use ``interpolate_mesh_to_pc`` or ``physicsnemo.nn.functional.neighbors.knn``."""
     warnings.warn(
         "_interpolate is deprecated; use interpolate_mesh_to_pc or physicsnemo knn.",
@@ -83,7 +93,9 @@ def _interpolate(nbrs_surface, coords_target, field, device="cpu", batch_size=1_
                 )
             else:
                 field_interp[i : i + batch_size] = cp.asnumpy(
-                    cp.sum(normalized_weights[:, :, cp.newaxis] * field_neighbors, axis=1)
+                    cp.sum(
+                        normalized_weights[:, :, cp.newaxis] * field_neighbors, axis=1
+                    )
                 )
         return field_interp
 
@@ -91,6 +103,7 @@ def _interpolate(nbrs_surface, coords_target, field, device="cpu", batch_size=1_
 # ---------------------------------------------------------------------------
 # Current implementation using physicsnemo kNN
 # ---------------------------------------------------------------------------
+
 
 def _resolve_device(device: str) -> torch.device:
     """Map legacy ``"gpu"`` flag and torch device strings to a ``torch.device``."""
@@ -137,7 +150,9 @@ def _idw_interpolate(
     return _combine_field_neighbors_idw(distances_np, field_neighbors)
 
 
-def interpolate_mesh_to_pc(pc, mesh, fields_to_interpolate, mesh_dtype="cell", device="cpu"):
+def interpolate_mesh_to_pc(
+    pc, mesh, fields_to_interpolate, mesh_dtype="cell", device="cpu"
+):
     """Interpolate mesh results on a point cloud using inverse weighted kNN.
 
     Uses ``physicsnemo.nn.functional.neighbors.knn`` which auto-dispatches to
@@ -171,7 +186,9 @@ def interpolate_mesh_to_pc(pc, mesh, fields_to_interpolate, mesh_dtype="cell", d
         source_points = np.asarray(mesh.cell_centers().points, dtype=np.float32)
 
     source_t = torch.tensor(source_points, dtype=torch.float32, device=dev)
-    target_t = torch.tensor(np.asarray(pc.points, dtype=np.float32), dtype=torch.float32, device=dev)
+    target_t = torch.tensor(
+        np.asarray(pc.points, dtype=np.float32), dtype=torch.float32, device=dev
+    )
 
     data = mesh.point_data if mesh_dtype == "point" else mesh.cell_data
     for field_name in fields_to_interpolate:
@@ -233,9 +250,13 @@ def interpolate_point_data_to_cell_centers(
                     f"Field {field_name!r}: expected ({n_pt}, C) at points, got {field_arr.shape}"
                 )
         else:
-            raise ValueError(f"Unsupported point array shape for {field_name!r}: {field_arr.shape}")
+            raise ValueError(
+                f"Unsupported point array shape for {field_name!r}: {field_arr.shape}"
+            )
 
-        mesh.cell_data[field_name] = _idw_interpolate(source_t, target_t, field_arr, k=k)
+        mesh.cell_data[field_name] = _idw_interpolate(
+            source_t, target_t, field_arr, k=k
+        )
         try:
             mesh.point_data.remove(field_name)
         except AttributeError:
