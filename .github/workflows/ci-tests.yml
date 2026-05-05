@@ -17,13 +17,14 @@ jobs:
         python-version: ["3.12"]
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
+          enable-cache: true
       - name: Install package and dev deps
         run: |
-          pip install --upgrade pip
-          pip install -e ".[dev]"
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install --python .venv/bin/python -e ".[dev]"
       - name: Run CI tests
-        run: pytest -q test/ci_tests/
+        run: .venv/bin/pytest -q test/ci_tests/

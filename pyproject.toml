@@ -21,6 +21,7 @@ dependencies = [
     "numba>=0.59.0",
     "scikit-learn>=1.6.1",
     "scipy>=1.15.0",
+    "torch-geometric>=2.5.0",
     "matplotlib>=3.10.0",
     "trimesh>=4.6.9",
     "fast-simplification>=0.1.12",
