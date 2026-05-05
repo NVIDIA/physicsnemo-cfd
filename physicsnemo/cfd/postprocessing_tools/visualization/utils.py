@@ -23,7 +23,16 @@ from scipy.interpolate import interp1d
 import vtk
 from scipy.spatial import cKDTree
 
-pv.start_xvfb()
+def _configure_headless_pyvista() -> None:
+    """Headless rendering: ``pv.start_xvfb()`` was removed in PyVista ~0.46+; use ``OFF_SCREEN``."""
+    start_xvfb = getattr(pv, "start_xvfb", None)
+    if callable(start_xvfb):
+        start_xvfb()
+    else:
+        pv.OFF_SCREEN = True
+
+
+_configure_headless_pyvista()
 
 
 def plot_field_comparisons(
