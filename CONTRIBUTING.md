@@ -161,8 +161,9 @@ For Hugging Face / fsspec-backed **`model.package`** URIs in benchmarks, also in
 
 ### Model checkpoints and remote packages (`evaluation.assets`)
 
-Built-in and custom **`CFDModel`** wrappers load weights via **`load(checkpoint_path, stats_path, …)`**.
-The benchmark engine resolves paths first using **`physicsnemo.cfd.evaluation.assets.resolve_model_assets`**:
+Built-in and custom **`CFDModel`** wrappers load weights via
+**`load(checkpoint_path, stats_path, …)`**. The benchmark engine resolves paths
+first using **`physicsnemo.cfd.evaluation.assets.resolve_model_assets`**:
 
 | Tier | Use case | Configuration |
 | ---- | -------- | --------------- |
@@ -170,9 +171,14 @@ The benchmark engine resolves paths first using **`physicsnemo.cfd.evaluation.as
 | **B** | Weights in a Hub/S3/local tree | Set **`model.package`** (e.g. `hf://org/repo@revision`) and **`checkpoint_relpath`** / **`stats_relpath`**, or the same keys under **`model.kwargs`**. |
 | **C** | Default URI for a registered name | First-party models use **`physicsnemo.cfd.evaluation.assets.builtin_packages`** (per-model **`GEOTRANSOLVER_PACKAGE_ROOT`**, etc., and **`register_builtin_model_packages`**). Third parties call **`register_default_asset(name, AssetSpec(...))`**; then **`checkpoint`** / **`stats_path`** may be omitted if **`REQUIRES_REMOTE_ASSETS`** is true. |
 
-Stubs that do not load weights (e.g. **`surface_baseline`**, **`volume_baseline`**) set **`REQUIRES_REMOTE_ASSETS = False`** on the wrapper class so empty checkpoint/stats remain valid.
+Stubs that do not load weights (e.g. **`surface_baseline`**,
+**`volume_baseline`**) set **`REQUIRES_REMOTE_ASSETS = False`** on the wrapper
+class so empty checkpoint/stats remain valid.
 
-Optional Hub analytics: the engine performs a best-effort resolve of **`config.json`** inside HF-backed packages (ignored if missing). **`ngc://`** roots are not implemented yet (constructor/`resolve` will raise **`NotImplementedError`**).
+Optional Hub analytics: the engine performs a best-effort resolve of
+**`config.json`** inside HF-backed packages (ignored if missing). **`ngc://`**
+roots are not implemented yet (constructor/`resolve` will raise
+**`NotImplementedError`**).
 
 Before opening a pull request that changes **`physicsnemo/cfd/evaluation/`** or
 **`workflows/benchmarking/`**, run **`test/ci_tests/`** (everything under that folder):
@@ -181,21 +187,26 @@ Before opening a pull request that changes **`physicsnemo/cfd/evaluation/`** or
 pytest -q test/ci_tests/
 ```
 
-The **`test_evaluation.py`** module may skip entirely if `physicsnemo.utils.sdf` is
-unavailable (install or upgrade `nvidia-physicsnemo`).
+The **`test_evaluation.py`** module may skip entirely if
+`physicsnemo.utils.sdf` is unavailable (install or upgrade
+`nvidia-physicsnemo`).
 
-Do **not** commit generated benchmark outputs under **`workflows/benchmarking/`**
-(e.g. `benchmark_results*/`, `gpu_output.log`, `metrics_cache/`, Hydra outputs under the
-run directory). That directory includes a **`.gitignore`** for common artifacts.
+Do **not** commit generated benchmark outputs under
+**`workflows/benchmarking/`** (e.g. `benchmark_results*/`, `gpu_output.log`,
+`metrics_cache/`, Hydra outputs under the run directory). That directory
+includes a **`.gitignore`** for common artifacts.
 
-**Exit codes:** **`workflows/benchmarking/main.py`** calls **`run_benchmark_cli`**, which maps
-**`BenchmarkPolicyError`** (e.g. when **`run.fail_on_all_skipped`** or **`run.fail_on_any_metric_nan`**
-triggers) to exit **1**. See **`workflows/benchmarking/README.md`** for details.
+**Exit codes:** **`workflows/benchmarking/main.py`** calls
+**`run_benchmark_cli`**, which maps **`BenchmarkPolicyError`** (e.g. when
+**`run.fail_on_all_skipped`** or **`run.fail_on_any_metric_nan`** triggers) to
+exit **1**. See **`workflows/benchmarking/README.md`** for details.
 
-**Continuous integration:** [`.github/workflows/ci-tests.yml`](.github/workflows/ci-tests.yml)
-and [`.gitlab-ci.yml`](.gitlab-ci.yml) run the same **`pytest`** path on push/pull request
-(or merge request to **`main`**). Additional hosts should use **`pytest`** on **`test/ci_tests/`**
-so regressions cannot slip past one CI but not another.
+**Continuous integration:**
+[`.github/workflows/ci-tests.yml`](.github/workflows/ci-tests.yml) and
+[`.gitlab-ci.yml`](.gitlab-ci.yml) run the same **`pytest`** path on push/pull
+request (or merge request to **`main`**). Additional hosts should use
+**`pytest`** on **`test/ci_tests/`** so regressions cannot slip past one CI but
+not another.
 
-Update [`CHANGELOG.md`](CHANGELOG.md) for user-visible changes to evaluation or benchmark
-behavior and configuration.
+Update [`CHANGELOG.md`](CHANGELOG.md) for user-visible changes to evaluation or
+benchmark behavior and configuration.

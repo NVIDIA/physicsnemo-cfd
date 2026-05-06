@@ -1,8 +1,15 @@
 # Benchmarking AI surrogates for External Aerodynamics
 
-> **DEPRECATED:** This workflow is superseded by [`benchmarking`](../../benchmarking/README.md), which provides Hydra configuration, model wrapper integration, distributed multi-GPU support, and more. Please use `benchmarking` for new work. This directory will be removed in a future release.
+> **DEPRECATED:** This workflow is superseded by
+> [`benchmarking`](../../benchmarking/README.md), which provides Hydra
+> configuration, model wrapper integration, distributed multi-GPU support, and
+> more. Please use `benchmarking` for new work. This directory will be removed
+> in a future release.
 >
-> The **DoMINO NIM + DrivAerML** tutorial notebooks (`surface_benchmarking.ipynb`, `volume_benchmarking.ipynb`, `benchmarking_in_absence_of_gt.ipynb`) are maintained under **[`workflows/nim_inference/notebooks/`](../../nim_inference/README.md)**.
+> The **DoMINO NIM + DrivAerML** tutorial notebooks
+> (`surface_benchmarking.ipynb`, `volume_benchmarking.ipynb`,
+> `benchmarking_in_absence_of_gt.ipynb`) are maintained under
+> **[`workflows/nim_inference/notebooks/`](../../nim_inference/README.md)**.
 
 The benchmarking workflow is designed for evaluating and validating AI models
 for external aerodynamics. Predicting accurate aerodynamic characteristics of a
@@ -150,8 +157,7 @@ this. Code to generate the evaluation point clouds is provided in
 Note that a similar script can be written for the volume point clouds as well (using
 the `sample_interior` function from PhysicsNeMo-Sym)
 
-<!-- markdownlint-disable -->
-###### Summary
+###### Surface benchmarking summary
 
 To summarize, the surface benchmarking workflow computes/plots the following metrics
 
@@ -165,7 +171,6 @@ To summarize, the surface benchmarking workflow computes/plots the following met
 | Aggregate surface errors       | Error distributions across the samples (aggregated using hexagonal binning of the projections) |
 | Surface contour visualizations | Plots of selected design IDs in various views                                               |
 | Streamline visualizations      | Plots surface streamlines for selected design IDs (only supported in the notebook)          |
-<!-- markdownlint-enable -->
 
 ##### Volume benchmarking
 
@@ -204,8 +209,7 @@ Plotting contour plots for ['1', '2']
 
 ```
 
-<!-- markdownlint-disable -->
-###### Summary
+###### Volume benchmarking summary
 
 To summarize, the volume benchmarking workflow computes/plots the following metrics
 
@@ -218,7 +222,6 @@ To summarize, the volume benchmarking workflow computes/plots the following metr
 | Volume contour visualizations              | Plots of slices of selected design IDs in various views                                                                  |
 | Error distribution w.r.t SDF               | Plots for distribution of errors as a function of distance from the vehicle (only supported in the notebook)             |
 | Integral residuals                         | Residuals in an integral sense (computed on an arbitrary control volume within the domain) (only supported in the notebook) |
-<!-- markdownlint-enable -->
 
 ## Using standardized datasets for inter-model comparisons
 
