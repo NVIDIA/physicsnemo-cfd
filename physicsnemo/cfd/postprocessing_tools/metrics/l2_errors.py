@@ -14,10 +14,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import time
+
 import numpy as np
 import pyvista as pv
 import torch
 from physicsnemo.nn.functional import signed_distance_field
+
+
+def _debug_sdf() -> bool:
+    return os.environ.get("PHYSICSNEMO_CFD_DEBUG_SDF", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 # Match evaluation ``*_l2_numpy`` helpers: relative L2 ||t-p||/||t|| with absolute ||t-p|| when ||t|| ~ 0.
 _REL_L2_TRUTH_RTOL = 1e-14
@@ -242,12 +254,54 @@ def compute_error_vs_sdf(
     stl_vertices = torch.tensor(np.asarray(tri.points), dtype=torch.float32)
     stl_faces = np.asarray(tri.regular_faces, dtype=np.int64)
     stl_indices = torch.tensor(stl_faces.flatten(), dtype=torch.int32)
-    query_points = torch.tensor(np.asarray(data.points), dtype=torch.float32)
 
+    points_all = np.asarray(data.points)
+    # Apply bounds *before* SDF: evaluating winding-number SDF on full-volume meshes
+    # (10^8+ points) is prohibitively slow; bounds were previously only used after SDF.
+    if bounds is not None:
+        spatial_mask = (
+            (points_all[:, 0] >= bounds[0])
+            & (points_all[:, 0] <= bounds[1])
+            & (points_all[:, 1] >= bounds[2])
+            & (points_all[:, 1] <= bounds[3])
+            & (points_all[:, 2] >= bounds[4])
+            & (points_all[:, 2] <= bounds[5])
+        )
+        query_points_np = points_all[spatial_mask]
+    else:
+        spatial_mask = None
+        query_points_np = points_all
+
+    n_all = int(points_all.shape[0])
+    n_q = int(query_points_np.shape[0])
+    # Warp launch device follows *torch tensor device* (see FunctionSpec.warp_launch_context).
+    # Default torch.tensor(...) is CPU → SDF would run on CPU and look "stuck" for large N.
+    torch_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    query_points = torch.tensor(query_points_np, dtype=torch.float32, device=torch_device)
+    stl_vertices = stl_vertices.to(torch_device)
+    stl_indices = stl_indices.to(torch_device)
+
+    if _debug_sdf():
+        print(
+            "[compute_error_vs_sdf] "
+            f"n_points_all={n_all} n_query={n_q} "
+            f"torch_device={torch_device} cuda_available={torch.cuda.is_available()} "
+            f"query_points.device={query_points.device}",
+            flush=True,
+        )
+
+    t0 = time.perf_counter()
     sdf_field, _ = signed_distance_field(
         stl_vertices, stl_indices, query_points, use_sign_winding_number=True
     )
-    sdf_field = sdf_field.numpy()
+    if _debug_sdf():
+        print(
+            f"[compute_error_vs_sdf] signed_distance_field done in "
+            f"{time.perf_counter() - t0:.3f}s sdf_tensor_device={sdf_field.device}",
+            flush=True,
+        )
+
+    sdf_field = sdf_field.detach().cpu().numpy()
 
     true_fields_list = true_fields
     pred_fields_list = pred_fields
@@ -269,21 +323,10 @@ def compute_error_vs_sdf(
     for true, pred in zip(true_fields_list, pred_fields_list):
         true_field = data.get_array(true, preference=dtype)
         pred_field = data.get_array(pred, preference=dtype)
-        if bounds is not None:
-            points = data.points
-            mask = (
-                (points[:, 0] >= bounds[0])
-                & (points[:, 0] <= bounds[1])
-                & (points[:, 1] >= bounds[2])
-                & (points[:, 1] <= bounds[3])
-                & (points[:, 2] >= bounds[4])
-                & (points[:, 2] <= bounds[5])
-            )
-            true_field = true_field[mask]
-            pred_field = pred_field[mask]
-            sdf_sub = sdf_field[mask]
-        else:
-            sdf_sub = sdf_field
+        if spatial_mask is not None:
+            true_field = true_field[spatial_mask]
+            pred_field = pred_field[spatial_mask]
+        sdf_sub = sdf_field
 
         if field_type[true] == "vector":
             # Compute per-point error magnitude for histogram
