@@ -35,7 +35,7 @@ def _dof_coordinates(data: pv.DataSet, dtype: DOFType) -> np.ndarray:
     Spatial filters (bounds masks, SDF queries) must be evaluated at the same
     locations as the field arrays they index into. ``data.get_array(name,
     preference="cell")`` returns length ``n_cells``, so masks built against
-    ``data.points`` (length ``n_points``) silently misalign or raise. 
+    ``data.points`` (length ``n_points``) silently misalign or raise.
     Use cell centers for ``dtype="cell"`` and node coordinates for
     ``dtype="point"``.
     """
