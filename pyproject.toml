@@ -28,7 +28,7 @@ dependencies = [
     # Temporary git pin: tracks NVIDIA/physicsnemo main while it stabilizes toward 2.1.0.
     # This SHA contains the ``wp.Device`` migration (upstream dropped ``wp.context``) and GeoTransolver bug fix.
     # Revert to ``nvidia-physicsnemo>=2.1.0`` from PyPI once 2.1.0 ships.
-    "nvidia-physicsnemo @ git+https://github.com/NVIDIA/physicsnemo.git@70701e18f0cff9a67572830189649c467c8164ce",
+    "nvidia-physicsnemo @ git+https://github.com/NVIDIA/physicsnemo.git@d0aebb096327e2ab5c35dc64068868c52cd13258",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -50,7 +50,7 @@ evaluation-hf = [
 gpu = [
     "cupy-cuda13x>=13.6.0",
     "cuml-cu13>=25.10.0",
-    "warp-lang>=1.11.1",
+    "warp-lang>=1.13.0",
 ]
 all = [
     "nvidia-physicsnemo-cfd[dev,gpu,evaluation-hf]",
