@@ -155,6 +155,10 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Improved the dependency handling.
 - Added `httpx` dependency.
+- Bumped `warp-lang` to `warp-lang>=1.13.0` (in the `gpu` extra) to
+  track upstream's removal of the `wp.context` namespace. PhysicsNeMo's
+  matching `wp.Device` migration (used by SDF / kNN-IDW interpolation) is
+  picked up via the temporarily git-pinned `nvidia-physicsnemo` revision.
 
 ## [0.0.1] - 2025-06-15
 
