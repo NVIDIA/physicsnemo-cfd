@@ -59,11 +59,12 @@ Then use the commands below **from this directory** (`workflows/benchmarking/`).
    [introduction](#model-evaluation-and-benchmarking) above.)
 2. **Assets:** Download benchmark checkpoints and the **DrivAerML** evaluation
    tree (see
-   [DrivAerML dataset: download and directory layout](#drivaerml-dataset-download-and-directory-layout));
-   **NGC** may mirror these later (see
-   [Benchmark assets on NGC](#benchmark-assets-on-ngc-coming-soon)). Point
-   `model.checkpoint`, `stats_path`, and `dataset.root` in `conf/*.yaml` at
-   local paths, or use [Hydra overrides](#paths-without-ngc-hydra-overrides).
+   [DrivAerML dataset: download and directory layout](#drivaerml-dataset-download-and-directory-layout)).
+   Built-in matrix models resolve their weights from **Hugging Face** by
+   default (the **`_hf`** configs); point `model.checkpoint`, `stats_path`,
+   and `dataset.root` in `conf/*.yaml` at local paths to use on-disk
+   checkpoints, or override them on the CLI (see
+   [Path overrides (Hydra)](#path-overrides-hydra)).
 3. **Configure:** Edit YAML under `conf/` (see
    [Configuration files](#configuration-files-in-conf): **`_custom`** = local
    **`checkpoint`** / **`stats_path`**, **`_hf`** = Hugging Face
@@ -134,27 +135,9 @@ adapter’s field names.
 
 ---
 
-## Benchmark assets on NGC (coming soon)
+## Path overrides (Hydra)
 
-Pretrained checkpoints and the ground-truth evaluation dataset are intended to
-be published on **NVIDIA NGC**. **Links are not yet public** — use local paths
-in config until then.
-
-| Resource | Description | NGC link |
-| -------- | ----------- | -------- |
-| Benchmark model checkpoints | Surface/volume checkpoints + `global_stats.json` (or equivalent) per model | *TBD* |
-| Evaluation dataset | DrivAerML (or successor) — same **`run_*`** layout as [DrivAerML dataset](#drivaerml-dataset-download-and-directory-layout) | *TBD* |
-
-After release, unpack assets to a stable path and set
-`benchmark.models[].checkpoint` / `stats_path` and `benchmark.datasets[].root`
-to match the documented layout (or use env-driven paths in your deployment).
-Until then, use Hugging Face or a local mirror as described in that section.
-
----
-
-## Paths without NGC (Hydra overrides)
-
-Until NGC artifacts are available, override paths from the CLI without editing
+Override checkpoint, stats, and dataset paths from the CLI without editing
 YAML files:
 
 ```bash
@@ -281,10 +264,6 @@ huggingface-cli download neashton/drivaerml --repo-type dataset \
 
 Expand `--include` for every `run_<i>` you need. For a full local mirror
 without Git, understand the size implications before omitting filters.
-
-**NGC:** when the [benchmark table](#benchmark-assets-on-ngc-coming-soon)
-lists a DrivAerML bundle, unpack so the **`run_*`** layout matches the table
-above and set **`benchmark.datasets[].root`** accordingly.
 
 ### Train / validation split for benchmarking
 
