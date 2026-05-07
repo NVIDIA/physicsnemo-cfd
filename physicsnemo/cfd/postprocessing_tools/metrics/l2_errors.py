@@ -14,22 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import time
-
 import numpy as np
 import pyvista as pv
 import torch
+
 from physicsnemo.nn.functional import signed_distance_field
-
-
-def _debug_sdf() -> bool:
-    return os.environ.get("PHYSICSNEMO_CFD_DEBUG_SDF", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
 
 # Match evaluation ``*_l2_numpy`` helpers: relative L2 ||t-p||/||t|| with absolute ||t-p|| when ||t|| ~ 0.
 _REL_L2_TRUTH_RTOL = 1e-14
@@ -250,11 +239,6 @@ def compute_error_vs_sdf(
         - "bin_edges": List of SDF bin edges
         - "mean_errors": List of mean errors for each SDF bin
     """
-    tri = triangulate_surface_mesh(stl_mesh)
-    stl_vertices = torch.tensor(np.asarray(tri.points), dtype=torch.float32)
-    stl_faces = np.asarray(tri.regular_faces, dtype=np.int64)
-    stl_indices = torch.tensor(stl_faces.flatten(), dtype=torch.int32)
-
     points_all = np.asarray(data.points)
     # Apply bounds *before* SDF: evaluating winding-number SDF on full-volume meshes
     # (10^8+ points) is prohibitively slow; bounds were previously only used after SDF.
@@ -272,35 +256,23 @@ def compute_error_vs_sdf(
         spatial_mask = None
         query_points_np = points_all
 
-    n_all = int(points_all.shape[0])
-    n_q = int(query_points_np.shape[0])
-    # Warp launch device follows *torch tensor device* (see FunctionSpec.warp_launch_context).
-    # Default torch.tensor(...) is CPU → SDF would run on CPU and look "stuck" for large N.
-    torch_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    query_points = torch.tensor(query_points_np, dtype=torch.float32, device=torch_device)
-    stl_vertices = stl_vertices.to(torch_device)
-    stl_indices = stl_indices.to(torch_device)
+    # Warp launch device follows the torch tensor device (see FunctionSpec.warp_launch_context),
+    # so build all SDF inputs directly on the target device to avoid a slow CPU fallback.
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tri = triangulate_surface_mesh(stl_mesh)
+    stl_vertices = torch.tensor(
+        np.asarray(tri.points), dtype=torch.float32, device=device
+    )
+    stl_indices = torch.tensor(
+        np.asarray(tri.regular_faces, dtype=np.int64).flatten(),
+        dtype=torch.int32,
+        device=device,
+    )
+    query_points = torch.tensor(query_points_np, dtype=torch.float32, device=device)
 
-    if _debug_sdf():
-        print(
-            "[compute_error_vs_sdf] "
-            f"n_points_all={n_all} n_query={n_q} "
-            f"torch_device={torch_device} cuda_available={torch.cuda.is_available()} "
-            f"query_points.device={query_points.device}",
-            flush=True,
-        )
-
-    t0 = time.perf_counter()
     sdf_field, _ = signed_distance_field(
         stl_vertices, stl_indices, query_points, use_sign_winding_number=True
     )
-    if _debug_sdf():
-        print(
-            f"[compute_error_vs_sdf] signed_distance_field done in "
-            f"{time.perf_counter() - t0:.3f}s sdf_tensor_device={sdf_field.device}",
-            flush=True,
-        )
-
     sdf_field = sdf_field.detach().cpu().numpy()
 
     true_fields_list = true_fields
@@ -326,7 +298,6 @@ def compute_error_vs_sdf(
         if spatial_mask is not None:
             true_field = true_field[spatial_mask]
             pred_field = pred_field[spatial_mask]
-        sdf_sub = sdf_field
 
         if field_type[true] == "vector":
             # Compute per-point error magnitude for histogram
@@ -338,7 +309,7 @@ def compute_error_vs_sdf(
 
         # For each bin, compute the mean error of points in that bin
         num_bins = bin_edges.shape[0] - 1
-        bin_indices = np.digitize(sdf_sub, bin_edges) - 1  # -1 to convert to 0-based
+        bin_indices = np.digitize(sdf_field, bin_edges) - 1  # -1 to convert to 0-based
         bin_mean_errors = []
         for i in range(num_bins):
             mask = bin_indices == i
