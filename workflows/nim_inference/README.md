@@ -34,6 +34,9 @@ matrix evaluation and CI-style configs.
 If the notebook runs in **Docker** alongside the NIM, start both with
 **`--network host`** so localhost inference works.
 
+Headless servers may need **xvfb** (see **`setup.sh`** for an example `apt`
+line — optional).
+
 ## API used in the notebooks
 
 - **`physicsnemo.cfd.evaluation.nims.call_domino_nim`** — HTTP client for the
