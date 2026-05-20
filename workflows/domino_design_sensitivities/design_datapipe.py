@@ -22,7 +22,7 @@ The datapipe processes surface meshes to create structured representations suita
 machine learning tasks, computing various geometric properties and signed distance fields.
 """
 
-from typing import Literal, Sequence
+from typing import Sequence
 
 import numpy as np
 import pyvista as pv
@@ -149,9 +149,6 @@ class DesignDatapipe(Dataset):
         # Initialize random number generator, for reproducibility
         rng = np.random.RandomState(seed)
 
-        # Initialize the output dictionary, which will store all data for the datapipe
-        out_dict: dict[str, np.ndarray] = {}
-
         ### First, do computation that is required for all model_types
         length_scale = np.amax(self.mesh.points, 0) - np.amin(self.mesh.points, 0)
         stl_centers = self.mesh.cell_centers().points
@@ -233,8 +230,8 @@ class DesignDatapipe(Dataset):
         pos_normals_closest = volume_coordinates - sdf_node_closest_point
         pos_volume_center_of_mass = volume_coordinates - center_of_mass
         volume_coordinates = normalize(volume_coordinates, v_max, v_min)
-        vol_grid_max_min = np.float32(np.asarray([v_min, v_max]))
-        surf_grid_max_min = np.float32(np.asarray([s_min, s_max]))
+        vol_grid_max_min = np.asarray([v_min, v_max], dtype=np.float32)
+        surf_grid_max_min = np.asarray([s_min, s_max], dtype=np.float32)
 
         self.out_dict = dict(
             pos_volume_closest=pos_normals_closest,
