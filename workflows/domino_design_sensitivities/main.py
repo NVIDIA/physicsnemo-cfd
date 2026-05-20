@@ -33,7 +33,7 @@ import numpy as np
 import torch
 
 from physicsnemo.models.domino.model import DoMINO
-from physicsnemo.utils.domino.utils import unnormalize
+from physicsnemo.models.domino.utils import unnormalize
 from torch.nn.parallel import DistributedDataParallel
 from physicsnemo.distributed import DistributedManager
 

@@ -187,9 +187,9 @@ Before opening a pull request that changes **`physicsnemo/cfd/evaluation/`** or
 pytest -q test/ci_tests/
 ```
 
-The **`test_evaluation.py`** module may skip entirely if
-`physicsnemo.utils.sdf` is unavailable (install or upgrade
-`nvidia-physicsnemo`).
+The **`compute_error_vs_sdf`** tests in **`test_l2_errors.py`** skip cleanly
+when **`warp`** is unavailable (install via the **`gpu`** optional extra in
+[`pyproject.toml`](pyproject.toml)).
 
 Do **not** commit generated benchmark outputs under
 **`workflows/benchmarking/`** (e.g. `benchmark_results*/`, `gpu_output.log`,
