@@ -22,7 +22,7 @@ The datapipe processes surface meshes to create structured representations suita
 machine learning tasks, computing various geometric properties and signed distance fields.
 """
 
-from typing import Literal, Sequence
+from typing import Sequence
 
 import numpy as np
 import pyvista as pv
@@ -30,13 +30,83 @@ from numpy.typing import NDArray
 from cuml.neighbors import NearestNeighbors
 from torch.utils.data import Dataset
 
-from physicsnemo.utils.domino.utils import (
+from physicsnemo.models.domino.utils import (
     calculate_center_of_mass,
     create_grid,
     normalize,
 )
-from physicsnemo.utils.sdf import signed_distance_field
+from physicsnemo.nn.functional import signed_distance_field
 import torch
+
+
+### PhysicsNeMo v2 made several DoMINO utilities torch-only. The rest of this
+### datapipe is numpy-native (it feeds cuml's NearestNeighbors and uses
+### ``np.array`` / ``rng.rand`` extensively), so we keep two small numpy-in /
+### numpy-out wrappers below to isolate the torch hop at the boundary.
+
+
+def _compute_sdf_np(
+    mesh_vertices: np.ndarray,
+    mesh_indices: np.ndarray,
+    input_points: np.ndarray,
+    use_sign_winding_number: bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute signed distance + closest hit points from a triangle mesh.
+
+    Thin numpy-in / numpy-out wrapper around the v2
+    ``physicsnemo.nn.functional.signed_distance_field`` op, which is itself
+    torch-only and always returns ``(sdf, hit_points)`` (no
+    ``include_hit_points`` kwarg).
+
+    Args:
+        mesh_vertices: Mesh vertex coordinates, shape ``(n_vertices, 3)``.
+        mesh_indices: Triangle connectivity as flattened indices, shape
+            ``(3 * n_faces,)``; or face triplets, shape ``(n_faces, 3)``.
+        input_points: Query points at which to evaluate the SDF, shape
+            ``(..., 3)``.
+        use_sign_winding_number: Use the winding-number sign convention
+            (works on non-watertight meshes). Defaults to ``True``, matching
+            the prior behavior of every call site in this datapipe.
+
+    Returns:
+        Tuple ``(sdf, hit_points)`` of numpy arrays. ``sdf`` has shape
+        ``input_points.shape[:-1]`` and ``hit_points`` has shape
+        ``input_points.shape``. Returned on CPU regardless of input device.
+    """
+    sdf, hit_points = signed_distance_field(
+        mesh_vertices=torch.as_tensor(mesh_vertices),
+        mesh_indices=torch.as_tensor(mesh_indices),
+        input_points=torch.as_tensor(input_points),
+        use_sign_winding_number=use_sign_winding_number,
+    )
+    return sdf.cpu().numpy(), hit_points.cpu().numpy()
+
+
+def _create_grid_np(
+    max_coords: np.ndarray,
+    min_coords: np.ndarray,
+    resolution: Sequence[int],
+) -> np.ndarray:
+    """Build a regular 3D grid via the v2 ``create_grid`` helper.
+
+    The v2 ``physicsnemo.models.domino.utils.create_grid`` is torch-typed (it
+    reads ``.dtype`` and ``.device`` off its first arg), so we wrap it for
+    numpy callers. Output dtype is float32 to match the rest of the datapipe.
+
+    Args:
+        max_coords: Upper bounds ``[x_max, y_max, z_max]``, shape ``(3,)``.
+        min_coords: Lower bounds ``[x_min, y_min, z_min]``, shape ``(3,)``.
+        resolution: Number of grid points along each axis, length 3.
+
+    Returns:
+        Grid coordinates of shape ``(nx, ny, nz, 3)`` as ``np.float32``.
+    """
+    grid_t = create_grid(
+        torch.as_tensor(np.asarray(max_coords), dtype=torch.float32),
+        torch.as_tensor(np.asarray(min_coords), dtype=torch.float32),
+        torch.as_tensor(np.asarray(resolution), dtype=torch.int32),
+    )
+    return grid_t.cpu().numpy()
 
 
 class DesignDatapipe(Dataset):
@@ -79,9 +149,6 @@ class DesignDatapipe(Dataset):
         # Initialize random number generator, for reproducibility
         rng = np.random.RandomState(seed)
 
-        # Initialize the output dictionary, which will store all data for the datapipe
-        out_dict: dict[str, np.ndarray] = {}
-
         ### First, do computation that is required for all model_types
         length_scale = np.amax(self.mesh.points, 0) - np.amin(self.mesh.points, 0)
         stl_centers = self.mesh.cell_centers().points
@@ -110,28 +177,21 @@ class DesignDatapipe(Dataset):
         v_min = np.asarray(bounding_box[0])
 
         nx, ny, nz = grid_resolution
-        grid = create_grid(v_max, v_min, grid_resolution)
+        grid = _create_grid_np(v_max, v_min, grid_resolution)
         grid_reshaped = grid.reshape(nx * ny * nz, 3)
 
-        # SDF on grid
-        sdf_grid = signed_distance_field(
-            mesh_vertices=mesh.points,
-            mesh_indices=mesh_indices_flattened,
-            input_points=grid_reshaped,
-            use_sign_winding_number=True,
+        sdf_grid, _ = _compute_sdf_np(
+            mesh.points, mesh_indices_flattened, grid_reshaped
         )
-        sdf_grid = np.array(sdf_grid).reshape(nx, ny, nz)
+        sdf_grid = sdf_grid.reshape(nx, ny, nz)
 
-        surf_grid = create_grid(s_max, s_min, grid_resolution)
+        surf_grid = _create_grid_np(s_max, s_min, grid_resolution)
         surf_grid_reshaped = surf_grid.reshape(nx * ny * nz, 3)
 
-        sdf_surf_grid = signed_distance_field(
-            mesh_vertices=mesh.points,
-            mesh_indices=mesh_indices_flattened,
-            input_points=surf_grid_reshaped,
-            use_sign_winding_number=True,
+        sdf_surf_grid, _ = _compute_sdf_np(
+            mesh.points, mesh_indices_flattened, surf_grid_reshaped
         )
-        sdf_surf_grid = np.array(sdf_surf_grid).reshape(nx, ny, nz)
+        sdf_surf_grid = sdf_surf_grid.reshape(nx, ny, nz)
 
         # Sample surface_vertices
         grid = normalize(grid, v_max, v_min)
@@ -163,20 +223,15 @@ class DesignDatapipe(Dataset):
         # Volume processing
         volume_coordinates = (v_max - v_min) * rng.rand(1000, 3) + v_min
 
-        sdf_nodes, sdf_node_closest_point = signed_distance_field(
-            mesh.points,
-            mesh_indices_flattened,
-            volume_coordinates,
-            include_hit_points=True,
-            use_sign_winding_number=True,
+        sdf_nodes, sdf_node_closest_point = _compute_sdf_np(
+            mesh.points, mesh_indices_flattened, volume_coordinates
         )
-        sdf_nodes = np.array(sdf_nodes).reshape(-1, 1)
-        sdf_node_closest_point = np.array(sdf_node_closest_point)
+        sdf_nodes = sdf_nodes.reshape(-1, 1)
         pos_normals_closest = volume_coordinates - sdf_node_closest_point
         pos_volume_center_of_mass = volume_coordinates - center_of_mass
         volume_coordinates = normalize(volume_coordinates, v_max, v_min)
-        vol_grid_max_min = np.float32(np.asarray([v_min, v_max]))
-        surf_grid_max_min = np.float32(np.asarray([s_min, s_max]))
+        vol_grid_max_min = np.asarray([v_min, v_max], dtype=np.float32)
+        surf_grid_max_min = np.asarray([s_min, s_max], dtype=np.float32)
 
         self.out_dict = dict(
             pos_volume_closest=pos_normals_closest,
