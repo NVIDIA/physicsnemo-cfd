@@ -23,24 +23,25 @@ sampled in the volume around the STL and on the surface of the STL. They are sto
 in a dictionary, which can be written out for visualization.
 """
 
+import warnings
+from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
+
 import hydra
+import numpy as np
+import pyvista as pv
+import torch
+from numpy.typing import NDArray
 from omegaconf import DictConfig
+from torch.nn.parallel import DistributedDataParallel
 from tqdm import tqdm
 
-import numpy as np
-import torch
-
+from physicsnemo.distributed import DistributedManager
 from physicsnemo.models.domino.model import DoMINO
 from physicsnemo.models.domino.utils import unnormalize
-from torch.nn.parallel import DistributedDataParallel
-from physicsnemo.distributed import DistributedManager
 
-from numpy.typing import NDArray
-import pyvista as pv
 from design_datapipe import DesignDatapipe
-from dataclasses import dataclass
 
 
 @dataclass
@@ -84,32 +85,33 @@ class DoMINOInference:
                 self.device = torch.device("cpu")
 
         if self.model is None:
-            self.model = (
-                DoMINO(
+            if self.model_checkpoint_path is not None:
+                ### Construct the model from the checkpoint's own saved
+                ### `__init__` args (in `args.json`) rather than from `cfg.model`.
+                ### This is robust to drift between the local config and the
+                ### config the checkpoint was trained with, and is the canonical
+                ### way to consume a `.mdlus` archive in PhysicsNeMo.
+                self.model = DoMINO.from_checkpoint(
+                    str(self.model_checkpoint_path), strict=True
+                )
+            else:
+                warnings.warn(
+                    "Model loaded without checkpoint. This is not recommended for production use.",
+                    stacklevel=2,
+                )
+                self.model = DoMINO(
                     input_features=3,
                     output_features_vol=self.num_vol_vars,
                     output_features_surf=self.num_surf_vars,
                     model_parameters=self.cfg.model,
                 )
-                .to(self.device)
-                .eval()
-            )
+
+            self.model = self.model.to(self.device).eval()
 
             for param in self.model.parameters():
                 param.requires_grad = False
 
             self.model = torch.compile(self.model, disable=True)  # TODO review
-
-            if self.model_checkpoint_path is not None:
-                with open(self.model_checkpoint_path, "rb") as f:
-                    self.model.load_state_dict(torch.load(f, map_location=self.device))
-            else:
-                import warnings
-
-                warnings.warn(
-                    "Model loaded without checkpoint. This is not recommended for production use.",
-                    stacklevel=2,
-                )
 
             if (self.dist is not None) and (self.dist.world_size > 1):
                 self.model = DistributedDataParallel(
@@ -480,10 +482,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model-checkpoint-path",
         type=str,
-        default=str((Path(__file__).parent / "DoMINO.0.41.pt").absolute()),
+        default=str((Path(__file__).parent / "DoMINO.0.501.mdlus").absolute()),
         help=(
-            "Path to the DoMINO model checkpoint (.pt file). "
-            "Defaults to DoMINO.0.41.pt in the script directory."
+            "Path to the DoMINO model checkpoint (.mdlus archive). "
+            "Defaults to DoMINO.0.501.mdlus in the script directory."
         ),
     )
     parser.add_argument(
