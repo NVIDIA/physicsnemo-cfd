@@ -15,11 +15,15 @@
 # limitations under the License.
 
 """
-This is the datapipe to read OpenFoam files (vtp/vtu/stl) and save them as point clouds
-in npy format.
+Preprocesses a PyVista surface mesh into the input-tensor dict consumed by
+:class:`physicsnemo.models.domino.model.DoMINO`.
 
-The datapipe processes surface meshes to create structured representations suitable for
-machine learning tasks, computing various geometric properties and signed distance fields.
+Given an STL-derived ``pv.PolyData`` plus volume and surface bounding
+boxes, this datapipe computes signed-distance fields on a structured
+grid, cell centroids and area-weighted neighborhood stencils for the
+surface mesh, and (optionally) a sparse random sampling of volume query
+points. All outputs are emitted as ``torch.float32`` tensors keyed by
+the names the DoMINO model's ``forward()`` expects.
 """
 
 from typing import Sequence
@@ -50,6 +54,7 @@ def _compute_sdf_np(
     mesh_indices: np.ndarray,
     input_points: np.ndarray,
     use_sign_winding_number: bool = True,
+    device: torch.device = torch.device("cpu"),
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute signed distance + closest hit points from a triangle mesh.
 
@@ -67,6 +72,11 @@ def _compute_sdf_np(
         use_sign_winding_number: Use the winding-number sign convention
             (works on non-watertight meshes). Defaults to ``True``, matching
             the prior behavior of every call site in this datapipe.
+        device: Torch device used for the SDF computation. The PhysicsNeMo
+            v2 ``signed_distance_field`` op dispatches its Warp kernel to
+            the device of its inputs, so leaving this at the default
+            ``cpu`` would silently run an O(n_query * n_faces) BVH query
+            on a single CPU core. Pass a CUDA device on GPU machines.
 
     Returns:
         Tuple ``(sdf, hit_points)`` of numpy arrays. ``sdf`` has shape
@@ -74,9 +84,9 @@ def _compute_sdf_np(
         ``input_points.shape``. Returned on CPU regardless of input device.
     """
     sdf, hit_points = signed_distance_field(
-        mesh_vertices=torch.as_tensor(mesh_vertices),
-        mesh_indices=torch.as_tensor(mesh_indices),
-        input_points=torch.as_tensor(input_points),
+        mesh_vertices=torch.as_tensor(mesh_vertices, device=device),
+        mesh_indices=torch.as_tensor(mesh_indices, device=device),
+        input_points=torch.as_tensor(input_points, device=device),
         use_sign_winding_number=use_sign_winding_number,
     )
     return sdf.cpu().numpy(), hit_points.cpu().numpy()
@@ -112,6 +122,19 @@ def _create_grid_np(
 class DesignDatapipe(Dataset):
     """PyTorch Dataset for processing surface meshes into DoMINO inputs."""
 
+    ### The set of surface tensors that vary across the inner DataLoader
+    ### batches. Hoisted here so :mod:`main` and :meth:`__getitem__`
+    ### stay in lockstep without duplicating the list.
+    SURFACE_KEYS: tuple[str, ...] = (
+        "surface_mesh_centers",
+        "surface_mesh_neighbors",
+        "surface_normals",
+        "surface_neighbors_normals",
+        "surface_areas",
+        "surface_neighbors_areas",
+        "pos_surface_center_of_mass",
+    )
+
     def __init__(
         self,
         mesh: pv.PolyData,
@@ -123,6 +146,7 @@ class DesignDatapipe(Dataset):
         stencil_size: int = 7,
         seed: int = 0,
         device: torch.device = torch.device("cpu"),
+        produce_volume_inputs: bool = True,
     ):
         """Initialize a DesignDatapipe dataset based on a surface mesh sample.
 
@@ -136,10 +160,15 @@ class DesignDatapipe(Dataset):
                 dimension (nx, ny, nz) for the structured grid.
             stencil_size: The size of the stencil used for local operations. Defaults to 7.
             seed: Random seed for reproducibility. Defaults to 0.
+            device: Device on which to place the emitted tensors.
+            produce_volume_inputs: Whether to also emit the volume-side tensors
+                (``sdf_nodes``, ``volume_mesh_centers``, ``pos_volume_closest``,
+                ``pos_volume_center_of_mass``). Set to ``False`` for surface-only
+                checkpoints to avoid sampling random volume points the model
+                does not read. Defaults to ``True``.
 
         Raises:
-            ValueError: If grid_resolution does not contain exactly 3 values
-            ValueError: If bounding_box or bounding_box_surface are not 2x3 arrays
+            ValueError: If grid_resolution does not contain exactly 3 values.
         """
         if len(grid_resolution) != 3:
             raise ValueError("grid_resolution must contain exactly 3 values")
@@ -159,6 +188,9 @@ class DesignDatapipe(Dataset):
             length=False, area=True, volume=False
         ).cell_data["Area"]
 
+        ### DoMINO was trained with inward-pointing surface normals (the
+        ### opposite of PyVista's outward-pointing convention), so flip
+        ### the sign here to match the training preprocessing.
         surface_normals = -1.0 * np.array(mesh.cell_normals, dtype=np.float32)
 
         center_of_mass = (
@@ -181,7 +213,7 @@ class DesignDatapipe(Dataset):
         grid_reshaped = grid.reshape(nx * ny * nz, 3)
 
         sdf_grid, _ = _compute_sdf_np(
-            mesh.points, mesh_indices_flattened, grid_reshaped
+            mesh.points, mesh_indices_flattened, grid_reshaped, device=device
         )
         sdf_grid = sdf_grid.reshape(nx, ny, nz)
 
@@ -189,7 +221,7 @@ class DesignDatapipe(Dataset):
         surf_grid_reshaped = surf_grid.reshape(nx * ny * nz, 3)
 
         sdf_surf_grid, _ = _compute_sdf_np(
-            mesh.points, mesh_indices_flattened, surf_grid_reshaped
+            mesh.points, mesh_indices_flattened, surf_grid_reshaped, device=device
         )
         sdf_surf_grid = sdf_surf_grid.reshape(nx, ny, nz)
 
@@ -203,57 +235,60 @@ class DesignDatapipe(Dataset):
         knn.fit(surface_mesh_centers)
         indices = knn.kneighbors(surface_mesh_centers, return_distance=False)
 
-        ## CPU implementation of the above CUML neighbor-finding, as a backup
-        # from scipy.spatial import KDTree
-        # interp_func = KDTree(surface_mesh_centers)
-        # distances, indices = interp_func.query(surface_mesh_centers, k=stencil_size)
-
-        surface_mesh_neighbors = surface_mesh_centers[indices]
-        surface_mesh_neighbors = surface_mesh_neighbors[:, 1:] + 1e-6
-        surface_neighbors_normals = surface_normals[indices]
-        surface_neighbors_normals = surface_neighbors_normals[:, 1:]
-        surface_neighbors_areas = surface_areas[indices]
-        surface_neighbors_areas = surface_neighbors_areas[:, 1:]
+        ### k-NN returns each query as its own nearest neighbor at column 0;
+        ### slice it off so only true neighbors remain. The 1e-6 offset on
+        ### `surface_mesh_neighbors` guards against exact coincidences that
+        ### would later produce NaNs in geometry-encoding distance ratios.
+        surface_mesh_neighbors = surface_mesh_centers[indices][:, 1:] + 1e-6
+        surface_neighbors_normals = surface_normals[indices][:, 1:]
+        surface_neighbors_areas = surface_areas[indices][:, 1:]
 
         pos_normals_com_surface = surface_mesh_centers - center_of_mass
 
         surface_mesh_centers = normalize(surface_mesh_centers, s_max, s_min)
         surface_mesh_neighbors = normalize(surface_mesh_neighbors, s_max, s_min)
 
-        # Volume processing
-        volume_coordinates = (v_max - v_min) * rng.rand(1000, 3) + v_min
-
-        sdf_nodes, sdf_node_closest_point = _compute_sdf_np(
-            mesh.points, mesh_indices_flattened, volume_coordinates
-        )
-        sdf_nodes = sdf_nodes.reshape(-1, 1)
-        pos_normals_closest = volume_coordinates - sdf_node_closest_point
-        pos_volume_center_of_mass = volume_coordinates - center_of_mass
-        volume_coordinates = normalize(volume_coordinates, v_max, v_min)
         vol_grid_max_min = np.asarray([v_min, v_max], dtype=np.float32)
         surf_grid_max_min = np.asarray([s_min, s_max], dtype=np.float32)
 
         self.out_dict = dict(
-            pos_volume_closest=pos_normals_closest,
-            pos_volume_center_of_mass=pos_volume_center_of_mass,
             pos_surface_center_of_mass=pos_normals_com_surface,
             geometry_coordinates=stl_centers,
             grid=grid,
             surf_grid=surf_grid,
             sdf_grid=sdf_grid,
             sdf_surf_grid=sdf_surf_grid,
-            sdf_nodes=sdf_nodes,
             surface_mesh_centers=surface_mesh_centers,
             surface_mesh_neighbors=surface_mesh_neighbors,
             surface_normals=surface_normals,
             surface_areas=surface_areas,
             surface_neighbors_normals=surface_neighbors_normals,
             surface_neighbors_areas=surface_neighbors_areas,
-            volume_mesh_centers=volume_coordinates,
             volume_min_max=vol_grid_max_min,
             surface_min_max=surf_grid_max_min,
             length_scale=length_scale,
         )
+
+        if produce_volume_inputs:
+            ### Sample a sparse cloud of query points inside the volume
+            ### bounding box, then compute their SDF, closest-mesh-point
+            ### offset, and offset-from-center-of-mass. DoMINO only reads
+            ### these when its `output_features_vol` head is enabled; for
+            ### surface-only checkpoints we skip the work entirely.
+            volume_coordinates = (v_max - v_min) * rng.rand(1000, 3) + v_min
+            sdf_nodes, sdf_node_closest_point = _compute_sdf_np(
+                mesh.points, mesh_indices_flattened, volume_coordinates, device=device
+            )
+            sdf_nodes = sdf_nodes.reshape(-1, 1)
+            pos_normals_closest = volume_coordinates - sdf_node_closest_point
+            pos_volume_center_of_mass = volume_coordinates - center_of_mass
+            volume_coordinates = normalize(volume_coordinates, v_max, v_min)
+            self.out_dict.update(
+                sdf_nodes=sdf_nodes,
+                pos_volume_closest=pos_normals_closest,
+                pos_volume_center_of_mass=pos_volume_center_of_mass,
+                volume_mesh_centers=volume_coordinates,
+            )
 
         self.out_dict = {
             k: torch.from_numpy(v).type(torch.float32).to(device)
@@ -268,39 +303,10 @@ class DesignDatapipe(Dataset):
         """Get a single sample from the dataset.
 
         Args:
-            idx: Index of the sample to retrieve
+            idx: Index of the sample to retrieve.
 
         Returns:
-            Dictionary containing surface mesh data for the specified index
+            Dictionary containing the surface tensors listed in
+            :attr:`SURFACE_KEYS`, indexed by ``idx``.
         """
-        keys: list[str] = [
-            "surface_mesh_centers",
-            "surface_mesh_neighbors",
-            "surface_normals",
-            "surface_neighbors_normals",
-            "surface_areas",
-            "surface_neighbors_areas",
-            "pos_surface_center_of_mass",
-        ]
-
-        return {k: self.out_dict[k][idx] for k in keys}
-
-
-if __name__ == "__main__":
-    from torch.utils.data import DataLoader
-
-    mesh: pv.PolyData = pv.read("./geometries/drivaer_1_single_solid_decimated3.stl")
-    bounding_box: np.ndarray = np.array([[-3.5, -2.25, -0.32], [8.5, 2.25, 3.00]])
-    bounding_box_surface: np.ndarray = np.array([[-1.1, -1.2, -0.32], [4.5, 1.2, 1.2]])
-
-    fd = DesignDatapipe(
-        mesh=mesh,
-        bounding_box=bounding_box,
-        bounding_box_surface=bounding_box_surface,
-        grid_resolution=[128, 64, 48],
-    )
-
-    train_dataloader = DataLoader(fd, batch_size=256_000, shuffle=False)
-
-    for i, sample_batched in enumerate(train_dataloader):
-        print(f"{i=}, {sample_batched['surface_mesh_centers'].shape=}")
+        return {k: self.out_dict[k][idx] for k in self.SURFACE_KEYS}
