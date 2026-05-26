@@ -26,12 +26,13 @@ points. All outputs are emitted as ``torch.float32`` tensors keyed by
 the names the DoMINO model's ``forward()`` expects.
 """
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 import pyvista as pv
-from numpy.typing import NDArray
+import torch
 from cuml.neighbors import NearestNeighbors
+from numpy.typing import NDArray
 from torch.utils.data import Dataset
 
 from physicsnemo.models.domino.utils import (
@@ -40,13 +41,16 @@ from physicsnemo.models.domino.utils import (
     normalize,
 )
 from physicsnemo.nn.functional import signed_distance_field
-import torch
 
 
-### PhysicsNeMo v2 made several DoMINO utilities torch-only. The rest of this
-### datapipe is numpy-native (it feeds cuml's NearestNeighbors and uses
-### ``np.array`` / ``rng.rand`` extensively), so we keep two small numpy-in /
-### numpy-out wrappers below to isolate the torch hop at the boundary.
+### A few PhysicsNeMo v2 utilities below (``signed_distance_field``,
+### ``create_grid``) are torch-only, while the rest of this datapipe
+### bookkeeps in numpy (cuml's NearestNeighbors + ``np.array`` /
+### ``rng.rand``). The two small numpy-in / numpy-out wrappers below
+### bridge that boundary. ``_compute_sdf_np`` also takes an explicit
+### ``device`` because PhysicsNeMo's SDF op dispatches its Warp kernel
+### to the device of its inputs - leaving it on CPU silently runs the
+### O(n_query * n_faces) BVH query single-threaded on one core.
 
 
 def _compute_sdf_np(
@@ -229,23 +233,25 @@ class DesignDatapipe(Dataset):
         grid = normalize(grid, v_max, v_min)
         surf_grid = normalize(surf_grid, s_max, s_min)
 
-        surface_mesh_centers = stl_centers
-
+        ### `stl_centers` holds the original (un-normalized) cell-center
+        ### coordinates and is what gets emitted as `geometry_coordinates`.
+        ### Everything below derives surface-side tensors from it but then
+        ### normalizes those copies for the model's input dict.
         knn = NearestNeighbors(n_neighbors=stencil_size, algorithm="rbc")
-        knn.fit(surface_mesh_centers)
-        indices = knn.kneighbors(surface_mesh_centers, return_distance=False)
+        knn.fit(stl_centers)
+        indices = knn.kneighbors(stl_centers, return_distance=False)
 
         ### k-NN returns each query as its own nearest neighbor at column 0;
         ### slice it off so only true neighbors remain. The 1e-6 offset on
         ### `surface_mesh_neighbors` guards against exact coincidences that
         ### would later produce NaNs in geometry-encoding distance ratios.
-        surface_mesh_neighbors = surface_mesh_centers[indices][:, 1:] + 1e-6
+        surface_mesh_neighbors = stl_centers[indices][:, 1:] + 1e-6
         surface_neighbors_normals = surface_normals[indices][:, 1:]
         surface_neighbors_areas = surface_areas[indices][:, 1:]
 
-        pos_normals_com_surface = surface_mesh_centers - center_of_mass
+        pos_normals_com_surface = stl_centers - center_of_mass
 
-        surface_mesh_centers = normalize(surface_mesh_centers, s_max, s_min)
+        surface_mesh_centers = normalize(stl_centers, s_max, s_min)
         surface_mesh_neighbors = normalize(surface_mesh_neighbors, s_max, s_min)
 
         vol_grid_max_min = np.asarray([v_min, v_max], dtype=np.float32)

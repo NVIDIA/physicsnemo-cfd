@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this input_file except in compliance with the License.
+# you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
@@ -49,6 +49,7 @@ from physicsnemo.models.domino.utils import unnormalize
 
 from design_datapipe import DesignDatapipe
 from utilities.download import download
+from utilities.mesh_postprocessing import laplacian_smoothing
 
 
 @dataclass
@@ -180,9 +181,7 @@ class DoMINOInference:
                     static_graph=True,
                 )
 
-    def _bbox(
-        self, key: str
-    ) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
+    def _bbox(self, key: str) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
         """Read a `(min, max)` bounding-box pair from ``self.cfg.data[key]``.
 
         Args:
@@ -206,8 +205,10 @@ class DoMINOInference:
         )
 
     @cached_property
-    def bounding_box_min_max(self) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
-        """Volume bounding box from ``cfg.data.bounding_box``."""
+    def bounding_box_volume_min_max(
+        self,
+    ) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
+        """Volume (computational-domain) bounding box from ``cfg.data.bounding_box``."""
         return self._bbox("bounding_box")
 
     @cached_property
@@ -335,7 +336,7 @@ class DoMINOInference:
         inner_model = _unwrap_model(self.model)
         datapipe = DesignDatapipe(
             mesh=mesh,
-            bounding_box=self.bounding_box_min_max,
+            bounding_box=self.bounding_box_volume_min_max,
             bounding_box_surface=self.bounding_box_surface_min_max,
             grid_resolution=inner_model.grid_resolution,
             stencil_size=stencil_size,
@@ -356,11 +357,13 @@ class DoMINOInference:
         ### `[inlet_velocity, air_density]`. With `encode_parameters=False`
         ### the model only uses these as references for non-dimensionalization,
         ### but `DoMINO.forward` still validates that both keys are present.
+        ### Final shape is `1 x 2 x 1`: a leading batch axis, then the
+        ### two global parameters as a column vector.
         globals_col = torch.tensor(
             [[stream_velocity], [air_density]],
             dtype=torch.float32,
             device=self.device,
-        ).unsqueeze(0)  # shape: (1, 2, 1)  # noqa: ERA001
+        ).unsqueeze(0)
         input_dict["global_params_values"] = globals_col
         input_dict["global_params_reference"] = globals_col
 
@@ -476,8 +479,6 @@ class DoMINOInference:
             raw_sensitivity_cells,
             mesh.cell_normals,
         )
-
-        from utilities.mesh_postprocessing import laplacian_smoothing
 
         mesh_pointdata = pv.PolyData(mesh.points, mesh.faces)
         mesh_pointdata.cell_data["raw_sensitivity_normal_cells"] = (
