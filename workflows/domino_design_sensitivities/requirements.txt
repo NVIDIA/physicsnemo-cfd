@@ -4,3 +4,4 @@ cupy-cuda13x
 numba
 requests
 cuml-cu13>=25.10.0
+tyro

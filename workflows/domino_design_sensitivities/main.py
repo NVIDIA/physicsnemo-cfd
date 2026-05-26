@@ -28,7 +28,6 @@ config (`conf/config.yaml`); everything else lives in the checkpoint
 bundle.
 """
 
-import argparse
 import pickle
 from dataclasses import dataclass
 from functools import cached_property
@@ -38,6 +37,7 @@ import hydra
 import numpy as np
 import pyvista as pv
 import torch
+import tyro
 from numpy.typing import NDArray
 from omegaconf import DictConfig
 from torch.nn.parallel import DistributedDataParallel
@@ -523,41 +523,43 @@ class DoMINOInference:
         }
 
 
-if __name__ == "__main__":
-    ### [CLI Argument Parsing]
-    parser = argparse.ArgumentParser(
-        description=(
-            "Distributed DoMINO inference pipeline. "
-            "Specify the model checkpoint path via --model-checkpoint-path. "
-            "Optionally specify an input STL file via --input-file."
-        )
-    )
-    parser.add_argument(
-        "--model-checkpoint-path",
-        type=str,
-        default=str(
-            (Path(__file__).parent / "checkpoints" / "DoMINO.0.501.mdlus").absolute()
-        ),
-        help=(
-            "Path to the DoMINO model checkpoint (.mdlus archive). "
-            "A scaling_factors.pkl is expected next to it. "
-            "Defaults to ./checkpoints/DoMINO.0.501.mdlus."
-        ),
-    )
-    parser.add_argument(
-        "--input-file",
-        type=str,
-        default=str(
-            (Path(__file__).parent / "geometries" / "drivaer_1.stl").absolute()
-        ),
-        help=(
-            "Path to the input STL geometry file. "
-            "If not specified, defaults to drivaer_1.stl in the geometries directory. "
-            "If the file does not exist, it will be downloaded automatically."
-        ),
-    )
-    args = parser.parse_args()
+_SCRIPT_DIR = Path(__file__).parent
+_DEFAULT_STL_PATH = _SCRIPT_DIR / "geometries" / "drivaer_1.stl"
+_DEFAULT_STL_URL = (
+    "https://huggingface.co/datasets/neashton/drivaerml/"
+    "resolve/main/run_1/drivaer_1.stl"
+)
 
+
+def main(
+    model_checkpoint_path: Path = _SCRIPT_DIR / "checkpoints" / "DoMINO.0.501.mdlus",
+    input_file: Path = _DEFAULT_STL_PATH,
+    stream_velocity: float = 38.889,
+    stencil_size: int = 7,
+    air_density: float = 1.205,
+    verbose: bool = True,
+) -> None:
+    """Run the DoMINO design-sensitivities inference pipeline end to end.
+
+    Loads the checkpoint, preprocesses the input STL, runs the model
+    forward to predict surface pressure and wall shear stress, computes
+    drag sensitivities via autograd, smooths them, and writes the
+    annotated mesh as a `.vtk` next to the input file.
+
+    Args:
+        model_checkpoint_path: Path to a DoMINO `.mdlus` archive. A
+            matching `scaling_factors.pkl` is expected in the same
+            directory.
+        input_file: Path to the input STL geometry. If it does not
+            exist and equals the default DrivAerML sample path, it is
+            downloaded automatically.
+        stream_velocity: Free-stream inlet velocity [m/s].
+        stencil_size: Number of nearest neighbors used to build the
+            surface stencil.
+        air_density: Free-stream air density [kg/m^3].
+        verbose: Whether to show a tqdm progress bar over the inference
+            batches.
+    """
     ### [CUDA Memory Management]
     torch.cuda.set_per_process_memory_fraction(0.9)
 
@@ -576,23 +578,18 @@ if __name__ == "__main__":
     ### [Model Inference Pipeline Setup]
     domino = DoMINOInference(
         cfg=cfg,
-        model_checkpoint_path=Path(args.model_checkpoint_path),
+        model_checkpoint_path=model_checkpoint_path,
         dist=dist,
     )
 
-    ### [Input File Handling]
-    input_file = Path(args.input_file)
-
     ### [Input File Download or Validation]
-    default_stl_path = Path(__file__).parent / "geometries" / "drivaer_1.stl"
-
     if not input_file.exists():
-        # Only download if the input file is the default STL path
-        if input_file.resolve() == default_stl_path.resolve():
-            download(
-                url="https://huggingface.co/datasets/neashton/drivaerml/resolve/main/run_1/drivaer_1.stl",
-                filename=input_file,
-            )
+        ### Auto-download only when the user is asking for the default
+        ### sample geometry; any other missing path is an error so the
+        ### user notices the typo instead of silently downloading the
+        ### wrong file.
+        if input_file.resolve() == _DEFAULT_STL_PATH.resolve():
+            download(url=_DEFAULT_STL_URL, filename=input_file)
             if not input_file.exists():
                 raise FileNotFoundError(
                     f"Failed to download the default STL file: {input_file}"
@@ -607,10 +604,10 @@ if __name__ == "__main__":
     mesh: pv.PolyData = pv.read(input_file)  # ty: ignore[invalid-assignment]
     results: dict[str, np.ndarray] = domino(
         mesh=mesh,
-        stream_velocity=38.889,  # m/s
-        stencil_size=7,
-        air_density=1.205,  # kg/m^3
-        verbose=True,
+        stream_velocity=stream_velocity,
+        stencil_size=stencil_size,
+        air_density=air_density,
+        verbose=verbose,
     )
 
     ### [Attach Results to Mesh]
@@ -628,3 +625,7 @@ if __name__ == "__main__":
     for key, value in sensitivity_results.items():
         mesh[key] = value
     mesh.save(input_file.with_suffix(".vtk"))
+
+
+if __name__ == "__main__":
+    tyro.cli(main)
