@@ -46,7 +46,7 @@ pip install -r requirements.txt --no-build-isolation
 ```
 
 You also need a pre-trained DoMINO checkpoint, which is not included in this
-repository. Replace `DoMINO.0.41.pt` with your own model (see the [DoMINO
+repository. Replace `DoMINO.0.501.mdlus` with your own model (see the [DoMINO
 training
 example](https://github.com/NVIDIA/physicsnemo/tree/main/examples/cfd/external_aerodynamics/domino)).
 
@@ -67,7 +67,7 @@ Open `main.ipynb` and run all cells. It covers:
 ```python
 results = DoMINOInference(
     cfg=cfg,                     # DictConfig; see conf/config.yaml
-    model_checkpoint_path="./DoMINO.0.41.pt",  # or your checkpoint path
+    model_checkpoint_path="./DoMINO.0.501.mdlus",  # or your checkpoint path
     dist=DistributedManager(),   # optional; single-GPU if omitted
 )(
     mesh=mesh,                 # pv.PolyData surface mesh
