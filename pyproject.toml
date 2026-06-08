@@ -25,10 +25,7 @@ dependencies = [
     "matplotlib>=3.10.0",
     "trimesh>=4.6.9",
     "fast-simplification>=0.1.12",
-    # Temporary git pin: tracks NVIDIA/physicsnemo main while it stabilizes toward 2.1.0.
-    # This SHA contains the ``wp.Device`` migration (upstream dropped ``wp.context``) and GeoTransolver bug fix.
-    # Revert to ``nvidia-physicsnemo>=2.1.0`` from PyPI once 2.1.0 ships.
-    "nvidia-physicsnemo @ git+https://github.com/NVIDIA/physicsnemo.git@7647145d4bf3300c7da6cc8f201cc39a87b9b48d",
+    "nvidia-physicsnemo>=2.1.1",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
