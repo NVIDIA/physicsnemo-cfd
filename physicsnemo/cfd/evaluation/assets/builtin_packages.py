@@ -37,7 +37,7 @@ from physicsnemo.cfd.evaluation.assets.registry import AssetSpec, register_defau
 # Revisions are pinned to specific commits so benchmark runs are reproducible across uploads
 # to ``main``. Update these SHAs deliberately when you intend to upgrade to a newer checkpoint.
 GEOTRANSOLVER_PACKAGE_ROOT = (
-    "hf://nvidia/geotransolver_drivaerml@ddda24db315f6fca8d67c76f3da511ea4d9da86e"
+    "hf://nvidia/geotransolver_drivaerml@626c1158e14f6994382924055aa871f863ff8a8c"
 )
 TRANSOLVER_PACKAGE_ROOT = (
     "hf://nvidia/transolver_drivaerml@96477aeb86d24c26ccf0797bca1b3851268017d0"
