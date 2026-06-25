@@ -12,24 +12,36 @@ license: Apache-2.0
 
 Guide the user through adding a new CFD model to the benchmarking workflow by writing a `CFDModel` subclass.
 
-## Start here: get the model's own training/inference script
+## First: gather whatever context already exists
 
-**Before writing anything, ask the user for the script they used to train or run inference on this model** (and any preprocessing/normalization utilities it imports). That script is the ground truth for four things the wrapper must mirror exactly:
+Spend a little effort up front collecting any existing artifacts that reveal how the model actually behaves — but **do not block on them**. Look (without stopping to ask the user) for:
+
+- the **training/inference script** and any preprocessing/normalization utilities it imports;
+- the model's **config files** (YAML/JSON hyperparameters, channel lists, stats paths);
+- the model class's **docstrings and signatures** (forward inputs/outputs, expected shapes).
+
+Use these to pin down four things the wrapper must mirror exactly:
 
 - **Normalization** — which scheme and which stats (see Normalization below).
 - **Inputs** — what the model actually consumes (coordinates only, extra fields, geometry/STL).
 - **Output fields and order** — which variables the forward pass returns and in what channel order.
 - **I/O shapes and dtypes** — so `prepare_inputs`/`decode_outputs` match the trained graph.
 
-If the user has no script, reconstruct these from the checkpoint and stats file, and state the assumptions you are making. Do not guess silently — a wrong normalization or channel order produces plausible-looking but wrong predictions.
+If some or all of these aren't available, that's fine — **proceed anyway**: reconstruct from the checkpoint and stats file and briefly state the assumptions you're making. Keep moving and build the wrapper; just avoid silently guessing normalization or channel order, since a wrong choice produces plausible-looking but wrong predictions.
 
 ## Reference files to read first
 
-Then read these files for context:
+Start with the complete, ready-to-adapt templates bundled with this skill — they are always available even when the PhysicsNeMo-CFD source tree is not on disk:
+
+- `references/example_wrapper.py` — full surface **and** volume `CFDModel` reference implementations (load, prepare_inputs, predict, decode_outputs, registration). Copy and adapt one of these.
+- `assets/global_stats.example.json` — sample mean/std stats for both surface and volume.
+
+When the PhysicsNeMo-CFD repo *is* present, also read these for the live interface (verify paths against the actual tree):
 
 - `physicsnemo/cfd/evaluation/models/model_registry.py` — base class and registry
 - `physicsnemo/cfd/evaluation/datasets/schema.py` — `CanonicalCase`, `build_predictions_dict`
-- `physicsnemo/cfd/evaluation/models/wrappers/surface_baseline.py` — simplest concrete wrapper
+- `physicsnemo/cfd/evaluation/models/wrappers/surface_baseline.py` — simplest concrete surface wrapper
+- `physicsnemo/cfd/evaluation/models/wrappers/volume_baseline.py` — simplest concrete volume wrapper
 - `physicsnemo/cfd/evaluation/models/wrappers/__init__.py` — how wrappers are registered
 - `physicsnemo/cfd/evaluation/common/io.py` — mesh loading and normalization stats helpers
 - `workflows/benchmarking/notebooks/adding_a_new_model.ipynb` — end-to-end tutorial
@@ -51,6 +63,10 @@ Every wrapper must set two class variables and implement four methods:
 The engine calls `load` once, then `prepare_inputs → predict → decode_outputs(raw, case, model_input)` per case (`model_input` is the dict from `prepare_inputs`; use when decode must mirror inference geometry).
 
 ## Step 1: Write the wrapper class
+
+**Always generate a new, complete wrapper class for the requested model.** Existing wrappers (e.g. `surface_baseline.py`) are *references to read*, not substitutes — when the user asks to write or create a wrapper, produce a full new class file even if similar ones already exist. Do not stop at "a wrapper already exists" or offer to reuse one in place of writing the requested one.
+
+Keep the prose minimal: lead with the code, and limit explanation to the non-obvious decisions (normalization scheme, input tier, output fields). Don't restate the interface table or echo large reference files back to the user.
 
 ```python
 import numpy as np
@@ -257,3 +273,8 @@ Then use `model.name: my_model` in any YAML config.
 - **Domain matching**: The engine checks that `model.INFERENCE_DOMAIN` matches the dataset adapter's `inference_domain_from_kwargs()`. Mismatches are skipped in matrix mode or raise in single mode.
 - **GT alignment**: When `align_ground_truth_to_model: true` in dataset kwargs, the engine converts GT data to match `OUTPUT_LOCATION` (point ↔ cell). This is automatic — the wrapper just needs correct class vars.
 - **Results JSON format**: `benchmark_results.json` is a plain `list[dict]`, not `{"results": [...]}`. Iterate directly: `for combo in report:`.
+
+## Related resources
+
+- `references/example_wrapper.py` — complete surface + volume `CFDModel` templates to copy and adapt (bundled; available without the repo on disk).
+- `assets/global_stats.example.json` — sample mean/std stats layout for surface and volume.
