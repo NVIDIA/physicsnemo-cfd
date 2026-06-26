@@ -64,72 +64,32 @@ The engine calls `load` once, then `prepare_inputs → predict → decode_output
 
 ## Step 1: Write the wrapper class
 
-**Always generate a new, complete wrapper class for the requested model.** Existing wrappers (e.g. `surface_baseline.py`) are *references to read*, not substitutes — when the user asks to write or create a wrapper, produce a full new class file even if similar ones already exist. Do not stop at "a wrapper already exists" or offer to reuse one in place of writing the requested one.
+**Always generate a new, complete wrapper class for the requested model.** Existing wrappers (e.g. `surface_baseline.py`) are *references to read*, not substitutes — when the user asks to write or create a wrapper, produce a full new class file even if similar ones already exist. Do not stop at "a wrapper already exists" or offer to reuse one in place of writing the requested one. Always tell the user how to register it: `register_model(...)` at import for a quick test, and an entry in `wrappers/__init__.py` to make it permanent (Step 6).
 
-Keep the prose minimal: lead with the code, and limit explanation to the non-obvious decisions (normalization scheme, input tier, output fields). Don't restate the interface table or echo large reference files back to the user.
+### Anti-patterns (do not do these)
+
+- **Reusing an existing wrapper instead of writing the requested one** — even if `git status` shows a similar file, write the new class.
+- **Assuming mean-std normalization** — confirm the scheme; a wrong inverse gives plausible-but-wrong fields.
+- **Hardcoding `pressure` + `shear_stress`** — pass only the fields the model predicts; add custom ones via `**extra`.
+- **Skipping `__init__.py`** — registering only inline and never mentioning permanent registration.
+- **Echoing the interface table or full reference file back** — wastes tokens; reference, don't repeat.
+
+**Copy `references/example_wrapper.py` and adapt it** — it has full surface and volume implementations. Don't hand-write from scratch or paste the whole template back to the user. The class skeleton is just:
 
 ```python
-import numpy as np
-import torch
-import pyvista as pv
-from typing import Any, ClassVar
-
-from physicsnemo.cfd.evaluation.models.model_registry import (
-    CFDModel, register_model, OutputLocation,
-)
-from physicsnemo.cfd.evaluation.datasets.schema import (
-    CanonicalCase, InferenceDomain, build_predictions_dict,
-)
-from physicsnemo.cfd.evaluation.inference.progress import log_inference
-
-
 class MyModelWrapper(CFDModel):
     INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "surface"  # or "volume"
-    OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"       # or "point"
-
-    def __init__(self) -> None:
-        self._model = None
-        self._stats = None
-        self._device = "cpu"
+    OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"        # or "point"
 
     @property
-    def output_location(self) -> OutputLocation:
-        return self.OUTPUT_LOCATION
-
-    def load(self, checkpoint_path, stats_path, device, **kwargs):
-        self._device = device
-        # Load your model architecture + weights
-        # self._model = ...
-        # Load normalization stats if needed
-        # self._stats = ...
-        log_inference("my_model", f"Loaded from {checkpoint_path}")
-        return self
-
-    def prepare_inputs(self, case: CanonicalCase):
-        mesh = pv.read(case.mesh_path)
-        if not isinstance(mesh, pv.PolyData):
-            mesh = mesh.extract_surface()
-        coords = np.array(mesh.cell_centers().points, dtype=np.float32)
-        # Add any extra inputs the model needs (see "Inputs" below):
-        #   inlet = case.metadata["inlet_velocity"]
-        #   stl_path = case.metadata["stl_path"]
-        return torch.tensor(coords, device=self._device)
-
-    def predict(self, model_input):
-        # Run forward pass through your model
-        with torch.no_grad():
-            raw_output = self._model(model_input)
-        return raw_output
-
-    def decode_outputs(self, raw_output, case, model_input=None):
-        # Denormalize with the SAME scheme used in training (see Normalization below).
-        # Pass only the fields this model predicts; omit the rest. Extra/custom
-        # fields are allowed as keyword args (see Outputs below).
-        return build_predictions_dict(
-            pressure=raw_output["pressure"].cpu().numpy(),
-            shear_stress=raw_output["shear_stress"].cpu().numpy(),
-        )
+    def output_location(self): return self.OUTPUT_LOCATION
+    def load(self, checkpoint_path, stats_path, device, **kwargs): ...   # weights + stats; return self
+    def prepare_inputs(self, case): ...                                  # CanonicalCase -> model input
+    def predict(self, model_input): ...                                  # forward pass -> raw output
+    def decode_outputs(self, raw_output, case, model_input=None): ...    # denormalize -> build_predictions_dict(...)
 ```
+
+Keep responses terse: state the few model-specific decisions (normalization scheme, input tier, output fields) and the file you wrote — don't echo the interface table or the full reference file back.
 
 ### Key implementation considerations
 
