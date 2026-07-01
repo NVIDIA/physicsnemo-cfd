@@ -18,7 +18,7 @@ Before starting, read these files for context:
 - `physicsnemo/cfd/evaluation/datasets/adapter_registry.py` — base class and registry
 - `physicsnemo/cfd/evaluation/datasets/schema.py` — `CanonicalCase` and `build_predictions_dict`
 - `physicsnemo/cfd/evaluation/datasets/adapters/drivaerml.py` — reference adapter implementation
-- `workflows/benchmarking/notebooks/adding_a_new_dataset.ipynb` — end-to-end tutorial
+- `workflows/benchmarking/notebooks/adding_a_new_dataset.ipynb` — end-to-end tutorial (writes a DrivAerStar adapter: format conversion, field renaming, WSS sign flip, STL creation)
 
 ## Step 1: Explore the new dataset
 
@@ -43,6 +43,7 @@ Identify these differences from the canonical schema:
 | Sign conventions | Compare field ranges with DrivAerML. Are normals, WSS, or pressure flipped? |
 | Extra arrays | Are there explicit `Normals` or `Area` arrays? DrivAerML has none — remove them if present. |
 | STL files | Are separate STL geometry files available? If not, the surface mesh itself is the geometry. |
+| Coordinate frame & scale | Compare `mesh.bounds` and units against the training dataset. Matters only for geometry-referenced checkpoints (e.g. DrivAerML-trained). See "Match geometry orientation and scale". |
 | Inference domain | Surface (`.vtp`) or volume (`.vtu`)? |
 
 ## Step 2: Write the adapter class
@@ -102,6 +103,32 @@ mesh.extract_surface().triangulate().save(stl_path)
 ```
 
 The STL must be named `drivaer_{int(case_id)}.stl` in the same directory as the VTP for the model wrappers to find it.
+
+### Match geometry orientation and scale
+
+Geometry-referenced models (e.g. DoMINO) normalize the mesh/STL coordinates against a **fixed bounding box baked into the checkpoint from its training dataset**: DoMINO reads `cfg.data.bounding_box_surface.min/max` (and `bounding_box.min/max` for volume) and maps every coordinate into that box. If the new dataset's geometry sits in a different frame, origin, or unit scale, it lands in the wrong normalized space — predictions are wrong even when field names and signs are correct.
+
+**This only matters when the checkpoint was trained on a specific geometry-referenced dataset (e.g. DrivAerML).** For scale/translation-invariant models, or when the model was trained on this same dataset, skip it.
+
+Match three things to the training dataset (DrivAerML reference bounds below, in **meters**, from the DoMINO config):
+
+| Box | min (x, y, z) | max (x, y, z) |
+|---|---|---|
+| Surface | -1.5, -1.4, -0.32 | 5.0, 1.4, 1.4 |
+| Volume | -3.5, -2.25, -0.32 | 8.5, 2.25, 3.00 |
+
+- **Orientation / axes**: same convention — x streamwise (length), y width, z up. Permute or rotate if the new data uses a different up-axis or flipped sign.
+- **Origin / position**: the bounding box should *start* near the same (x, y, z) minimum, so the geometry falls inside the model's domain box.
+- **Scale / units**: extents must be the same order of magnitude. Millimetre data must be scaled to meters (×0.001).
+
+Check `mesh.bounds` and transform in `load_case` **before** saving the prepared VTP/STL:
+
+```python
+b = mesh.bounds  # (xmin, xmax, ymin, ymax, zmin, zmax)
+# ~1000x larger extents => mm; scale to meters. A swapped axis range => reorient.
+mesh.points *= 0.001
+mesh.points += np.array([x_off, y_off, z_off], dtype=np.float32)  # translate to match origin
+```
 
 ### Caching pattern
 
@@ -169,3 +196,4 @@ The field name mappings, sign conventions, and format conversions in the adapter
 - **VTP vs VTK**: Model wrappers use VTK XML readers internally. Legacy `.vtk` files must be converted to `.vtp`/`.vtu`.
 - **Checkpoint loading**: Some wrappers need `trusted_torch_load_context()` for PyTorch 2.6+ checkpoint compatibility.
 - **Domain-scoped metrics**: `l2_pressure` resolves to different implementations for surface vs volume based on `inference_domain`. Use the same metric name for both.
+- **Geometry frame**: geometry-referenced checkpoints (DoMINO) assume the training dataset's coordinate frame and scale. A mm-vs-m or flipped-axis mismatch produces wrong predictions with no error raised. See "Match geometry orientation and scale".
