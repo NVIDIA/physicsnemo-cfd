@@ -38,10 +38,15 @@ Use these to pin down four things the wrapper must mirror exactly:
   the trained graph.
 
 If some or all of these aren't available, that's fine — **proceed
-anyway**: reconstruct from the checkpoint and stats file and briefly
-state the assumptions you're making. Keep moving and build the wrapper;
-just avoid silently guessing normalization or channel order, since a
-wrong choice produces plausible-looking but wrong predictions.
+anyway**: reconstruct from the checkpoint and stats file, pick the most
+likely option, and build the wrapper now. Do **not** stop and wait for
+answers before writing code. Just avoid *silently* guessing: a wrong
+normalization scheme or channel order produces plausible-looking but
+wrong predictions. So state each such assumption inline, and after
+delivering the wrapper, **raise the still-uncertain choices as explicit
+open items for the user to confirm** — e.g. normalization scheme, input
+tier, and output fields/channel order. This keeps you unblocked while
+making the risky decisions visible.
 
 ## Reference files to read first
 
