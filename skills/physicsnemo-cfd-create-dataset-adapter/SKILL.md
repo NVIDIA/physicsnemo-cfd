@@ -26,21 +26,34 @@ Before starting, read these files for context:
 
 ## Step 1: Explore the new dataset
 
-Ask the user for the dataset path, then inspect one file:
+Ask the user for the dataset path, then inspect one file. Report not just
+array *names* but their component count, dtype, and value range, plus
+`mesh.bounds` and any geometry arrays — the decision table below needs
+all of these:
 
 ```python
+import numpy as np
 import pyvista as pv
+
 mesh = pv.read("<path_to_one_file>")
 print(f"Type: {type(mesh).__name__}, Points: {mesh.n_points}, Cells: {mesh.n_cells}")
-print(f"Cell arrays: {list(mesh.cell_data.keys())}")
-print(f"Point arrays: {list(mesh.point_data.keys())}")
+print(f"Bounds (xmin,xmax,ymin,ymax,zmin,zmax): {mesh.bounds}")
+for loc, data in [("cell", mesh.cell_data), ("point", mesh.point_data)]:
+    for name in data.keys():
+        arr = np.asarray(data[name])
+        comps = arr.shape[1] if arr.ndim > 1 else 1
+        print(f"  [{loc}] {name}: comps={comps}, dtype={arr.dtype}, "
+              f"range=({arr.min():.3g}, {arr.max():.3g})")
+# Explicit geometry arrays some datasets ship (DrivAerML has none):
+print("Has Normals:", "Normals" in mesh.cell_data or "Normals" in mesh.point_data)
+print("Has Area:", "Area" in mesh.cell_data or "Area" in mesh.point_data)
 ```
 
 Identify these differences from the canonical schema:
 
 | Question | What to look for |
 |----------|-----------------|
-| File format | `.vtp`, `.vtu`, `.vtk`, or other? Model wrappers expect `.vtp` (surface) or `.vtu` (volume) XML format. |
+| File format | `.vtp`, `.vtu`, `.vtk`, or a non-VTK format (CGNS, OpenFOAM, HDF5, CSV, ...)? Model wrappers ultimately read `.vtp` (surface) or `.vtu` (volume) XML — see "Reading non-PyVista source formats". |
 | Directory layout | Flat directory? Nested `run_<id>/` dirs? How are case IDs derived from filenames? |
 | Pressure field name | The canonical key is `pressure`. What is the VTK array name? |
 | WSS field name | The canonical key is `shear_stress` (N, 3). Is it a single vector or separate scalar components? |
@@ -81,7 +94,56 @@ class MyDatasetAdapter(DatasetAdapter):
         ...
 ```
 
+### Map source arrays to canonical keys
+
+`ground_truth` must use the framework's canonical keys, but source files
+rarely use those names. The canonical vocabulary (see `schema.py` /
+`build_predictions_dict`) is:
+
+| Canonical key | Shape | Domain |
+|---|---|---|
+| `pressure` | (N,) | surface, volume |
+| `shear_stress` | (N, 3) | surface |
+| `velocity` | (N, 3) | volume |
+| `turbulent_viscosity` | (N,) | volume |
+
+Build an explicit rename map from the source names you found in Step 1:
+
+```python
+RENAME = {"pMean": "pressure", "wallShearStress": "shear_stress"}
+ground_truth = {
+    canon: np.asarray(mesh.cell_data[src], dtype=np.float32)
+    for src, canon in RENAME.items()
+}
+```
+
+When names are ambiguous, disambiguate by: component count (a 3-comp
+field is `velocity` or `shear_stress`), dtype/value range, and —
+decisively — **what the model's training data called each field** (see
+"Why conventions must match the training data"). Do not confuse this
+source→canonical map with the separate canonical→VTK-name map in
+`output.mesh_field_names` (Step 4), which controls the *written* arrays.
+
 ### Common transformations in `load_case`
+
+**Reading non-PyVista source formats**: `pv.read` handles VTK-family
+files, but CFD ground truth often ships as CGNS, OpenFOAM cases, Ensight,
+Tecplot, HDF5/`.npz`, or CSV point clouds. Only *reading* changes — the
+target is still a canonical `.vtp`/`.vtu` mesh plus a `ground_truth`
+dict:
+
+```python
+# meshio covers many formats (CGNS, Ensight, ...); wrap to PyVista:
+import meshio, pyvista as pv
+mesh = pv.wrap(meshio.read(src_path))
+
+# OpenFOAM case directory:
+mesh = pv.OpenFOAMReader(case_foam_file).read()
+
+# Raw arrays (HDF5 / npz / CSV): build the mesh, then attach fields:
+cloud = pv.PolyData(points_xyz)          # (N, 3) float array
+cloud["pressure"] = p_values             # attach source arrays
+```
 
 **Format conversion** (legacy `.vtk` → `.vtp`):
 
