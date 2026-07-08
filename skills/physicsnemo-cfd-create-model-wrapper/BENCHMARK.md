@@ -7,7 +7,7 @@ This benchmark summarizes 3-Tier Evaluation from NVSkills-Eval results for the s
 ## Evaluation Summary
 
 - Skill: `physicsnemo-cfd-create-model-wrapper`
-- Evaluation date: 2026-07-06
+- Evaluation date: 2026-07-08
 - NVSkills-Eval profile: `external`
 - Environment: `astra-sandbox`
 - Dataset: 8 evaluation tasks
@@ -49,10 +49,10 @@ The benchmark included 8 recorded Tier 3 trials, but the source evaluation datas
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 4 | 100% (+0%) | 100% (+0%) |
-| Correctness | 4 | 93% (+50%) | 89% (+35%) |
-| Discoverability | 4 | 95% (+57%) | 91% (+40%) |
-| Effectiveness | 4 | 79% (+42%) | 76% (+30%) |
-| Efficiency | 4 | 84% (+41%) | 82% (+31%) |
+| Correctness | 4 | 100% (+45%) | 94% (+37%) |
+| Discoverability | 4 | 94% (+56%) | 87% (+34%) |
+| Effectiveness | 4 | 94% (+47%) | 88% (+43%) |
+| Efficiency | 4 | 83% (+42%) | 79% (+25%) |
 
 Score values show skill-assisted performance. Values in parentheses show uplift versus the no-skill baseline when baseline data is available.
 

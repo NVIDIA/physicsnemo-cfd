@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers use this skill to add new CFD models to the PhysicsNeMo benchmarking pipeline by writing a CFDModel wrapper subclass. <br>
+Developers and engineers who need to integrate new CFD neural network models into the PhysicsNeMo benchmarking pipeline by writing a CFDModel wrapper subclass. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -27,23 +27,23 @@ Mitigation: Review and scan skill before deployment. <br>
 ## Reference(s): <br>
 - [example_wrapper.py](references/example_wrapper.py) <br>
 - [global_stats.example.json](assets/global_stats.example.json) <br>
-- [PhysicsNeMo Framework](https://github.com/NVIDIA/physicsnemo/) <br>
+- [PhysicsNeMo CFD Repository](https://github.com/NVIDIA/physicsnemo/) <br>
 
 
 ## Skill Output: <br>
 **Output Type(s):** [Code, Configuration instructions] <br>
-**Output Format:** [Python source files with inline code blocks] <br>
+**Output Format:** [Python source files with inline guidance] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
-- `claude-code` <br>
-- `codex` <br>
+- claude-code <br>
+- codex <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 8 evaluation tasks using NVSkills-Eval 3-Tier Evaluation (external profile). <br>
+Evaluated against 8 evaluation tasks using NVSkills-Eval (external profile, astra-sandbox environment). <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -68,10 +68,10 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 4 | 100% (+0%) | 100% (+0%) |
-| Correctness | 4 | 93% (+50%) | 89% (+35%) |
-| Discoverability | 4 | 95% (+57%) | 91% (+40%) |
-| Effectiveness | 4 | 79% (+42%) | 76% (+30%) |
-| Efficiency | 4 | 84% (+41%) | 82% (+31%) |
+| Correctness | 4 | 100% (+45%) | 94% (+37%) |
+| Discoverability | 4 | 94% (+56%) | 87% (+34%) |
+| Effectiveness | 4 | 94% (+47%) | 88% (+43%) |
+| Efficiency | 4 | 83% (+42%) | 79% (+25%) |
 
 ## Skill Version(s): <br>
 0.0.2 (source: changelog, released 2026-06-09) <br>
