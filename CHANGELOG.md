@@ -11,6 +11,13 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Agent skills:** `skills/` now ships three agent skills for the
+  benchmarking workflow — **`physicsnemo-cfd-create-model-wrapper`**,
+  **`physicsnemo-cfd-create-dataset-adapter`**, and
+  **`physicsnemo-cfd-create-custom-metric`** — each with a `SKILL.md` and
+  `evals/` cases to guide adding a new `CFDModel`, `DatasetAdapter`, or
+  metric.
+
 ### Changed
 
 ### Deprecated
