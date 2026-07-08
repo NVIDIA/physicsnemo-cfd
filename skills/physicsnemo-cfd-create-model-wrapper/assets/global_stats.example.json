@@ -1,0 +1,25 @@
+{
+  "_comment": "Sample global_stats.json for mean-std (z-score) denormalization. load_global_stats() reads the 'mean'/'std_dev' keys and exposes them as 'mean'/'std'. Surface models use pressure + shear_stress; volume models add velocity + turbulent_viscosity. For MIN-MAX models this format does not apply: store per-field 'min'/'max' and apply the inverse manually in decode_outputs.",
+  "surface_example": {
+    "mean": {
+      "pressure": [-12.4],
+      "shear_stress": [0.013, -0.002, 0.005]
+    },
+    "std_dev": {
+      "pressure": [88.7],
+      "shear_stress": [0.21, 0.18, 0.16]
+    }
+  },
+  "volume_example": {
+    "mean": {
+      "pressure": [-9.1],
+      "velocity": [11.2, 0.04, -0.01],
+      "turbulent_viscosity": [0.0021]
+    },
+    "std_dev": {
+      "pressure": [54.3],
+      "velocity": [6.7, 2.1, 1.9],
+      "turbulent_viscosity": [0.0015]
+    }
+  }
+}
