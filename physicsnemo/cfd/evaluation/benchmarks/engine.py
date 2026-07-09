@@ -33,6 +33,11 @@ load and inference for that case. The cache stores scalars only and does not
 replace mesh or visualization workflows. The cache fingerprint includes
 ``run.seed`` (influences subsampling / ``randperm`` RNG in model wrappers).
 
+When ``save_inference_mesh`` is enabled, per-case ``inference_<model>_<case>.vt[p|u]`` meshes are
+written for every scored case unless ``reports.visual_case_ids`` is set — in which case only those
+ids get a mesh (all other cases are still scored for metrics). This keeps large validation runs from
+dumping one VTP per case when only a couple are needed for inspection / report visuals.
+
 When ``save_inference_mesh`` is enabled but exporting ``inference_<model>_<case>.vt[p|u]`` fails,
 the full traceback is logged and persisted for audit: ``per_case[]`` keys and ``benchmark_artifacts.json``
 (``inference_mesh_write_failures``, ``comparison_mesh_build_failures``, ``comparison_mesh_save_failures``)
@@ -98,13 +103,31 @@ from physicsnemo.cfd.evaluation.assets import resolve_model_assets
 from physicsnemo.cfd.evaluation.common.inference_seed import seed_inference_rng
 from physicsnemo.cfd.evaluation.common.natural_sort import natural_sorted
 from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
-from physicsnemo.cfd.evaluation.datasets.schema import normalize_inference_domain_str
+from physicsnemo.cfd.evaluation.datasets.schema import (
+    FieldDistribution,
+    distribution_mean,
+    normalize_inference_domain_str,
+)
 from physicsnemo.cfd.evaluation.models import get_model_wrapper
 from physicsnemo.cfd.evaluation.models.model_registry import (
     get_inference_domain_for_model,
 )
 from physicsnemo.cfd.evaluation.metrics import get_metric
 from physicsnemo.cfd.evaluation.metrics.mesh_bridge import build_comparison_mesh
+from physicsnemo.cfd.postprocessing_tools.metric_registry import (
+    is_reducer_metric,
+    is_sample_metric,
+)
+from physicsnemo.cfd.evaluation.benchmarks.uq_inference import (
+    compute_sparsification_payload,
+    finalize_reducer_metrics,
+    finalize_sample_metrics,
+    is_uq_partial_key,
+    make_reducer_partial_key,
+    make_sample_partial_key,
+    run_sampling_inference,
+    strip_reducer_partials,
+)
 
 # Recoverable VTK / NumPy / mesh_bridge failures. Avoid bare ``except Exception`` —
 # unexpected subclasses propagate so regressions are not mistaken for metric NaNs.
@@ -208,6 +231,21 @@ def _retain_comparison_mesh_for_visual_context(
     return case_id in allow
 
 
+def _save_inference_mesh_for_case(
+    reports: ReportsConfig | None, case_id: str
+) -> bool:
+    """Whether this case should write an ``inference_<model>_<case>`` mesh.
+
+    Saving every case's mesh is wasteful for large validation sets. When
+    ``reports.visual_case_ids`` is set, restrict inference-mesh writes to exactly those cases
+    (the ones you inspect / that the report visuals use); all other cases are scored for
+    metrics only. When it is ``None`` there is no restriction (write every case, back-compat).
+    """
+    if reports is None or reports.visual_case_ids is None:
+        return True
+    return case_id in reports.visual_case_ids
+
+
 def _normalize_metrics_config(
     metrics: list[str | dict[str, Any]],
 ) -> list[tuple[str, dict]]:
@@ -265,6 +303,7 @@ def _save_inference_mesh_if_requested(
     run_config: RunConfig,
     model_config: ModelConfig,
     output_config: OutputConfig,
+    reports: ReportsConfig | None,
     wrapper: Any,
     case: Any,
     case_id: str,
@@ -307,6 +346,8 @@ def _save_inference_mesh_if_requested(
     """
     if not run_config.save_inference_mesh:
         return None
+    if not _save_inference_mesh_for_case(reports, case_id):
+        return None
     import pyvista as pv
 
     m_dom = case.inference_domain
@@ -341,12 +382,31 @@ def _save_inference_mesh_if_requested(
                     mesh = mesh.cast_to_unstructured_grid()
             names = output_config.volume_mesh_field_names
 
+        if m_dom == "surface":
+            std_names = output_config.std_mesh_field_names
+            epi_names = output_config.epistemic_std_mesh_field_names
+        else:
+            std_names = output_config.std_volume_mesh_field_names
+            epi_names = output_config.epistemic_std_volume_mesh_field_names
+
         data_target = (
             mesh.cell_data if wrapper.output_location == "cell" else mesh.point_data
         )
         for canonical_key, mesh_name in names.items():
-            if canonical_key in predictions:
-                data_target[mesh_name] = predictions[canonical_key]
+            if canonical_key not in predictions:
+                continue
+            value = predictions[canonical_key]
+            data_target[mesh_name] = distribution_mean(value)
+            # Attach uncertainty companions so exported meshes carry UQ for ParaView / visuals.
+            if isinstance(value, FieldDistribution):
+                if value.std is not None:
+                    data_target[std_names.get(canonical_key) or f"{mesh_name}Std"] = (
+                        value.std
+                    )
+                if value.epistemic_std is not None:
+                    data_target[
+                        epi_names.get(canonical_key) or f"{mesh_name}EpistemicStd"
+                    ] = value.epistemic_std
         mesh.save(str(out_path))
         log_dataset(dataset_name, f"Wrote inference mesh: {out_path}")
     except _MESH_IO_BRIDGE_ERRORS:
@@ -410,6 +470,34 @@ def _call_metric(
         return fn(gt, predictions, **extended)
     except TypeError:
         return fn(gt, predictions, **mkwargs)
+
+
+def _call_reducer_partial(
+    metric: Any,
+    gt: dict,
+    predictions: dict,
+    *,
+    case: Any,
+    comparison_mesh: Any,
+    metric_dtype: str | None,
+    output: OutputConfig,
+    mkwargs: dict[str, Any],
+) -> dict[str, float]:
+    """Invoke a reducer metric's ``partial`` with extended kwargs, falling back to the basics.
+
+    Returns the per-case extensive sufficient statistics (additive across cases).
+    """
+    extended = dict(mkwargs)
+    extended.update(
+        case=case,
+        comparison_mesh=comparison_mesh,
+        metric_dtype=metric_dtype,
+        output=output,
+    )
+    try:
+        return metric.partial(gt, predictions, **extended)
+    except TypeError:
+        return metric.partial(gt, predictions, **mkwargs)
 
 
 def _run_single(
@@ -559,6 +647,11 @@ def _run_single(
             output_dict=output_config_to_fingerprint_dict(output_config),
             metric_specs=metric_names,
             run_seed=run_config.seed,
+            run_uq={
+                "enabled": run_config.uq.enabled,
+                "num_samples": run_config.uq.num_samples,
+                "retain_samples": run_config.uq.retain_samples,
+            },
         )
         log_dataset(
             dataset_config.name,
@@ -636,14 +729,32 @@ def _run_single(
                 case_cache[case_key] = case
         seed_inference_rng(run_config.seed, cid)
         model_input = wrapper.prepare_inputs(case)
-        raw = wrapper.predict(model_input)
-        predictions = wrapper.decode_outputs(raw, case, model_input)
+        supports_uq = bool(getattr(wrapper, "SUPPORTS_UQ", False))
+        uq_method = getattr(wrapper, "UQ_METHOD", "none")
+        if supports_uq and uq_method == "sampling" and run_config.uq.enabled:
+            # N stochastic passes; prepare_inputs already ran once (see UQ design doc §6.2).
+            predictions = run_sampling_inference(
+                wrapper,
+                case,
+                model_input,
+                n=run_config.uq.num_samples,
+                run_seed=run_config.seed,
+                case_id=cid,
+                retain_samples=run_config.uq.retain_samples,
+            )
+        elif supports_uq and uq_method == "analytic":
+            raw = wrapper.predict(model_input)
+            predictions = wrapper.decode_distribution(raw, case, model_input)
+        else:
+            raw = wrapper.predict(model_input)
+            predictions = wrapper.decode_outputs(raw, case, model_input)
         gt = case.ground_truth or {}
 
         inference_mesh_err = _save_inference_mesh_if_requested(
             run_config=run_config,
             model_config=model_config,
             output_config=output_config,
+            reports=reports,
             wrapper=wrapper,
             case=case,
             case_id=cid,
@@ -670,6 +781,42 @@ def _run_single(
         for mname, mkwargs in metric_names:
             metric_fn = get_metric(mname, domain=m_dom)
             try:
+                if is_sample_metric(metric_fn):
+                    # Sample metric: store per-geometry scalars under a reserved key. Collected
+                    # (not summed) across cases + ranks and finalized after the loop / merge.
+                    partial_stats = _call_reducer_partial(
+                        metric_fn,
+                        gt,
+                        predictions,
+                        case=case,
+                        comparison_mesh=comparison_mesh,
+                        metric_dtype=metric_dtype,
+                        output=output_config,
+                        mkwargs=mkwargs,
+                    )
+                    for pkey, pval in partial_stats.items():
+                        rk = make_sample_partial_key(mname, pkey)
+                        case_metrics[rk] = float(pval)
+                        all_metric_values.setdefault(rk, []).append(float(pval))
+                    continue
+                if is_reducer_metric(metric_fn):
+                    # Pooled metric: store per-case additive sufficient statistics under a
+                    # reserved key so they cache + merge like scalars; finalized after the loop.
+                    partial_stats = _call_reducer_partial(
+                        metric_fn,
+                        gt,
+                        predictions,
+                        case=case,
+                        comparison_mesh=comparison_mesh,
+                        metric_dtype=metric_dtype,
+                        output=output_config,
+                        mkwargs=mkwargs,
+                    )
+                    for pkey, pval in partial_stats.items():
+                        rk = make_reducer_partial_key(mname, pkey)
+                        case_metrics[rk] = float(pval)
+                        all_metric_values.setdefault(rk, []).append(float(pval))
+                    continue
                 out = _call_metric(
                     metric_fn,
                     gt,
@@ -747,11 +894,20 @@ def _run_single(
                     f"Could not write metrics cache for case {cid!r}: {ex}",
                 )
 
-    # Aggregate (mean over cases)
+    # Aggregate (mean over cases) for pointwise metrics; reducer / sample partials (reserved
+    # keys) are finalized separately below (pooled over points, resp. collected over geometries).
     metrics_summary = {}
     for mname, values in all_metric_values.items():
+        if is_uq_partial_key(mname):
+            continue
         valid = [v for v in values if v == v]  # filter nan
         metrics_summary[mname] = sum(valid) / len(valid) if valid else float("nan")
+
+    # Pooled reducer + sample-wise metrics. In distributed runs these are recomputed after the
+    # merge on rank 0 (merge_benchmark_result_shards) from the merged per-case partials; this
+    # local pass keeps single-process runs correct.
+    metrics_summary.update(finalize_reducer_metrics(per_case, m_dom))
+    metrics_summary.update(finalize_sample_metrics(per_case, m_dom))
 
     return (
         {
@@ -760,6 +916,7 @@ def _run_single(
             "cases": cases,
             "metrics": metrics_summary,
             "per_case": per_case,
+            "inference_domain": m_dom,
         },
         mesh_ctx,
     )
@@ -899,6 +1056,24 @@ def run_benchmark(
             dm, results, meshes_by_run
         )
 
+    # Reducer sufficient statistics (reserved ``_uq::`` keys) have been folded into each run's
+    # ``metrics`` summary; drop them from the reported per-case rows so outputs show real values.
+    # Before stripping, harvest the sample-metric per-geometry curves for the sparsification visual.
+    # These are kept in a side list aligned with ``results`` (not on the result dicts) so the numpy
+    # curve arrays never reach the JSON/CSV/HTML report serializers.
+    sparsification_by_run: list[dict[str, Any]] = []
+    for r in results:
+        if r.get("skipped"):
+            sparsification_by_run.append({})
+            continue
+        sparsification_by_run.append(
+            compute_sparsification_payload(
+                r.get("per_case") or [], r.get("inference_domain")
+            )
+        )
+    for r in results:
+        strip_reducer_partials(r.get("per_case") or [])
+
     if is_rank0 and config.benchmark.reproducibility.save_artifacts:
         artifacts = Path(output_dir) / "benchmark_artifacts.json"
         skipped = [r for r in results if r.get("skipped")]
@@ -950,7 +1125,10 @@ def run_benchmark(
             config,
             results,
             output_dir,
-            context={"comparison_meshes_by_run": meshes_by_run},
+            context={
+                "comparison_meshes_by_run": meshes_by_run,
+                "uq_sparsification_by_run": sparsification_by_run,
+            },
         )
 
     _enforce_benchmark_policy(config, results)
@@ -1024,6 +1202,12 @@ def _config_to_dict(c: Config) -> dict:
             "metrics_cache": {
                 "enabled": c.run.metrics_cache.enabled,
                 "path": c.run.metrics_cache.path,
+            },
+            "uq": {
+                "enabled": c.run.uq.enabled,
+                "num_samples": c.run.uq.num_samples,
+                "retain_samples": c.run.uq.retain_samples,
+                "device_metrics": c.run.uq.device_metrics,
             },
             "distributed": c.run.distributed,
             "fail_on_all_skipped": c.run.fail_on_all_skipped,

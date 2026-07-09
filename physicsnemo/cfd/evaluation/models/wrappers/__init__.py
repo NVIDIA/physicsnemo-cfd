@@ -22,6 +22,15 @@ from physicsnemo.cfd.evaluation.models.wrappers.fignet import FIGNetWrapper
 from physicsnemo.cfd.evaluation.models.wrappers.geotransolver import (
     GeoTransolverWrapper,
 )
+from physicsnemo.cfd.evaluation.models.wrappers.geotransolver_drivaerstar import (
+    GeoTransolverDrivAerStarWrapper,
+)
+from physicsnemo.cfd.evaluation.models.wrappers.geotransolver_gp import (
+    GeoTransolverGPDrivAerStarWrapper,
+)
+from physicsnemo.cfd.evaluation.models.wrappers.mc_perturbation import (
+    MCPerturbationDrivAerStarWrapper,
+)
 from physicsnemo.cfd.evaluation.models.wrappers.surface_baseline import (
     SurfaceBaselineWrapper,
 )
@@ -35,6 +44,9 @@ register_model("fignet_surface", FIGNetWrapper)
 register_model("xmgn_surface", XMGNWrapper)
 register_model("geotransolver_surface", GeoTransolverWrapper)
 register_model("geotransolver_volume", GeoTransolverWrapper)
+register_model("geotransolver_drivaerstar_surface", GeoTransolverDrivAerStarWrapper)
+register_model("geotransolver_gp_surface", GeoTransolverGPDrivAerStarWrapper)
+register_model("mc_perturbation_surface", MCPerturbationDrivAerStarWrapper)
 register_model("transolver_surface", TransolverWrapper)
 register_model("transolver_volume", TransolverWrapper)
 register_model("domino_surface", DominoWrapper)
@@ -46,6 +58,9 @@ __all__ = [
     "FIGNetWrapper",
     "XMGNWrapper",
     "GeoTransolverWrapper",
+    "GeoTransolverDrivAerStarWrapper",
+    "GeoTransolverGPDrivAerStarWrapper",
+    "MCPerturbationDrivAerStarWrapper",
     "TransolverWrapper",
     "DominoWrapper",
     "SurfaceBaselineWrapper",

@@ -85,6 +85,12 @@ def merge_benchmark_result_shards(shards: list[dict[str, Any]]) -> dict[str, Any
                 f"Distributed merge mismatch: expected {model!r}×{dataset!r}, "
                 f"got {s['model']!r}×{s['dataset']!r}"
             )
+    from physicsnemo.cfd.evaluation.benchmarks.uq_inference import (
+        finalize_reducer_metrics,
+        finalize_sample_metrics,
+        is_uq_partial_key,
+    )
+
     per_case: list[dict[str, Any]] = []
     for s in active:
         per_case.extend(s.get("per_case") or [])
@@ -95,8 +101,14 @@ def merge_benchmark_result_shards(shards: list[dict[str, Any]]) -> dict[str, Any
             all_metric_values.setdefault(k, []).append(float(v))
     metrics_summary: dict[str, float] = {}
     for mname, values in all_metric_values.items():
+        # Reducer / sample statistics are finalized (pooled / collected), not mean-over-cases.
+        if is_uq_partial_key(mname):
+            continue
         valid = [v for v in values if v == v]
         metrics_summary[mname] = sum(valid) / len(valid) if valid else float("nan")
+    inference_domain = active[0].get("inference_domain")
+    metrics_summary.update(finalize_reducer_metrics(per_case, inference_domain))
+    metrics_summary.update(finalize_sample_metrics(per_case, inference_domain))
     case_ids_raw = [str(r["case_id"]) for r in per_case if r.get("case_id") is not None]
     case_ids_no_dup = sorted(set(case_ids_raw), key=natural_sort_key)
     return {
@@ -105,6 +117,7 @@ def merge_benchmark_result_shards(shards: list[dict[str, Any]]) -> dict[str, Any
         "cases": case_ids_no_dup,
         "metrics": metrics_summary,
         "per_case": per_case,
+        "inference_domain": inference_domain,
     }
 
 

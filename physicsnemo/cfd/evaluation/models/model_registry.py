@@ -21,6 +21,7 @@ from typing import Any, ClassVar, Literal, Optional, Type
 
 from physicsnemo.cfd.evaluation.datasets.schema import (
     CanonicalCase,
+    FieldDistribution,
     InferenceDomain,
     normalize_inference_domain_str,
 )
@@ -51,6 +52,18 @@ class CFDModel(ABC):
     OUTPUT_LOCATION: ClassVar[OutputLocation]
     INFERENCE_DOMAIN: ClassVar[InferenceDomain | None] = "surface"
     REQUIRES_REMOTE_ASSETS: ClassVar[bool] = True
+
+    #: Whether this wrapper produces a predictive *distribution* (uncertainty), not just a
+    #: point estimate. Deterministic wrappers leave this ``False``; UQ metrics then report
+    #: ``NaN`` for them (consistent with the engine's recoverable-metric behavior).
+    SUPPORTS_UQ: ClassVar[bool] = False
+    #: How the predictive distribution is produced (see the UQ design doc §4.2):
+    #: ``"analytic"`` — one forward pass emits the distribution/params (GP, mean-variance,
+    #: evidential); the wrapper overrides :meth:`decode_distribution`.
+    #: ``"sampling"`` — the distribution is built from statistics over ``N`` stochastic
+    #: passes / ensemble members; the engine drives the passes and aggregates.
+    #: ``"none"`` — deterministic.
+    UQ_METHOD: ClassVar[Literal["none", "analytic", "sampling"]] = "none"
 
     @classmethod
     def inference_domain_from_kwargs(
@@ -106,6 +119,43 @@ class CFDModel(ABC):
         align with inference geometry (e.g. interpolation / subsampling in xmgn/fignet).
         """
         ...
+
+    def decode_distribution(
+        self,
+        raw_output: RawOutput,
+        case: CanonicalCase,
+        model_input: Optional[ModelInput] = None,
+    ) -> dict[str, "FieldDistribution"]:
+        """Map raw output to a per-field predictive distribution (physical units).
+
+        **Analytic** UQ wrappers (``UQ_METHOD="analytic"``, e.g. a GP head) override this to
+        return :class:`~physicsnemo.cfd.evaluation.datasets.schema.FieldDistribution` with a
+        real ``std`` / ``epistemic_std``. The default wraps :meth:`decode_outputs` as
+        **degenerate** distributions (``std=None``) so callers can uniformly request a
+        distribution from any wrapper.
+        """
+        preds = self.decode_outputs(raw_output, case, model_input)
+        return {k: FieldDistribution(mean=v) for k, v in preds.items()}
+
+    def predict_ensemble(
+        self, model_input: ModelInput, n: int
+    ) -> Optional[list[RawOutput]]:
+        """Optional fast-path for ``UQ_METHOD="sampling"`` wrappers.
+
+        Return ``n`` raw outputs (stochastic passes or ensemble members) in one call, letting
+        the engine skip its per-pass Python loop. **Only implement this when all ``n`` raw
+        outputs fit simultaneously in the compute device's memory (typically GPU), since the
+        returned list holds them all at once** — for full-mesh CFD fields that is usually ``n×``
+        the single-pass footprint and will OOM for large ``n``.
+
+        Return ``None`` (the default, used by all shipped sampling wrappers) to have the engine
+        instead call :meth:`predict` ``n`` times and stream the passes through Welford
+        aggregation (:func:`~physicsnemo.cfd.evaluation.benchmarks.uq_inference.run_sampling_inference`):
+        only **one** raw output is resident on the GPU at a time, and the running mean/variance
+        accumulators are a handful of host (CPU) arrays of one field's size — i.e. memory is
+        O(1) in ``n``. Prefer this default unless you have measured that the batched path fits.
+        """
+        return None
 
 
 def register_model(name: str, wrapper_class: Type[CFDModel]) -> None:

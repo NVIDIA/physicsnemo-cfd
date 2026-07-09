@@ -1,0 +1,188 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Probabilistic (UQ) surface benchmark — compares deterministic, analytic-GP, and a
+# sampling (weight-perturbation) proxy model on the *same* cases, scoring the pooled UQ
+# metrics (NLPD, calibration zRMS, 95% coverage, sharpness) alongside the usual L2 / drag / lift.
+# See docs/design/uq_metrics_integration.md.
+#
+# Run (on a GPU node):
+#   python main.py --config-name=config_uq_surface
+#
+# The three model rows exercise every path in the UQ engine:
+#   * geotransolver_drivaerstar_surface -> deterministic baseline. UQ metrics finalize to NaN
+#                                    (no std); included so the report shows the det-vs-UQ contrast.
+#   * geotransolver_gp_surface    -> UQ_METHOD="analytic": one forward pass, GP posterior std.
+#   * mc_perturbation_surface     -> UQ_METHOD="sampling": run.uq.num_samples stochastic passes,
+#                                    aggregated by the engine (Welford). THROWAWAY proxy — its
+#                                    uncertainties are NOT calibrated; swap for real MC-Dropout later.
+
+defaults:
+  - _self_
+
+hydra:
+  run:
+    dir: ${run.output_dir}
+  output_subdir: hydra
+  job:
+    chdir: false
+
+case_id: null
+
+run:
+  device: "cuda:0"
+  output_dir: "benchmark_results_uq_surface"
+  seed: 42
+  batch_size: 1
+  # Write per-case .vtp with Pred/Std/EpistemicStd arrays for ParaView spatial-UQ inspection.
+  save_inference_mesh: true
+  metrics_cache:
+    enabled: true
+    path: ${run.output_dir}/metrics_cache
+  # ---- Uncertainty-quantification controls (additive; default off) ----
+  uq:
+    enabled: true
+    # Stochastic passes per case for UQ_METHOD="sampling" wrappers (ignored by analytic/deterministic).
+    num_samples: 32
+    # Keep the raw per-pass samples on the FieldDistribution (memory-heavy; only for CRPS / debugging).
+    retain_samples: false
+    device_metrics: false
+
+# Shared anchors for the surface normalization (both checkpoints were trained with the same npz)
+# and the deterministic baseline checkpoint (used by both the baseline and the perturbation proxy).
+# Paths are the in-container mounts from interactive_job.sh:
+#   /workspace -> /lustre/fsw/portfolios/coreai/users/ktangsali
+#   /data      -> /lustre/fsw/portfolios/coreai/projects/coreai_modulus_cae
+_paths:
+  transformer_src: &transformer_src /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models
+  surface_stats: &surface_stats /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/src/surface_fields_normalization.npz
+  baseline_ckpt: &baseline_ckpt /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/baseline_fastback_bf/checkpoints/checkpoint.0.100.pt
+
+benchmark:
+  mode: matrix
+  # All three rows are transformer_models checkpoints (physical, standardize-only targets:
+  # physical = norm*std + mean). They use the DrivAerStar GeoTransolver wrappers, which do NOT
+  # re-dimensionalize by ρu² (that is only for the non-dimensional DrivAerML/HF
+  # `geotransolver_surface` wrapper). The deterministic, GP, and MC-perturbation wrappers are three
+  # completely independent CFDModel subclasses (no shared base), each with REDIMENSIONALIZE_OUTPUTS=False.
+  models:
+    # Deterministic baseline (same checkpoint the perturbation proxy decorates). Epoch 100 = final.
+    - name: geotransolver_drivaerstar_surface
+      inference_domain: surface
+      checkpoint: *baseline_ckpt
+      stats_path: *surface_stats
+      kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
+
+    # Analytic GP field head. Directory holds GeoTransolver.0.<epoch>.mdlus + FieldGPHead.0.<epoch>.pt.
+    # checkpoint_epoch: 30 = the best-calibrated checkpoint chosen in the prior eval. The GP
+    # hyperparameters below MATCH the field_gp_v4_long_fastback_bf training run (feature_norm=l2_radial,
+    # lengthscale_range=[0.01,0.5], lengthscale_prior=[2.0,6.0]; the rest are the conf defaults).
+    - name: geotransolver_gp_surface
+      inference_domain: surface
+      checkpoint: /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/field_gp_v4_long_fastback_bf/checkpoints_field_gp
+      stats_path: *surface_stats
+      kwargs:
+        checkpoint_epoch: 30
+        gp_feature_norm: "l2_radial"
+        gp_n_inducing: 256
+        gp_mlp_hidden: [128, 16]
+        gp_lengthscale_range: [0.01, 0.5]
+        gp_lengthscale_prior: [2.0, 6.0]
+        gp_outputscale_prior: [2.0, 0.5]
+        num_tasks: 4
+        gp_inference_chunk_size: 51200
+        geometry_sampling: 300000
+
+    # Sampling proxy (weight perturbation) over the deterministic baseline — no new training.
+    - name: mc_perturbation_surface
+      inference_domain: surface
+      checkpoint: *baseline_ckpt
+      stats_path: *surface_stats
+      kwargs:
+        perturb_std: 0.02
+        perturb_scope: "last_n_layers=4"
+        batch_resolution: 60000
+        geometry_sampling: 300000
+
+  datasets:
+    - name: drivaerstar
+      root: /data/datasets/drivaerstar/surface_files/class_F/val
+      # These checkpoints were TRAINED on DrivAerStar (class_F = Fastback) zarr, whose WSS keeps the
+      # raw .vtk sign — so do NOT flip to the DrivAerML convention. The adapter default
+      # flip_wss_sign=True targets DrivAerML-trained checkpoints; leaving it on here negates the GT
+      # WSS relative to the model and inflates WSS relative-L2 to ~2.0 (pred ≈ -true) while pressure
+      # (never flipped) stays correct. Pressure/drag match at flip_wss_sign=false.
+      kwargs: { inference_domain: surface, flip_wss_sign: false }
+
+  reproducibility:
+    log_env: false
+    save_artifacts: false
+
+output:
+  surface_interpolate_point_to_cell_for_metrics: true
+  surface_metrics_idw_k: 5
+  mesh_field_names:
+    pressure: "pressure_pred"
+    shear_stress: "wall_shear_stress_pred"
+  ground_truth_mesh_field_names:
+    pressure: "pressure_true"
+    shear_stress: "wall_shear_stress_true"
+  # Uncertainty companions on exported meshes (auto-derived as *Std / *EpistemicStd if omitted).
+  std_mesh_field_names:
+    pressure: "pressure_std"
+    shear_stress: "wall_shear_stress_std"
+  epistemic_std_mesh_field_names:
+    pressure: "pressure_epistemic_std"
+    shear_stress: "wall_shear_stress_epistemic_std"
+
+metrics:
+  # Deterministic (scored on the distribution mean for UQ wrappers).
+  - l2_pressure
+  - l2_shear_stress
+  - l2_pressure_area_weighted
+  # coeff (Cd prefactor 2/(A*rho*U^2)) + drag_direction are optional; shown explicitly so the
+  # drag_uq panel below uses the SAME direction as the deterministic drag it is diagnosing.
+  - { name: drag, drag_direction: [1, 0, 0] }
+  - lift
+  # Pooled UQ reducer metrics (NaN for the deterministic row; finite for GP / sampling rows).
+  - nlpd
+  - nlpd_epistemic
+  - calibration_zrms
+  - coverage_95
+  - sharpness_std
+  - sharpness_epistemic_std
+  # Per-point ranking quality: Spearman(|error|, uncertainty) within each geometry (higher=better).
+  - uncertainty_error_spearman
+  - uncertainty_error_spearman_epistemic
+  # Sample-wise sparsification: rank geometries by aggregate uncertainty vs error (AUSE, lower=better).
+  - sparsification_ause
+  - sparsification_ause_epistemic
+  # Decision-relevant drag sparsification: rank geometries by GP uncertainty propagated into the
+  # Cd integral (drag std) vs |Cd_pred - Cd_true| (AUSE_epistemic / AUSE_total, lower=better).
+  # Takes the same coeff / drag_direction kwargs as the deterministic `drag` metric above.
+  - { name: drag_uq, drag_direction: [1, 0, 0] }
+
+reports:
+  enabled: true
+  save_comparison_meshes: false
+  comparison_mesh_subdir: comparison_meshes
+  # Only these cases write an inference_<model>_<case>.vtp (and drive report visuals); every other
+  # case is still scored for metrics. Keep this short so large runs don't dump one VTP per case.
+  visual_case_ids: ["00035", "00039"]
+  # Sample-level sparsification figure per dataset (field panels from sparsification_ause + a
+  # Drag Cd panel from drag_uq), with the GP and MC-perturbation models overlaid vs the oracle.
+  visuals:
+    - sparsification_plot
