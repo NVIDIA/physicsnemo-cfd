@@ -214,28 +214,55 @@ def ensure_distributed_initialized() -> None:
         DistributedManager.initialize()
 
 
+def resolve_checkpoint_file(checkpoint_path: str) -> tuple[Path, int]:
+    """Resolve a checkpoint knob to ``(directory, epoch)`` from a **specific file name**.
+
+    The config must point ``checkpoint`` at a concrete checkpoint file whose name encodes the
+    epoch (``<Model>.0.<epoch>.mdlus`` or ``checkpoint.0.<epoch>.pt``) rather than a directory.
+    This makes the loaded epoch a single source of truth (no silent "latest epoch" fallback and
+    no drift between the backbone and a separately-loaded head). ``physicsnemo.load_checkpoint``
+    itself takes the parent directory plus the epoch, which are both derived here.
+    """
+    ckpt = Path(checkpoint_path)
+    if not checkpoint_path:
+        raise ValueError("checkpoint path is empty; point it at a specific checkpoint file.")
+    if ckpt.is_dir():
+        raise ValueError(
+            f"checkpoint {checkpoint_path!r} is a directory; point it at a specific checkpoint "
+            "file whose name encodes the epoch (e.g. ``GeoTransolver.0.30.mdlus`` or "
+            "``checkpoint.0.100.pt``) so the loaded epoch is unambiguous."
+        )
+    epoch = parse_checkpoint_epoch(checkpoint_path)
+    if epoch is None:
+        raise ValueError(
+            f"cannot parse an epoch from checkpoint file name {ckpt.name!r}; expected "
+            "``<Model>.0.<epoch>.mdlus`` or ``checkpoint.0.<epoch>.pt``."
+        )
+    return ckpt.parent, epoch
+
+
 def build_geotransolver_backbone(
     *, checkpoint_path: str, device: str, inference_mode: str
 ) -> "GeoTransolver":
-    """Construct a ``GeoTransolver`` for ``surface``/``volume`` and load its checkpoint onto ``device``."""
+    """Construct a ``GeoTransolver`` for ``surface``/``volume`` and load its checkpoint onto ``device``.
+
+    ``checkpoint_path`` must be a specific checkpoint file (see :func:`resolve_checkpoint_file`);
+    a directory or an epoch-less name is rejected rather than silently loading the latest epoch.
+    """
     model_kw = dict(
         DEFAULT_GEOTRANSOLVER_VOLUME_KW
         if inference_mode == "volume"
         else DEFAULT_GEOTRANSOLVER_KW
     )
-    checkpoint_dir = Path(checkpoint_path)
-    if checkpoint_dir.is_file():
-        checkpoint_dir = checkpoint_dir.parent
+    checkpoint_dir, epoch = resolve_checkpoint_file(checkpoint_path)
 
     ensure_distributed_initialized()
     dev = torch.device(device)
     model = GeoTransolver(**model_kw)
-    ckpt_args: dict[str, Any] = {"path": str(checkpoint_dir), "models": model}
-    epoch = parse_checkpoint_epoch(checkpoint_path)
-    if epoch is not None:
-        ckpt_args["epoch"] = epoch
     with trusted_torch_load_context():
-        _ = load_checkpoint(device=dev, **ckpt_args)
+        _ = load_checkpoint(
+            path=str(checkpoint_dir), models=model, epoch=epoch, device=dev
+        )
     model = model.to(dev)
     model.eval()
     return model
@@ -325,6 +352,8 @@ def build_transolver_batch(
     run_idx = run_id_from_case_id(case.case_id)
     device = torch.device(cfg.device)
     length_scale: float | None = None
+    # In-memory geometry (surface == geometry for e.g. DrivAerStar) bypasses the STL file glob.
+    geometry_mesh = getattr(case, "geometry", None)
 
     if inference_mode == "volume":
         data_dict = build_volume_data_dict(
@@ -335,6 +364,7 @@ def build_transolver_batch(
             stream_velocity=cfg.stream_velocity,
             run_idx=run_idx,
             reference_mesh=case.reference_geometry,
+            geometry_mesh=geometry_mesh,
         )
         length_scale = _volume_length_scale(data_dict)
         n_stl = int(data_dict["stl_coordinates"].shape[0])
@@ -356,6 +386,7 @@ def build_transolver_batch(
             stream_velocity=cfg.stream_velocity,
             run_idx=run_idx,
             reference_mesh=case.reference_geometry,
+            geometry_mesh=geometry_mesh,
         )
         n_stl = int(data_dict["stl_coordinates"].shape[0])
         n_surf = int(data_dict["surface_mesh_centers"].shape[0])
@@ -512,6 +543,7 @@ __all__ = [
     "split_datapipe_kwargs",
     "parse_runtime_kwargs",
     "ensure_distributed_initialized",
+    "resolve_checkpoint_file",
     "build_geotransolver_backbone",
     "build_surface_datapipe",
     "build_volume_datapipe",

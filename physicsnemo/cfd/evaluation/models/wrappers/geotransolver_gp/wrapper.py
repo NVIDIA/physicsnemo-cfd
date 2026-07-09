@@ -37,10 +37,14 @@ metrics consume them directly.
 
 Surface only (the GP head predicts 4 surface tasks: pressure + 3 wall-shear components).
 
+The ``checkpoint`` knob must point at a **specific checkpoint file** whose name encodes the epoch
+(``GeoTransolver.0.<epoch>.mdlus``); the epoch is parsed from that name and the sibling
+``FieldGPHead.0.<epoch>.pt`` is loaded from the same directory. Pointing at a directory (or an
+epoch-less name) is rejected — this removes the old ``checkpoint_epoch`` kwarg and the risk of the
+backbone and head drifting to different (or "latest") epochs.
+
 Model kwargs (``model.kwargs`` in config), matching the trained checkpoint's GP settings:
 
-- ``checkpoint_epoch`` (int, required for a checkpoint *directory*): epoch tag of the
-  ``GeoTransolver.0.<epoch>.mdlus`` + ``FieldGPHead.0.<epoch>.pt`` pair to load.
 - ``gp_feature_norm`` (``"none"`` | ``"l2"`` | ``"layernorm"`` | ``"l2_radial"``): must match training.
 - ``gp_lengthscale_range`` / ``gp_lengthscale_prior`` / ``gp_outputscale_prior``: GP kernel config.
 - ``gp_n_inducing`` (default 256), ``gp_mlp_hidden`` (optional DKL MLP), ``num_tasks`` (default 4).
@@ -50,7 +54,6 @@ Model kwargs (``model.kwargs`` in config), matching the trained checkpoint's GP 
 """
 
 from contextlib import nullcontext
-from pathlib import Path
 from typing import Any, ClassVar, Optional
 
 import numpy as np
@@ -76,6 +79,7 @@ from physicsnemo.cfd.evaluation.models.common_wrapper_utils.geotransolver_runtim
     geotransolver_available,
     global_fx_to_bnc,
     parse_runtime_kwargs,
+    resolve_checkpoint_file,
 )
 from physicsnemo.cfd.evaluation.models.inference_autocast import cuda_bf16_autocast
 from physicsnemo.cfd.evaluation.models.model_registry import (
@@ -174,8 +178,6 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
         # GP-head hyperparameters (must match the trained checkpoint). Pulled off here so they
         # are not consumed by the shared runtime-kwargs parsing.
         self._gp_chunk_size = int(kw.pop("gp_inference_chunk_size", 51200))
-        ce = kw.pop("checkpoint_epoch", None)
-        self._checkpoint_epoch = int(ce) if ce is not None else None
         self._gp_kw = {
             "num_tasks": int(kw.pop("num_tasks", NUM_SURFACE_TASKS)),
             "n_inducing": int(kw.pop("gp_n_inducing", 256)),
@@ -221,10 +223,12 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
             inference_mode="surface",
         )
 
-        ckpt_dir = Path(checkpoint_path)
-        if ckpt_dir.is_file():
-            ckpt_dir = ckpt_dir.parent
+        # Single source of truth for the epoch: parsed from the checkpoint file name (same file
+        # the backbone just loaded). The sibling ``FieldGPHead.0.<epoch>.pt`` is loaded from this
+        # directory at this epoch in ``_build_and_load_head`` — no drift, no "latest" fallback.
+        ckpt_dir, ckpt_epoch = resolve_checkpoint_file(checkpoint_path)
         self._checkpoint_dir = str(ckpt_dir)
+        self._checkpoint_epoch = ckpt_epoch
         return self
 
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:

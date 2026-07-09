@@ -34,10 +34,16 @@ from physicsnemo.cfd.postprocessing_tools.metrics.l2_errors import (
 )
 
 
-def read_stl_geometry(stl_path: str, device: torch.device) -> dict[str, torch.Tensor]:
-    """Read STL and return stl_coordinates, stl_faces, stl_centers for SDF/center of mass."""
-    mesh_raw = pv.read(stl_path)
-    mesh = triangulate_surface_mesh(mesh_raw)
+def stl_geometry_from_mesh(
+    mesh: pv.DataSet, device: torch.device
+) -> dict[str, torch.Tensor]:
+    """Build stl_coordinates / stl_faces / stl_centers from an in-memory geometry mesh.
+
+    Same payload as :func:`read_stl_geometry` (points, triangle connectivity, cell centers for
+    SDF / center-of-mass) but from a mesh already in memory — no file read. Used when a dataset's
+    surface *is* its geometry (e.g. DrivAerStar), so the datapipe geometry branch needs no STL file.
+    """
+    mesh = triangulate_surface_mesh(mesh)
     stl_coordinates = torch.from_numpy(np.asarray(mesh.points)).to(
         device=device, dtype=torch.float32
     )
@@ -51,6 +57,11 @@ def read_stl_geometry(stl_path: str, device: torch.device) -> dict[str, torch.Te
         "stl_faces": stl_faces,
         "stl_centers": stl_centers,
     }
+
+
+def read_stl_geometry(stl_path: str, device: torch.device) -> dict[str, torch.Tensor]:
+    """Read STL and return stl_coordinates, stl_faces, stl_centers for SDF/center of mass."""
+    return stl_geometry_from_mesh(pv.read(stl_path), device)
 
 
 def read_surface_from_vtp(
@@ -159,6 +170,19 @@ def _find_stl_in_dir(run_dir: Path, run_idx: int) -> Path:
     raise FileNotFoundError(f"No STL file found in {run_dir} for run_idx {run_idx}")
 
 
+def _resolve_stl_geometry(
+    *,
+    run_dir: Path,
+    run_idx: int,
+    device: torch.device,
+    geometry_mesh: pv.DataSet | None,
+) -> dict[str, torch.Tensor]:
+    """Geometry tensors from an in-memory mesh when given, else from the STL file in ``run_dir``."""
+    if geometry_mesh is not None:
+        return stl_geometry_from_mesh(geometry_mesh, device)
+    return read_stl_geometry(str(_find_stl_in_dir(run_dir, run_idx)), device)
+
+
 def build_volume_data_dict(
     run_dir: Path,
     vtu_path: str,
@@ -169,16 +193,19 @@ def build_volume_data_dict(
     n_output_fields: int = 5,
     *,
     reference_mesh: pv.DataSet | None = None,
+    geometry_mesh: pv.DataSet | None = None,
 ) -> dict[str, torch.Tensor]:
     """Build data dict for volume inference: STL + VTU + flow params (DrivAer-style run dir).
 
-    STL resolution matches :func:`build_surface_data_dict` — ``drivaer_<run_idx>.stl``,
+    When ``geometry_mesh`` is given the geometry tensors come from it (no STL file); otherwise the
+    STL is resolved from ``run_dir`` — ``drivaer_<run_idx>.stl``,
     ``drivaer_<run_idx>_single_solid.stl``, then ``*_single_solid.stl``, then any ``*.stl``.
 
     Model evaluation locations are mesh points (see :func:`read_volume_from_vtu`).
     """
-    stl_path = _find_stl_in_dir(run_dir, run_idx)
-    data_dict = read_stl_geometry(str(stl_path), device)
+    data_dict = _resolve_stl_geometry(
+        run_dir=run_dir, run_idx=run_idx, device=device, geometry_mesh=geometry_mesh
+    )
     data_dict.update(
         read_volume_from_vtu(
             vtu_path,
@@ -205,10 +232,16 @@ def build_surface_data_dict(
     run_idx: int = 1,
     *,
     reference_mesh: pv.DataSet | None = None,
+    geometry_mesh: pv.DataSet | None = None,
 ) -> dict[str, torch.Tensor]:
-    """Build data dict for surface inference: STL + VTP + flow params. Finds STL in run_dir."""
-    stl_path = _find_stl_in_dir(run_dir, run_idx)
-    data_dict = read_stl_geometry(str(stl_path), device)
+    """Build data dict for surface inference: STL + VTP + flow params.
+
+    When ``geometry_mesh`` is given the geometry tensors come from it (no STL file); otherwise the
+    STL is resolved from ``run_dir`` (see :func:`_find_stl_in_dir`).
+    """
+    data_dict = _resolve_stl_geometry(
+        run_dir=run_dir, run_idx=run_idx, device=device, geometry_mesh=geometry_mesh
+    )
     data_dict.update(read_surface_from_vtp(vtp_path, device, mesh=reference_mesh))
     data_dict["air_density"] = torch.tensor(
         [air_density], device=device, dtype=torch.float32

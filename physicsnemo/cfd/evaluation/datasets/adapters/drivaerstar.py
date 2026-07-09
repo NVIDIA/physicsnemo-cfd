@@ -23,25 +23,35 @@ shear stress sign convention that differ from DrivAerML (which the shipped GeoTr
 / Transolver checkpoints were trained on). This adapter bridges those differences so the
 same model wrappers and metrics work unchanged:
 
-1. Convert legacy ``.vtk`` → ``.vtp`` (XML PolyData) for the datapipe wrappers.
-2. Rename ``Pressure`` → ``pMeanTrim`` (DrivAerML convention).
-3. Combine the three WSS scalar components into one ``(N, 3)`` vector and flip its sign
+1. Rename ``Pressure`` → ``pMeanTrim`` (DrivAerML convention).
+2. Combine the three WSS scalar components into one ``(N, 3)`` vector and flip its sign
    to match DrivAerML (``flip_wss_sign``, default on).
-4. Drop explicit ``Normals`` / ``Area`` arrays so downstream force integration and
+3. Drop explicit ``Normals`` / ``Area`` arrays so downstream force integration and
    rendering recompute them from mesh topology (DrivAerML convention).
-5. Generate a triangulated STL geometry (DrivAerStar ships none — the surface *is* the
-   geometry) named so the wrappers' STL resolver finds it.
 
-Prepared VTP + STL are cached under ``<root>/<prepared_subdir>/<case_id>/`` (one STL per
-case dir, so the wrappers' STL lookup is unambiguous) and reused on subsequent runs.
+These transforms are cheap generic array ops, so by default they run **in memory** on each pass:
+the prepared surface mesh is handed to the wrappers via
+:attr:`~physicsnemo.cfd.evaluation.datasets.schema.CanonicalCase.reference_geometry` (predictions +
+ground truth) and :attr:`~physicsnemo.cfd.evaluation.datasets.schema.CanonicalCase.geometry` (the
+SDF / geometry branch — the DrivAerStar surface *is* its geometry, so no STL file is materialized).
+Nothing is written to disk, avoiding a full-dataset duplicate and any stale-cache class of bug.
+``mesh_path`` points at the source ``.vtk`` (used only for run-index / directory context; the
+forward pass reads the in-memory meshes, not this file).
+
+Set ``cache_prepared: true`` to additionally **persist** a canonical ``.vtp`` (+ triangulated
+``.stl``) under ``<root>/<prepared_subdir>/<case_id>/`` for external inspection (ParaView, etc.).
+Those writes are guarded by a sidecar signature (``<case_id>.prepared.json``) recording the
+transform kwargs (``flip_wss_sign``, field names, ``remove_normals_area``, ...) and the source
+file's identity (mtime/size), so a changed transform rebuilds rather than reusing a stale artifact.
 
 .. note::
    The datapipe wrappers (GeoTransolver, Transolver) parse an integer run index from the
-   case id via ``run_id_from_case_id`` to name the STL, so case ids must be integer-like
-   (a decimal string or ``run_<int>``). DrivAerStar VTK stems are integers, so this holds
-   out of the box. Rename files or pass ``glob_pattern`` accordingly if yours are not.
+   case id via ``run_id_from_case_id``, so case ids must be integer-like (a decimal string or
+   ``run_<int>``). DrivAerStar VTK stems are integers, so this holds out of the box. Rename files
+   or pass ``glob_pattern`` accordingly if yours are not.
 """
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -102,13 +112,16 @@ class DrivAerStarAdapter(DatasetAdapter):
       ``("WallShearStressi", "WallShearStressj", "WallShearStressk")``).
     - ``flip_wss_sign``: negate combined WSS to match DrivAerML (default ``True``).
     - ``remove_normals_area``: drop explicit ``Normals`` / ``Area`` arrays (default ``True``).
-    - ``make_stl``: generate a triangulated STL per case (default ``True``).
     - ``gt_data_type``: ``auto`` / ``cell`` / ``point`` passed to GT extraction
       (default ``"cell"``; DrivAerStar fields are cell-centered).
-    - ``prepared_subdir``: cache directory name under ``root`` (default ``"_prepared"``).
-    - ``pressure_out_name`` / ``shear_out_name``: VTK array names written into the prepared
-      VTP (defaults ``"pMeanTrim"`` / ``"wallShearStressMeanTrim"``).
-    - ``force_reprepare``: rebuild cached VTP/STL even if present (default ``False``).
+    - ``pressure_out_name`` / ``shear_out_name``: canonical VTK array names for the prepared
+      pressure / WSS arrays (defaults ``"pMeanTrim"`` / ``"wallShearStressMeanTrim"``).
+    - ``cache_prepared``: also persist the prepared ``.vtp`` (+ triangulated ``.stl``) to disk for
+      external inspection (default ``False`` — preparation is in-memory only).
+    - ``prepared_subdir``: cache directory name under ``root`` when ``cache_prepared`` (default
+      ``"_prepared"``).
+    - ``force_reprepare``: rebuild the on-disk cache even if present, when ``cache_prepared``
+      (default ``False``).
     """
 
     @classmethod
@@ -155,8 +168,8 @@ class DrivAerStarAdapter(DatasetAdapter):
 
         self._flip_wss_sign: bool = bool(kwargs.get("flip_wss_sign", True))
         self._remove_normals_area: bool = bool(kwargs.get("remove_normals_area", True))
-        self._make_stl: bool = bool(kwargs.get("make_stl", True))
         self._gt_data_type: str = kwargs.get("gt_data_type", "cell")
+        self._cache_prepared: bool = bool(kwargs.get("cache_prepared", False))
         self._prepared_subdir: str = kwargs.get("prepared_subdir", "_prepared")
         self._pressure_out_name: str = kwargs.get(
             "pressure_out_name", DEFAULT_PRESSURE_OUT_NAME
@@ -201,49 +214,110 @@ class DrivAerStarAdapter(DatasetAdapter):
             case_ids.append(p.stem)
         return natural_sorted(case_ids)
 
-    def _prepare_case(self, case_id: str) -> tuple[str, pv.PolyData]:
-        """Convert source ``.vtk`` to a canonical VTP (+ STL), caching under the prepared dir.
+    def _transform_source_mesh(self, case_id: str) -> tuple[pv.PolyData, Path]:
+        """Read the raw ``.vtk`` and apply the in-memory canonicalization transforms.
 
-        Returns the prepared VTP path and the in-memory prepared mesh (for ``reference_geometry``).
+        Shared core of both the default (in-memory) and the opt-in cached paths: rename pressure,
+        combine + optionally sign-flip WSS, and drop ``Normals`` / ``Area``. No disk writes. Returns
+        the prepared surface mesh and the source path.
         """
         src_path = self._source_path(case_id)
+        mesh = pv.read(str(src_path))
+        if not isinstance(mesh, pv.PolyData):
+            mesh = mesh.extract_surface()
+        self._rename_pressure(mesh, case_id)
+        self._combine_wss(mesh, case_id)
+        if self._remove_normals_area:
+            self._drop_normals_area(mesh)
+        return mesh, src_path
+
+    #: Bump when the preparation transform changes in a way that invalidates cached artifacts.
+    _PREPARE_SIGNATURE_VERSION = 1
+
+    def _transform_signature(self, src_path: Path) -> dict[str, Any]:
+        """Signature of everything that affects the prepared artifacts (transform kwargs + source id).
+
+        A cached VTP/STL is only reused when this matches the sidecar written when it was prepared,
+        so changing e.g. ``flip_wss_sign`` or a field name — or editing the source ``.vtk`` —
+        forces a rebuild instead of a stale cache hit.
+        """
+        st = src_path.stat()
+        return {
+            "version": self._PREPARE_SIGNATURE_VERSION,
+            "flip_wss_sign": self._flip_wss_sign,
+            "remove_normals_area": self._remove_normals_area,
+            "pressure_field_name": self._pressure_field_name,
+            "wss_component_names": list(self._wss_component_names),
+            "pressure_out_name": self._pressure_out_name,
+            "shear_out_name": self._shear_out_name,
+            "source_name": src_path.name,
+            "source_mtime_ns": st.st_mtime_ns,
+            "source_size": st.st_size,
+        }
+
+    @staticmethod
+    def _read_signature(sidecar_path: Path) -> dict[str, Any] | None:
+        """Load a prepared-case sidecar; treat a missing/corrupt file as no signature."""
+        try:
+            with sidecar_path.open("r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            return data if isinstance(data, dict) else None
+        except (OSError, ValueError):
+            return None
+
+    def _write_prepared_cache(
+        self, case_id: str, mesh: pv.PolyData, src_path: Path
+    ) -> str:
+        """Persist the prepared ``.vtp`` (+ triangulated ``.stl``) for external inspection.
+
+        Only called when ``cache_prepared`` is set. Writes are guarded by the sidecar signature so a
+        changed transform (or edited source) rebuilds rather than reusing a stale artifact. Returns
+        the prepared VTP path (used as the case ``mesh_path`` in cached mode).
+        """
         case_dir = self._prepared_root / case_id
         case_dir.mkdir(parents=True, exist_ok=True)
         vtp_path = case_dir / f"{case_id}.vtp"
         stl_path = case_dir / f"drivaer_{self._stl_tag(case_id)}.stl"
+        sidecar_path = case_dir / f"{case_id}.prepared.json"
 
-        if self._force_reprepare or not vtp_path.exists():
-            log_dataset("drivaerstar", f"Preparing VTP for {case_id!r} from {src_path}")
-            mesh = pv.read(str(src_path))
-            if not isinstance(mesh, pv.PolyData):
-                mesh = mesh.extract_surface()
-
-            self._rename_pressure(mesh)
-            self._combine_wss(mesh)
-            if self._remove_normals_area:
-                self._drop_normals_area(mesh)
-
-            vtp_path.parent.mkdir(parents=True, exist_ok=True)
+        signature = self._transform_signature(src_path)
+        cache_valid = (
+            not self._force_reprepare
+            and vtp_path.exists()
+            and stl_path.exists()
+            and self._read_signature(sidecar_path) == signature
+        )
+        if not cache_valid:
+            log_dataset("drivaerstar", f"Caching prepared VTP + STL for {case_id!r}")
             mesh.save(str(vtp_path))
-        else:
-            mesh = pv.read(str(vtp_path))
+            mesh.triangulate().save(str(stl_path))
+            # Write the sidecar only after successful saves so a crash mid-write does not leave a
+            # signature that would validate partial/absent artifacts.
+            with sidecar_path.open("w", encoding="utf-8") as fh:
+                json.dump(signature, fh, indent=2, sort_keys=True)
+        return str(vtp_path)
 
-        if self._make_stl and (self._force_reprepare or not stl_path.exists()):
-            log_dataset("drivaerstar", f"Writing STL geometry for {case_id!r}")
-            geom = pv.read(str(src_path))
-            if not isinstance(geom, pv.PolyData):
-                geom = geom.extract_surface()
-            geom.triangulate().save(str(stl_path))
+    @staticmethod
+    def _available_arrays(mesh: pv.PolyData) -> str:
+        """Human-readable listing of cell/point array names for error messages."""
+        return (
+            f"cell_data={sorted(mesh.cell_data.keys())}, "
+            f"point_data={sorted(mesh.point_data.keys())}"
+        )
 
-        return str(vtp_path), mesh
-
-    def _rename_pressure(self, mesh: pv.PolyData) -> None:
+    def _rename_pressure(self, mesh: pv.PolyData, case_id: str) -> None:
         for data in (mesh.cell_data, mesh.point_data):
             if self._pressure_field_name in data:
                 data[self._pressure_out_name] = data.pop(self._pressure_field_name)
                 return
+        raise ValueError(
+            f"DrivAerStar case {case_id!r}: pressure array "
+            f"{self._pressure_field_name!r} not found in the source mesh "
+            f"(check ``pressure_field_name``). Available arrays: "
+            f"{self._available_arrays(mesh)}."
+        )
 
-    def _combine_wss(self, mesh: pv.PolyData) -> None:
+    def _combine_wss(self, mesh: pv.PolyData, case_id: str) -> None:
         for data in (mesh.cell_data, mesh.point_data):
             if all(k in data for k in self._wss_component_names):
                 wss = np.stack(
@@ -254,6 +328,12 @@ class DrivAerStarAdapter(DatasetAdapter):
                     wss = -wss
                 data[self._shear_out_name] = wss
                 return
+        raise ValueError(
+            f"DrivAerStar case {case_id!r}: wall-shear-stress components "
+            f"{list(self._wss_component_names)!r} not all found in a single data group "
+            f"(check ``wss_component_names``). Available arrays: "
+            f"{self._available_arrays(mesh)}."
+        )
 
     @staticmethod
     def _drop_normals_area(mesh: pv.PolyData) -> None:
@@ -264,12 +344,22 @@ class DrivAerStarAdapter(DatasetAdapter):
                 del mesh.point_data[key]
 
     def load_case(self, case_id: str) -> CanonicalCase:
-        """Prepare (cache) the case and load it into the canonical schema."""
+        """Transform the case in memory (optionally caching) and load it into the canonical schema.
+
+        The prepared surface mesh is returned as both ``reference_geometry`` (predictions + GT) and
+        ``geometry`` (the wrappers' SDF branch — surface *is* geometry for DrivAerStar), so the
+        forward pass needs no on-disk VTP/STL. ``mesh_path`` is the source ``.vtk`` unless
+        ``cache_prepared`` persisted a ``.vtp`` (then it points there).
+        """
         log_dataset(
             "drivaerstar",
             f"load_case({case_id!r}): root={self.root}",
         )
-        vtp_path, mesh = self._prepare_case(case_id)
+        mesh, src_path = self._transform_source_mesh(case_id)
+        if self._cache_prepared:
+            mesh_path = self._write_prepared_cache(case_id, mesh, src_path)
+        else:
+            mesh_path = str(src_path)
 
         gt_dict, gt_loc = extract_pressure_wss_from_mesh(
             mesh,
@@ -284,8 +374,8 @@ class DrivAerStarAdapter(DatasetAdapter):
             "dataset": "drivaerstar",
             "case": case_id,
             "branch": "surface",
-            "source_vtk": self._source_path(case_id).name,
-            "prepared_vtp": Path(vtp_path).name,
+            "source_vtk": src_path.name,
+            "prepared_cached": self._cache_prepared,
         }
         if ground_truth:
             meta["ground_truth_location"] = gt_loc
@@ -293,10 +383,13 @@ class DrivAerStarAdapter(DatasetAdapter):
 
         return CanonicalCase(
             case_id=case_id,
-            mesh_path=vtp_path,
+            mesh_path=mesh_path,
             mesh_type=mesh_type,
             ground_truth=ground_truth,
             metadata=meta,
             inference_domain="surface",
             reference_geometry=mesh,
+            # DrivAerStar surface *is* the geometry: hand the same mesh to the SDF/geometry branch
+            # so the wrappers derive stl_coordinates/faces/centers in memory (no STL file needed).
+            geometry=mesh,
         )

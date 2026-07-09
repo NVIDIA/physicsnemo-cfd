@@ -81,6 +81,13 @@ class CanonicalCase:
     #: may skip a redundant ``pv.read(case.mesh_path)`` for the same case. Adapters are not
     #: required to populate this field.
     reference_geometry: Any | None = None
+    #: Optional in-memory geometry mesh (:class:`pyvista.PolyData`) for the wrappers' SDF /
+    #: geometry-embedding branch, replacing an on-disk STL. When set, the datapipe I/O derives
+    #: ``stl_coordinates`` / ``stl_faces`` / ``stl_centers`` from it instead of globbing an STL
+    #: file next to ``mesh_path``. Adapters where the surface *is* the geometry (e.g. DrivAerStar)
+    #: can set this to avoid materializing an STL; adapters with a distinct geometry file leave it
+    #: ``None`` to keep the file-based lookup.
+    geometry: Any | None = None
 
     def __post_init__(self) -> None:
         if self.mesh_type not in ("point", "cell", "unknown"):

@@ -86,16 +86,17 @@ benchmark:
       stats_path: *surface_stats
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
 
-    # Analytic GP field head. Directory holds GeoTransolver.0.<epoch>.mdlus + FieldGPHead.0.<epoch>.pt.
-    # checkpoint_epoch: 30 = the best-calibrated checkpoint chosen in the prior eval. The GP
+    # Analytic GP field head. Point `checkpoint` at the specific GeoTransolver backbone file for the
+    # epoch you want; the epoch (30 here = the best-calibrated checkpoint from the prior eval) is
+    # parsed from that name and the sibling FieldGPHead.0.30.pt is loaded from the same directory.
+    # (No `checkpoint_epoch` knob / directory scanning -> the backbone and head can't drift.) The GP
     # hyperparameters below MATCH the field_gp_v4_long_fastback_bf training run (feature_norm=l2_radial,
     # lengthscale_range=[0.01,0.5], lengthscale_prior=[2.0,6.0]; the rest are the conf defaults).
     - name: geotransolver_gp_surface
       inference_domain: surface
-      checkpoint: /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/field_gp_v4_long_fastback_bf/checkpoints_field_gp
+      checkpoint: /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/field_gp_v4_long_fastback_bf/checkpoints_field_gp/GeoTransolver.0.30.mdlus
       stats_path: *surface_stats
       kwargs:
-        checkpoint_epoch: 30
         gp_feature_norm: "l2_radial"
         gp_n_inducing: 256
         gp_mlp_hidden: [128, 16]
