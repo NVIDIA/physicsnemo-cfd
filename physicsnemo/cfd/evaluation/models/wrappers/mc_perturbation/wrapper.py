@@ -139,6 +139,9 @@ class MCPerturbationDrivAerStarWrapper(CFDModel):
     INFERENCE_DOMAIN: ClassVar[InferenceDomain | None] = None
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
     REDIMENSIONALIZE_OUTPUTS: ClassVar[bool] = False
+    # These two flags are the contract with the engine: "I produce uncertainty, and the way to
+    # get it is to call predict() many times". The engine then loops predict() run.uq.num_samples
+    # times per case and turns the spread of the passes into a mean + std (see predict()).
     SUPPORTS_UQ: ClassVar[bool] = True
     UQ_METHOD: ClassVar[str] = "sampling"
 
@@ -214,6 +217,9 @@ class MCPerturbationDrivAerStarWrapper(CFDModel):
 
         self._datapipe = None
         self._datapipe_geometry_effective = None
+        # Load the ordinary trained baseline once. We never retrain or hold an ensemble of
+        # checkpoints in memory -- the "ensemble" is faked at inference time by jittering this one
+        # model's weights (that is what makes this a zero-cost proxy).
         self._model = build_geotransolver_backbone(
             checkpoint_path=checkpoint_path,
             device=device,
@@ -227,6 +233,9 @@ class MCPerturbationDrivAerStarWrapper(CFDModel):
             self._perturb_std,
             self._perturb_scope,
         )
+        # Decide *which* weight tensors get jittered (e.g. only the last few layers). Perturbing
+        # every weight usually destroys the prediction; perturbing near the output gives spread
+        # without wrecking accuracy. We resolve the name set once here and reuse it every pass.
         names = [n for n, _ in self._model.named_parameters()]
         self._perturb_names = _parse_perturb_scope(self._perturb_scope, names)
         _LOG.info(
@@ -280,17 +289,29 @@ class MCPerturbationDrivAerStarWrapper(CFDModel):
         if self._model is None or self._datapipe is None:
             raise RuntimeError("MCPerturbationDrivAerStarWrapper: call load() first")
 
+        # This method IS one sample of the pseudo-ensemble. The engine calls it N times per case;
+        # each call does three steps: (1) nudge the weights, (2) run a normal forward, (3) put the
+        # weights back exactly as they were. Because the noise differs each call, the N predictions
+        # differ slightly, and their spread is what we report as (fake) uncertainty.
+
+        # Step 1: back up each weight tensor we are about to touch, then multiply it by (1 + eps),
+        # eps ~ N(0, perturb_std^2). Multiplicative noise scales the jitter to each weight's own
+        # magnitude. randn_like draws from the global torch RNG, which the engine re-seeds per pass,
+        # so passes are different from each other but reproducible run-to-run.
         saved: dict[str, torch.Tensor] = {}
         if self._perturb_std > 0.0 and self._perturb_names:
             with torch.no_grad():
                 for name, p in self._model.named_parameters():
                     if name in self._perturb_names:
-                        saved[name] = p.detach().clone()
+                        saved[name] = p.detach().clone()  # keep the original to restore later
                         eps = torch.randn_like(p) * self._perturb_std
                         p.mul_(1.0 + eps)
         try:
+            # Step 2: a plain deterministic forward -- but on the now-jittered weights.
             return self._deterministic_predict(model_input)
         finally:
+            # Step 3: ALWAYS restore the original weights (even if the forward raised), so the next
+            # pass starts from the clean baseline and perturbations never accumulate.
             if saved:
                 with torch.no_grad():
                     for name, p in self._model.named_parameters():
