@@ -1,0 +1,200 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Probabilistic (UQ) surface benchmark ACROSS DrivAerStar body styles — four models
+# (deterministic / analytic-GP / MC weight-perturbation proxy / 5-member snapshot ensemble) scored on
+# a 100-geometry validation sample from EACH class: estateback (class_E), fastback (class_F),
+# notchback (class_N). See docs/design/uq_metrics_integration.md and conf/config_uq_surface.yaml.
+#
+# Rerun-in-place: this config writes to the SAME run.output_dir as before. With
+# run.metrics_cache.enabled: true, the already-scored rows (deterministic / GP / MC across the 3
+# classes) are served from the per-case cache, so only the NEW ensemble_surface x 3 classes actually
+# runs inference. Re-run tools/combine_class_results.py afterward to refresh the all_classes rows.
+#
+# Per-class vs. combined:
+#   * Per-class is native: each dataset entry below is a separate matrix row, so the report shows
+#     one row per (model x class) with its own pooled UQ metrics.
+#   * "All classes combined" is produced post-hoc (no extra inference) by pooling the per-case rows:
+#         python tools/combine_class_results.py uq_multiclass_surface/benchmark_results.json
+#     which appends an ``all_classes`` dataset row per model (correct pooled NLPD / coverage / zRMS /
+#     AUSE, and case-mean L2 / drag / lift).
+#
+# Prereq — materialize the sampled per-class symlink sets (100 val geometries each, seed 42):
+#   python tools/make_drivaerstar_class_sample.py \
+#       --zarr-root /data/datasets/drivaerstar/surface_files_zarr \
+#       --vtk-root  /data/datasets/drivaerstar/surface_files --n 100 --seed 42
+#
+# Run (on a GPU node):
+#   python main.py --config-name=config_uq_multiclass_surface
+#   torchrun --standalone --nnodes=1 --nproc_per_node=8 main.py --config-name=config_uq_multiclass_surface
+
+defaults:
+  - _self_
+
+hydra:
+  run:
+    dir: ${run.output_dir}
+  output_subdir: hydra
+  job:
+    chdir: false
+
+case_id: null
+
+run:
+  device: "cuda:0"
+  output_dir: "uq_multiclass_surface"
+  seed: 42
+  batch_size: 1
+  save_inference_mesh: true
+  metrics_cache:
+    enabled: true
+    path: ${run.output_dir}/metrics_cache
+  uq:
+    enabled: true
+    num_samples: 32
+    retain_samples: false
+    device_metrics: false
+
+# In-container mounts from interactive_job.sh:
+#   /workspace -> /lustre/fsw/portfolios/coreai/users/ktangsali
+#   /data      -> /lustre/fsw/portfolios/coreai/projects/coreai_modulus_cae
+_paths:
+  transformer_src: &transformer_src /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models
+  surface_stats: &surface_stats /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/src/surface_fields_normalization.npz
+  baseline_ckpt: &baseline_ckpt /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/baseline_fastback_bf/checkpoints/checkpoint.0.100.pt
+
+benchmark:
+  mode: matrix
+  # All three rows are transformer_models checkpoints (physical, standardize-only targets). They use
+  # the DrivAerStar GeoTransolver wrappers (REDIMENSIONALIZE_OUTPUTS=False). NOTE: these checkpoints
+  # were trained on FASTBACK (class_F) only, so estateback / notchback are out-of-distribution — the
+  # per-class rows quantify exactly that generalization gap.
+  models:
+    - name: geotransolver_drivaerstar_surface
+      inference_domain: surface
+      checkpoint: *baseline_ckpt
+      stats_path: *surface_stats
+      kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
+
+    - name: geotransolver_gp_surface
+      inference_domain: surface
+      checkpoint: /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/field_gp_v4_long_fastback_bf/checkpoints_field_gp/GeoTransolver.0.30.mdlus
+      stats_path: *surface_stats
+      kwargs:
+        gp_feature_norm: "l2_radial"
+        gp_n_inducing: 256
+        gp_mlp_hidden: [128, 16]
+        gp_lengthscale_range: [0.01, 0.5]
+        gp_lengthscale_prior: [2.0, 6.0]
+        gp_outputscale_prior: [2.0, 0.5]
+        num_tasks: 4
+        gp_inference_chunk_size: 51200
+        geometry_sampling: 300000
+
+    - name: mc_perturbation_surface
+      inference_domain: surface
+      checkpoint: *baseline_ckpt
+      stats_path: *surface_stats
+      kwargs:
+        perturb_std: 0.02
+        perturb_scope: "last_n_layers=4"
+        batch_resolution: 60000
+        geometry_sampling: 300000
+
+    # 5-member SNAPSHOT ensemble: the 5 checkpoints are listed EXPLICITLY (epochs 96-100 of the
+    # deterministic baseline run) — one GeoTransolver backbone per member, each run as one pass.
+    # `checkpoint` just anchors the asset identity / cache fingerprint (point it at any one member).
+    # NOTE: these are consecutive epochs of ONE run (correlated) -> expect mild under-dispersion vs.
+    # a true deep ensemble; list members from SEPARATE runs for a genuine deep ensemble (same field).
+    - name: ensemble_surface
+      inference_domain: surface
+      checkpoint: *baseline_ckpt
+      stats_path: *surface_stats
+      kwargs:
+        member_checkpoints:
+          - /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/baseline_fastback_bf/checkpoints/checkpoint.0.96.pt
+          - /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/baseline_fastback_bf/checkpoints/checkpoint.0.97.pt
+          - /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/baseline_fastback_bf/checkpoints/checkpoint.0.98.pt
+          - /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/baseline_fastback_bf/checkpoints/checkpoint.0.99.pt
+          - /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/baseline_fastback_bf/checkpoints/checkpoint.0.100.pt
+        batch_resolution: 60000
+        geometry_sampling: 300000
+
+  # Three entries share the SAME adapter (`name: drivaerstar`) but different roots; `label` gives
+  # each a distinct row in the report (and a distinct group for the post-hoc combine). Point each
+  # root at the per-class symlink set from make_drivaerstar_class_sample.py.
+  datasets:
+    - name: drivaerstar
+      label: estateback
+      root: /data/datasets/drivaerstar/surface_files/eval_mix_100/class_E
+      kwargs: { inference_domain: surface, flip_wss_sign: false }
+    - name: drivaerstar
+      label: fastback
+      root: /data/datasets/drivaerstar/surface_files/eval_mix_100/class_F
+      kwargs: { inference_domain: surface, flip_wss_sign: false }
+    - name: drivaerstar
+      label: notchback
+      root: /data/datasets/drivaerstar/surface_files/eval_mix_100/class_N
+      kwargs: { inference_domain: surface, flip_wss_sign: false }
+
+  reproducibility:
+    log_env: false
+    save_artifacts: false
+
+output:
+  surface_interpolate_point_to_cell_for_metrics: true
+  surface_metrics_idw_k: 5
+  mesh_field_names:
+    pressure: "pressure_pred"
+    shear_stress: "wall_shear_stress_pred"
+  ground_truth_mesh_field_names:
+    pressure: "pressure_true"
+    shear_stress: "wall_shear_stress_true"
+  std_mesh_field_names:
+    pressure: "pressure_std"
+    shear_stress: "wall_shear_stress_std"
+  epistemic_std_mesh_field_names:
+    pressure: "pressure_epistemic_std"
+    shear_stress: "wall_shear_stress_epistemic_std"
+
+metrics:
+  - l2_pressure
+  - l2_shear_stress
+  - l2_pressure_area_weighted
+  - { name: drag, drag_direction: [1, 0, 0] }
+  - lift
+  - nlpd
+  - nlpd_epistemic
+  - calibration_zrms
+  - coverage_95
+  - sharpness_std
+  - sharpness_epistemic_std
+  - uncertainty_error_spearman
+  - uncertainty_error_spearman_epistemic
+  - sparsification_ause
+  - sparsification_ause_epistemic
+  - { name: drag_uq, drag_direction: [1, 0, 0] }
+
+reports:
+  enabled: true
+  save_comparison_meshes: false
+  comparison_mesh_subdir: comparison_meshes
+  # Case ids are per-class (they repeat across classes) and the sets are randomly sampled, so a given
+  # id may not exist in every class — present ids get a VTP, others are simply skipped. Leave empty
+  # to skip per-case mesh export entirely on this multi-class sweep.
+  visual_case_ids: []
+  visuals:
+    - sparsification_plot

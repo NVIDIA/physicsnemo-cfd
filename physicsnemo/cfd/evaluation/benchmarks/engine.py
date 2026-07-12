@@ -559,6 +559,10 @@ def _run_single(
         and ``mesh_ctx`` mapping case id -> comparison mesh for visuals.
     """
     adapter_class = get_adapter(dataset_config.name)
+    # Adapter is resolved from ``name``; the result rows are keyed by ``display_name`` (== label or
+    # name) so the same adapter at different roots can appear as distinct dataset rows (e.g. one
+    # DrivAerStar adapter over estateback / fastback / notchback). Caching stays on ``name`` + root.
+    ds_label = dataset_config.display_name
     m_dom = _effective_inference_domain(model_config)
     d_dom = adapter_class.inference_domain_from_kwargs(dataset_config.kwargs)
     if m_dom != d_dom:
@@ -574,7 +578,7 @@ def _run_single(
             return (
                 {
                     "model": model_config.name,
-                    "dataset": dataset_config.name,
+                    "dataset": ds_label,
                     "skipped": True,
                     "skip_reason": reason,
                     "cases": [],
@@ -612,7 +616,7 @@ def _run_single(
         return (
             {
                 "model": model_config.name,
-                "dataset": dataset_config.name,
+                "dataset": ds_label,
                 "cases": [],
                 "metrics": {},
                 "per_case": [],
@@ -912,7 +916,7 @@ def _run_single(
     return (
         {
             "model": model_config.name,
-            "dataset": dataset_config.name,
+            "dataset": ds_label,
             "cases": cases,
             "metrics": metrics_summary,
             "per_case": per_case,

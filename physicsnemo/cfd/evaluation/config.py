@@ -201,6 +201,16 @@ class DatasetConfig:
     #: If set, only these case IDs are run; if ``None``, the adapter lists all cases under :attr:`root`.
     case_ids: list[str] | None = None
     kwargs: dict[str, Any] = field(default_factory=dict)
+    #: Optional display label for benchmark result rows. Defaults to :attr:`name`. Set this to give
+    #: the SAME adapter multiple distinct rows in one matrix run (e.g. one DrivAerStar adapter at
+    #: three different class roots labeled ``estateback`` / ``fastback`` / ``notchback``). The
+    #: adapter is always resolved from :attr:`name`; only the reported/aggregated dataset key changes.
+    label: str | None = None
+
+    @property
+    def display_name(self) -> str:
+        """Label used as the ``dataset`` key in results (falls back to the adapter :attr:`name`)."""
+        return self.label or self.name
 
 
 @dataclass
