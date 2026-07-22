@@ -97,19 +97,23 @@ benchmark:
       stats_path: *surface_stats
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
 
-    # (2) Analytic GP field head. Point `checkpoint` at the specific GeoTransolver backbone file for
-    # the epoch you want; the epoch is parsed from that name and the sibling FieldGPHead.0.<epoch>.pt
-    # is loaded from the same directory (no directory scanning -> backbone and head can't drift).
-    # The GP hyperparameters here MUST match the training run so the FieldGPHead reconstructs before
-    # the state dict loads.
+    # (2) Analytic GP field head. This wrapper loads TWO checkpoints, both named
+    # explicitly: `checkpoint` is the GeoTransolver backbone (epoch parsed from the file name) and
+    # `gp_head_checkpoint` is the matching FieldGPHead (read as given; pass matching files). The GP
+    # hyperparameters here MUST match the training run so the FieldGPHead reconstructs before the
+    # state dict loads.
+
     - name: geotransolver_gp_surface
       inference_domain: surface
-      checkpoint: /path/to/run_field_gp/checkpoints_field_gp/GeoTransolver.0.100.mdlus
+      checkpoint: /path/to/run_field_gp_due/checkpoints_field_gp/GeoTransolver.0.100.mdlus
       stats_path: *surface_stats
       kwargs:
+        gp_head_checkpoint: /path/to/run_field_gp_due/checkpoints_field_gp/FieldGPHead.0.100.pt
         gp_feature_norm: "l2_radial"
         gp_n_inducing: 1024
-        gp_mlp_hidden: [128, 16]
+        gp_mlp_hidden: [128, 128, 16]
+        gp_spectral_norm_coeff: 0.95      # > 0 -> DUE bi-Lipschitz extractor
+        gp_dkl_residual: true
         gp_lengthscale_range: [0.01, 2.0]
         gp_lengthscale_prior: [2.0, 3.0]
         gp_outputscale_prior: [2.0, 0.5]

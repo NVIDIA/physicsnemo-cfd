@@ -37,14 +37,22 @@ metrics consume them directly.
 
 Surface only (the GP head predicts 4 surface tasks: pressure + 3 wall-shear components).
 
-The ``checkpoint`` knob must point at a **specific checkpoint file** whose name encodes the epoch
-(``GeoTransolver.0.<epoch>.mdlus``); the epoch is parsed from that name and the sibling
-``FieldGPHead.0.<epoch>.pt`` is loaded from the same directory. Pointing at a directory (or an
-epoch-less name) is rejected — this removes the old ``checkpoint_epoch`` kwarg and the risk of the
-backbone and head drifting to different (or "latest") epochs.
+This wrapper loads **two** checkpoints — the GeoTransolver backbone and the ``FieldGPHead`` — and
+both are named explicitly:
+
+- ``checkpoint`` must point at a **specific backbone file** whose name encodes the epoch
+  (``GeoTransolver.0.<epoch>.mdlus``); the epoch is parsed from that name. Pointing at a directory
+  (or an epoch-less name) is rejected — this removes the old ``checkpoint_epoch`` kwarg and the risk
+  of the backbone drifting to a "latest" epoch.
+- ``gp_head_checkpoint`` should point at the matching ``FieldGPHead.0.<epoch>.pt``. Its directory /
+  epoch drive the load, so the head file named here is exactly the one read (no cross-validation
+  against the backbone — passing matching checkpoints is the caller's responsibility). It is
+  **optional**: when omitted the wrapper falls back to the backbone's sibling ``FieldGPHead`` at the
+  same epoch. Either way the exact head file it loads is logged.
 
 Model kwargs (``model.kwargs`` in config), matching the trained checkpoint's GP settings:
 
+- ``gp_head_checkpoint`` (path): the ``FieldGPHead.0.<epoch>.pt`` to load (see above).
 - ``gp_feature_norm`` (``"none"`` | ``"l2"`` | ``"layernorm"`` | ``"l2_radial"``): must match training.
 - ``gp_lengthscale_range`` / ``gp_lengthscale_prior`` / ``gp_outputscale_prior``: GP kernel config.
 - ``gp_n_inducing`` (default 256), ``gp_mlp_hidden`` (optional DKL MLP), ``num_tasks`` (default 4).
@@ -58,6 +66,7 @@ Model kwargs (``model.kwargs`` in config), matching the trained checkpoint's GP 
 """
 
 from contextlib import nullcontext
+from pathlib import Path
 from typing import Any, ClassVar, Optional
 
 import numpy as np
@@ -153,6 +162,7 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
         self._gp_kw: dict[str, Any] = {}
         self._checkpoint_dir: Optional[str] = None
         self._checkpoint_epoch: Optional[int] = None
+        self._head_checkpoint: Optional[str] = None
         self._gp_chunk_size: int = 51200
         self._field_mean_t: Optional[torch.Tensor] = None
         self._field_std_t: Optional[torch.Tensor] = None
@@ -182,6 +192,8 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
         # GP-head hyperparameters (must match the trained checkpoint). Pulled off here so they
         # are not consumed by the shared runtime-kwargs parsing.
         self._gp_chunk_size = int(kw.pop("gp_inference_chunk_size", 51200))
+        # Explicit GP-head checkpoint (optional; validated against the backbone below).
+        head_ckpt_arg = kw.pop("gp_head_checkpoint", None)
         self._gp_kw = {
             "num_tasks": int(kw.pop("num_tasks", NUM_SURFACE_TASKS)),
             "n_inducing": int(kw.pop("gp_n_inducing", 256)),
@@ -234,12 +246,22 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
             inference_mode="surface",
         )
 
-        # Single source of truth for the epoch: parsed from the checkpoint file name (same file
-        # the backbone just loaded). The sibling ``FieldGPHead.0.<epoch>.pt`` is loaded from this
-        # directory at this epoch in ``_build_and_load_head`` — no drift, no "latest" fallback.
-        ckpt_dir, ckpt_epoch = resolve_checkpoint_file(checkpoint_path)
+        # The backbone + head are loaded together by ``load_checkpoint(dir, epoch)``. Derive that
+        # dir + epoch from ``gp_head_checkpoint`` when given (so the head file the user names is the
+        # one read), else from the backbone ``checkpoint``. No cross-validation between the two —
+        # passing matching checkpoints is the caller's responsibility.
+        if head_ckpt_arg is not None:
+            ckpt_dir, ckpt_epoch = resolve_checkpoint_file(str(head_ckpt_arg))
+            self._head_checkpoint = str(Path(head_ckpt_arg))
+        else:
+            ckpt_dir, ckpt_epoch = resolve_checkpoint_file(checkpoint_path)
+            self._head_checkpoint = str(Path(ckpt_dir) / f"FieldGPHead.0.{ckpt_epoch}.pt")
         self._checkpoint_dir = str(ckpt_dir)
         self._checkpoint_epoch = ckpt_epoch
+        log_inference(
+            "geotransolver_gp",
+            f"GP checkpoints -> backbone: {checkpoint_path} | head: {self._head_checkpoint}",
+        )
         return self
 
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:

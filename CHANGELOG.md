@@ -17,8 +17,51 @@ Versioning](https://semver.org/spec/v2.0.0.html).
   **`physicsnemo-cfd-create-custom-metric`** — each with a `SKILL.md` and
   `evals/` cases to guide adding a new `CFDModel`, `DatasetAdapter`, or
   metric.
+- **DrivAerStar surface dataset adapter** (`datasets/adapters/drivaerstar.py`,
+  in-memory transforms with opt-in disk caching) and **`DatasetConfig.label`**
+  for decoupling report display names from adapter lookup / caching.
+- **Probabilistic / uncertainty-quantification (UQ) benchmarking:**
+  additive UQ path across the evaluation stack.
+  - **`CFDModel` capability model:** `SUPPORTS_UQ` / `UQ_METHOD`
+    (`"none"` | `"analytic"` | `"sampling"`) class flags plus an optional
+    `decode_distribution` hook; deterministic wrappers are unchanged
+    (`SUPPORTS_UQ=False` -> UQ metrics report `NaN`).
+  - **`FieldDistribution`** payload (`datasets/schema.py`) carrying
+    `mean` + `std` / `epistemic_std` / `aleatoric_std` (and optional
+    `samples` / `quantiles`), with `build_predictive_distribution` and
+    `as_distribution` helpers; all in physical units.
+  - **Engine sampling loop** (`benchmarks/uq_inference.py`): `run.uq`
+    controls (`enabled`, `num_samples`, `retain_samples`, `device_metrics`),
+    streaming Welford aggregation of `N` stochastic passes, and an optional
+    `predict_ensemble(model_input, n)` fast-path for multi-member models.
+  - **Pooled + sample UQ metrics** (`metrics/builtin/uq.py`): `nlpd`,
+    `nlpd_epistemic`, `calibration_zrms`, `coverage_95`, `sharpness_std`,
+    `sharpness_epistemic_std`, `uncertainty_error_spearman`
+    (+ `_epistemic`), `sparsification_ause` (+ `_epistemic`), and `drag_uq`
+    (configurable `coeff` / `drag_direction`), implemented via
+    reducer/sample-metric protocols so statistics pool correctly across
+    cases and ranks.
+  - **`sparsification_plot`** report visual, and std / epistemic-std
+    companion arrays exported to inference / comparison meshes
+    (`output.std_mesh_field_names`, `output.epistemic_std_mesh_field_names`).
+  - **Example UQ model wrappers** (GeoTransolver family, one per
+    archetype): `geotransolver_gp_surface` (analytic GP field head),
+    `geotransolver_mc_dropout_surface` (Concrete-Dropout sampling), and
+    `geotransolver_ensemble_surface` (explicit multi-member ensemble),
+    alongside the deterministic `geotransolver_drivaerstar_surface`. Shared
+    inference plumbing in
+    `models/common_wrapper_utils/geotransolver_runtime.py`.
+  - **Example config:** `workflows/benchmarking/conf/config_uq_surface.yaml`
+    scores deterministic + analytic GP + MC-Dropout + ensemble on the same
+    cases.
 
 ### Changed
+
+- **`physicsnemo-cfd-create-model-wrapper` skill:** documents the UQ
+  wrapper contract (capability flags, `FieldDistribution`, analytic vs.
+  sampling archetypes, the engine sampling loop, and UQ metrics/config),
+  with `ExampleAnalyticUQWrapper` / `ExampleSamplingUQWrapper` reference
+  implementations.
 
 ### Deprecated
 
