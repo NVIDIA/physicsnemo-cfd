@@ -15,7 +15,7 @@
 # limitations under the License.
 
 from physicsnemo.cfd.evaluation.models.wrappers.mc_dropout.wrapper import (
-    MCDropoutDrivAerStarWrapper,
+    GeoTransolverMCDropoutDrivAerStarWrapper,
 )
 
-__all__ = ["MCDropoutDrivAerStarWrapper"]
+__all__ = ["GeoTransolverMCDropoutDrivAerStarWrapper"]

@@ -15,7 +15,7 @@
 # limitations under the License.
 
 from physicsnemo.cfd.evaluation.models.wrappers.ensemble_drivaerstar.wrapper import (
-    EnsembleDrivAerStarWrapper,
+    GeoTransolverEnsembleDrivAerStarWrapper,
 )
 
-__all__ = ["EnsembleDrivAerStarWrapper"]
+__all__ = ["GeoTransolverEnsembleDrivAerStarWrapper"]

@@ -24,7 +24,7 @@ from typing import Any, Literal
 import numpy as np
 
 #: Array payloads on :class:`FieldDistribution` may be NumPy arrays or (for the on-device
-#: metric path, see the UQ design doc §6.8) framework tensors such as ``torch.Tensor``. We
+#: metric path) framework tensors such as ``torch.Tensor``. We
 #: intentionally do not import ``torch`` here to keep the ``datasets`` layer dependency-light;
 #: metrics convert to NumPy at their boundary.
 ArrayLike = Any

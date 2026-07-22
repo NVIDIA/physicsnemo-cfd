@@ -456,10 +456,13 @@ class _SampleAUSE:
 #
 # Drag is a *linear* functional of the surface fields, so the predicted-drag mean is the surface
 # integral of the predicted mean field and the drag *variance* is the area/normal-weighted sum of
-# the per-point field variances (diagonal-posterior linear error propagation; a lower bound under
-# spatial correlation, but exact-enough for *ranking* geometries — which is all sparsification
-# needs). This is the decision-relevant panel: does the field UQ flag the geometries whose drag we
-# predict worst? Direct port of ``field_gp_utils.compute_drag_uq_stats``, but reading physical-unit
+# the per-cell field variances. This propagates the per-cell MARGINAL std the engine produces for
+# EVERY UQ method (an analytic GP posterior's marginals OR the sampling across-pass spread), so the
+# same caveat applies to all of them — it is NOT specific to analytic models: treating cells as
+# independent is exact for spatially-uncorrelated uncertainty but a lower bound for
+# spatially-correlated (i.e. epistemic) uncertainty, which dominates a coherent surface integral.
+# This is the decision-relevant panel: does the field UQ flag the geometries whose drag we predict
+# worst? Direct port of ``field_gp_utils.compute_drag_uq_stats``, but reading physical-unit 
 # fields straight off the benchmark comparison mesh (so no normalization factors are needed).
 
 

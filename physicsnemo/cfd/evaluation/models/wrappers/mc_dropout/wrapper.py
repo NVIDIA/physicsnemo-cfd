@@ -14,9 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Real **MC-Dropout** sampling UQ over a Concrete-Dropout GeoTransolver (surface/volume).
+"""**MC-Dropout** sampling UQ over a Concrete-Dropout GeoTransolver (surface/volume).
 
-This is the MC-Dropout sampling baseline (``mc_dropout_surface``). The backbone was trained with
+This is the MC-Dropout sampling baseline (``geotransolver_mc_dropout_surface``). The backbone was trained with
 learned per-layer :class:`~physicsnemo.nn.ConcreteDropout` (``model.concrete_dropout=true``,
 Gal-Hron-Kendall 2017), so its dropout rates are calibrated by the training objective rather than
 hand-picked. UQ is obtained at inference exactly as in the training repo's ``setup_mc_dropout`` /
@@ -92,8 +92,8 @@ except ImportError:
 _LOG = logging.getLogger(__name__)
 
 
-class MCDropoutDrivAerStarWrapper(CFDModel):
-    """Real MC-Dropout sampling over a Concrete-Dropout GeoTransolver (surface/volume).
+class GeoTransolverMCDropoutDrivAerStarWrapper(CFDModel):
+    """MC-Dropout sampling over a Concrete-Dropout GeoTransolver (surface/volume).
 
     Decorates a ``transformer_models`` (physical-target) checkpoint, so predictions are
     re-standardized only (no dynamic-pressure re-dimensionalization):
@@ -141,16 +141,16 @@ class MCDropoutDrivAerStarWrapper(CFDModel):
         stats_path: str,
         device: str,
         **kwargs: Any,
-    ) -> "MCDropoutDrivAerStarWrapper":
+    ) -> "GeoTransolverMCDropoutDrivAerStarWrapper":
         """Load the Concrete-Dropout backbone and keep its dropout layers stochastic for MC passes."""
         if not geotransolver_available():
             raise RuntimeError(
-                "MCDropoutDrivAerStarWrapper requires physicsnemo (GeoTransolver, "
+                "GeoTransolverMCDropoutDrivAerStarWrapper requires physicsnemo (GeoTransolver, "
                 "TransolverDataPipe, load_checkpoint)."
             )
         if not _CONCRETE_DROPOUT_AVAILABLE:
             raise RuntimeError(
-                "MCDropoutDrivAerStarWrapper requires physicsnemo.nn.ConcreteDropout "
+                "GeoTransolverMCDropoutDrivAerStarWrapper requires physicsnemo.nn.ConcreteDropout "
                 "(train the backbone with model.concrete_dropout=true)."
             )
         kw = dict(kwargs)
@@ -223,7 +223,7 @@ class MCDropoutDrivAerStarWrapper(CFDModel):
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:
         """Build the surface/volume data dict, lazily (re)create the datapipe, and run it."""
         if self._model is None:
-            raise RuntimeError("MCDropoutDrivAerStarWrapper: call load() first")
+            raise RuntimeError("GeoTransolverMCDropoutDrivAerStarWrapper: call load() first")
         result = build_transolver_batch(
             case=case,
             inference_mode=self._inference_mode,
@@ -247,7 +247,7 @@ class MCDropoutDrivAerStarWrapper(CFDModel):
         passes differ from each other yet are reproducible run-to-run).
         """
         if self._model is None or self._datapipe is None:
-            raise RuntimeError("MCDropoutDrivAerStarWrapper: call load() first")
+            raise RuntimeError("GeoTransolverMCDropoutDrivAerStarWrapper: call load() first")
         raw = geotransolver_forward(
             model=self._model,
             batch=model_input["batch"],

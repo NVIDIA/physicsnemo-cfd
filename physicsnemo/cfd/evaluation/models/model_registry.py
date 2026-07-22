@@ -57,7 +57,7 @@ class CFDModel(ABC):
     #: point estimate. Deterministic wrappers leave this ``False``; UQ metrics then report
     #: ``NaN`` for them (consistent with the engine's recoverable-metric behavior).
     SUPPORTS_UQ: ClassVar[bool] = False
-    #: How the predictive distribution is produced (see the UQ design doc §4.2):
+    #: How the predictive distribution is produced:
     #: ``"analytic"`` — one forward pass emits the distribution/params (GP, mean-variance,
     #: evidential); the wrapper overrides :meth:`decode_distribution`.
     #: ``"sampling"`` — the distribution is built from statistics over ``N`` stochastic

@@ -14,19 +14,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Probabilistic (UQ) surface benchmark — compares deterministic, analytic-GP, and real MC-Dropout
-# on the *same* cases, scoring the pooled UQ metrics (NLPD, calibration zRMS, 95% coverage,
-# sharpness) alongside the usual L2 / drag / lift. See docs/design/uq_metrics_integration.md.
+# ============================================================================
+# EXAMPLE: probabilistic / uncertainty-quantification (UQ) surface benchmark.
+#
+# It scores four models on the SAME cases so you can read the pooled UQ metrics
+# (NLPD, calibration z-RMS, 95% coverage, sharpness, sparsification/AUSE)
+# alongside the usual accuracy metrics (L2 / drag / lift). The four rows cover
+# every path in the UQ engine and act as the reference examples for the three
+# UQ wrapper archetypes:
+#
+#   * geotransolver_drivaerstar_surface     -> deterministic (SUPPORTS_UQ=False).
+#         UQ metrics finalize to NaN; included for the det-vs-UQ contrast.
+#   * geotransolver_gp_surface              -> UQ_METHOD="analytic" (GP field head):
+#         one forward pass returns the posterior; decode_distribution() emits
+#         mean + total/epistemic std.
+#   * geotransolver_mc_dropout_surface      -> UQ_METHOD="sampling" (one model, N
+#         stochastic passes): the engine runs run.uq.num_samples passes and
+#         aggregates them (Welford).
+#   * geotransolver_ensemble_surface        -> UQ_METHOD="sampling" (K models, one
+#         pass each): predict_ensemble() returns one output per member.
+#
+# ----------------------------------------------------------------------------
+# BEFORE RUNNING: edit the paths in the `_paths` block and `benchmark.datasets`
+# below to point at your own checkpoints / stats / data. They are placeholders
+# (``/path/to/...``); nothing here is machine-specific.
 #
 # Run (on a GPU node):
 #   python main.py --config-name=config_uq_surface
-#
-# The three model rows exercise every path in the UQ engine:
-#   * geotransolver_drivaerstar_surface -> deterministic baseline. UQ metrics finalize to NaN
-#                                    (no std); included so the report shows the det-vs-UQ contrast.
-#   * geotransolver_gp_surface    -> UQ_METHOD="analytic": one forward pass, GP posterior std.
-#   * mc_dropout_surface          -> UQ_METHOD="sampling": run.uq.num_samples stochastic passes over
-#                                    the Concrete-Dropout backbone, aggregated by the engine (Welford).
+#   torchrun --standalone --nnodes=1 --nproc_per_node=8 main.py --config-name=config_uq_surface
+# ============================================================================
 
 defaults:
   - _self_
@@ -53,62 +69,57 @@ run:
   # ---- Uncertainty-quantification controls (additive; default off) ----
   uq:
     enabled: true
-    # Stochastic passes per case for UQ_METHOD="sampling" wrappers (ignored by analytic/deterministic).
+    # Stochastic passes per case for UQ_METHOD="sampling" wrappers. Ignored by analytic /
+    # deterministic rows, and by the ensemble (its pass count is its number of members).
     num_samples: 32
     # Keep the raw per-pass samples on the FieldDistribution (memory-heavy; only for CRPS / debugging).
     retain_samples: false
     device_metrics: false
 
-# Shared anchors for the surface normalization (all checkpoints were trained with the same npz) and
-# the deterministic baseline checkpoint. Paths are the in-container mounts from interactive_job.sh:
-#   /workspace -> /lustre/fsw/portfolios/coreai/users/ktangsali
-#   /data      -> /lustre/fsw/portfolios/coreai/projects/coreai_modulus_cae
+# ---- Edit these to your environment --------------------------------------
+# All checkpoints below are assumed to share ONE surface-normalization file. The GP / MC-Dropout /
+# ensemble rows all decorate the same GeoTransolver backbone family (physical, standardize-only
+# targets), so they reuse the same stats.
 _paths:
-  transformer_src: &transformer_src /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models
-  surface_stats: &surface_stats /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/src/surface_fields_normalization.npz
-  baseline_ckpt: &baseline_ckpt /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/baseline_fastback_bf/checkpoints/checkpoint.0.100.pt
-  # Concrete-Dropout run (model.concrete_dropout=true), same backbone/data/normalization as baseline.
-  concrete_dropout_ckpt: &concrete_dropout_ckpt /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/concrete_dropout_fastback_bf/checkpoints/GeoTransolver.0.100.mdlus
+  surface_stats: &surface_stats /path/to/surface_fields_normalization.npz
+  # Deterministic + ensemble members come from a standard training run's checkpoints.
+  baseline_ckpt: &baseline_ckpt /path/to/run/checkpoints/checkpoint.0.100.pt
+  # A backbone trained with Concrete-Dropout (model.concrete_dropout=true) for the MC-Dropout row.
+  concrete_dropout_ckpt: &concrete_dropout_ckpt /path/to/run_concrete_dropout/checkpoints/GeoTransolver.0.100.mdlus
 
 benchmark:
   mode: matrix
-  # All three rows are transformer_models checkpoints (physical, standardize-only targets:
-  # physical = norm*std + mean). They use the DrivAerStar GeoTransolver wrappers, which do NOT
-  # re-dimensionalize by ρu² (that is only for the non-dimensional DrivAerML/HF
-  # `geotransolver_surface` wrapper). The deterministic, GP, and MC-Dropout wrappers are three
-  # completely independent CFDModel subclasses (no shared base), each with REDIMENSIONALIZE_OUTPUTS=False.
   models:
-    # Deterministic baseline. Epoch 100 = final.
+    # (1) Deterministic baseline. SUPPORTS_UQ=False -> UQ metrics report NaN.
     - name: geotransolver_drivaerstar_surface
       inference_domain: surface
       checkpoint: *baseline_ckpt
       stats_path: *surface_stats
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
 
-    # Analytic GP field head. Point `checkpoint` at the specific GeoTransolver backbone file for the
-    # epoch you want; the epoch (38 here) is parsed from that name and the sibling FieldGPHead.0.38.pt
-    # is loaded from the same directory. (No `checkpoint_epoch` knob / directory scanning -> the
-    # backbone and head can't drift.) e38 of the pinned l2_radial run won the e30/e35/e38 sweep on
-    # drag AUSE and calibration. The GP hyperparameters below MATCH that training run
-    # (feature_norm=l2_radial, lengthscale_range=[0.01,0.5], lengthscale_prior=[2.0,6.0]; rest are conf defaults).
+    # (2) Analytic GP field head. Point `checkpoint` at the specific GeoTransolver backbone file for
+    # the epoch you want; the epoch is parsed from that name and the sibling FieldGPHead.0.<epoch>.pt
+    # is loaded from the same directory (no directory scanning -> backbone and head can't drift).
+    # The GP hyperparameters here MUST match the training run so the FieldGPHead reconstructs before
+    # the state dict loads.
     - name: geotransolver_gp_surface
       inference_domain: surface
-      checkpoint: /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/field_gp_v4_long_fastback_pin/checkpoints_field_gp/GeoTransolver.0.38.mdlus
+      checkpoint: /path/to/run_field_gp/checkpoints_field_gp/GeoTransolver.0.100.mdlus
       stats_path: *surface_stats
       kwargs:
         gp_feature_norm: "l2_radial"
-        gp_n_inducing: 256
+        gp_n_inducing: 1024
         gp_mlp_hidden: [128, 16]
-        gp_lengthscale_range: [0.01, 0.5]
-        gp_lengthscale_prior: [2.0, 6.0]
+        gp_lengthscale_range: [0.01, 2.0]
+        gp_lengthscale_prior: [2.0, 3.0]
         gp_outputscale_prior: [2.0, 0.5]
         num_tasks: 4
         gp_inference_chunk_size: 51200
         geometry_sampling: 300000
 
-    # Real MC-Dropout: run.uq.num_samples stochastic passes over the Concrete-Dropout backbone
+    # (3) MC-Dropout: run.uq.num_samples stochastic passes over the Concrete-Dropout backbone
     # (the ConcreteDropout layers stay stochastic at inference).
-    - name: mc_dropout_surface
+    - name: geotransolver_mc_dropout_surface
       inference_domain: surface
       checkpoint: *concrete_dropout_ckpt
       stats_path: *surface_stats
@@ -116,14 +127,28 @@ benchmark:
         batch_resolution: 60000
         geometry_sampling: 300000
 
+    # (4) K-member ensemble: one pass per member. List the member checkpoints explicitly (from a
+    # single run = snapshot ensemble, or from separate runs = true deep ensemble; same code path).
+    # `checkpoint` just anchors the cache fingerprint -> point it at any one member.
+    - name: geotransolver_ensemble_surface
+      inference_domain: surface
+      checkpoint: *baseline_ckpt
+      stats_path: *surface_stats
+      kwargs:
+        member_checkpoints:
+          - /path/to/run/checkpoints/checkpoint.0.96.pt
+          - /path/to/run/checkpoints/checkpoint.0.97.pt
+          - /path/to/run/checkpoints/checkpoint.0.98.pt
+          - /path/to/run/checkpoints/checkpoint.0.99.pt
+          - /path/to/run/checkpoints/checkpoint.0.100.pt
+        batch_resolution: 60000
+        geometry_sampling: 300000
+
   datasets:
     - name: drivaerstar
-      root: /data/datasets/drivaerstar/surface_files/class_F/val
-      # These checkpoints were TRAINED on DrivAerStar (class_F = Fastback) zarr, whose WSS keeps the
-      # raw .vtk sign — so do NOT flip to the DrivAerML convention. The adapter default
-      # flip_wss_sign=True targets DrivAerML-trained checkpoints; leaving it on here negates the GT
-      # WSS relative to the model and inflates WSS relative-L2 to ~2.0 (pred ≈ -true) while pressure
-      # (never flipped) stays correct. Pressure/drag match at flip_wss_sign=false.
+      root: /path/to/drivaerstar/surface_files/class_F/val
+      # flip_wss_sign controls the wall-shear-stress sign convention. The adapter default (True)
+      # targets DrivAerML-trained checkpoints; set it to match how your checkpoints were trained.
       kwargs: { inference_domain: surface, flip_wss_sign: false }
 
   reproducibility:
@@ -152,8 +177,8 @@ metrics:
   - l2_pressure
   - l2_shear_stress
   - l2_pressure_area_weighted
-  # coeff (Cd prefactor 2/(A*rho*U^2)) + drag_direction are optional; shown explicitly so the
-  # drag_uq panel below uses the SAME direction as the deterministic drag it is diagnosing.
+  # coeff (Cd prefactor 2/(A*rho*U^2)) + drag_direction are optional; drag_direction is shown
+  # explicitly so the drag_uq panel below uses the SAME direction as the deterministic drag.
   - { name: drag, drag_direction: [1, 0, 0] }
   - lift
   # Pooled UQ reducer metrics (NaN for the deterministic row; finite for GP / sampling rows).
@@ -169,9 +194,13 @@ metrics:
   # Sample-wise sparsification: rank geometries by aggregate uncertainty vs error (AUSE, lower=better).
   - sparsification_ause
   - sparsification_ause_epistemic
-  # Decision-relevant drag sparsification: rank geometries by GP uncertainty propagated into the
-  # Cd integral (drag std) vs |Cd_pred - Cd_true| (AUSE_epistemic / AUSE_total, lower=better).
-  # Takes the same coeff / drag_direction kwargs as the deterministic `drag` metric above.
+  # Decision-relevant drag sparsification: rank geometries by uncertainty propagated into the Cd
+  # integral (drag std) vs |Cd_pred - Cd_true|. NOTE: this applies to BOTH analytic (GP) and
+  # sampling (MC-Dropout / ensemble) rows, because drag_uq propagates the per-cell MARGINAL std the
+  # engine produces for every method. That diagonal (per-cell independent) propagation is exact for
+  # spatially-uncorrelated uncertainty but a lower bound for spatially-correlated (i.e. epistemic)
+  # uncertainty — which dominates a coherent surface integral — so the drag-EPISTEMIC ranking is a
+  # lower bound; read it alongside the field-level epistemic metrics.
   - { name: drag_uq, drag_direction: [1, 0, 0] }
 
 reports:
@@ -181,7 +210,7 @@ reports:
   # Only these cases write an inference_<model>_<case>.vtp (and drive report visuals); every other
   # case is still scored for metrics. Keep this short so large runs don't dump one VTP per case.
   visual_case_ids: ["00035", "00039"]
-  # Sample-level sparsification figure per dataset (field panels from sparsification_ause + a
-  # Drag Cd panel from drag_uq), with the GP and MC-perturbation models overlaid vs the oracle.
+  # Sample-level sparsification figure per dataset (field panels from sparsification_ause + a Cd
+  # panel from drag_uq), with the GP / MC-Dropout / ensemble models overlaid vs the oracle.
   visuals:
     - sparsification_plot

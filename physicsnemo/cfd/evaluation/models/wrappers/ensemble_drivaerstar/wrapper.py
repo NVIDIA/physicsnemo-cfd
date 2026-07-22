@@ -92,7 +92,7 @@ from physicsnemo.cfd.evaluation.models.model_registry import (
 _LOG = logging.getLogger(__name__)
 
 
-class EnsembleDrivAerStarWrapper(CFDModel):
+class GeoTransolverEnsembleDrivAerStarWrapper(CFDModel):
     """K-member (snapshot/deep) ensemble over GeoTransolver checkpoints (surface).
 
     Decorates ``transformer_models`` (physical-target) checkpoints, so predictions are
@@ -140,11 +140,11 @@ class EnsembleDrivAerStarWrapper(CFDModel):
         stats_path: str,
         device: str,
         **kwargs: Any,
-    ) -> "EnsembleDrivAerStarWrapper":
+    ) -> "GeoTransolverEnsembleDrivAerStarWrapper":
         """Build one GeoTransolver backbone per explicitly-listed member checkpoint."""
         if not geotransolver_available():
             raise RuntimeError(
-                "EnsembleDrivAerStarWrapper requires physicsnemo (GeoTransolver, "
+                "GeoTransolverEnsembleDrivAerStarWrapper requires physicsnemo (GeoTransolver, "
                 "TransolverDataPipe, load_checkpoint)."
             )
         kw = dict(kwargs)
@@ -172,7 +172,7 @@ class EnsembleDrivAerStarWrapper(CFDModel):
 
         if not member_checkpoints:
             raise ValueError(
-                "EnsembleDrivAerStarWrapper requires `member_checkpoints`: an explicit list of "
+                "GeoTransolverEnsembleDrivAerStarWrapper requires `member_checkpoints`: an explicit list of "
                 "checkpoint files (one per member). Auto-discovery from a directory is not "
                 "supported — list every member path in model.kwargs.member_checkpoints."
             )
@@ -191,7 +191,7 @@ class EnsembleDrivAerStarWrapper(CFDModel):
             for member in members
         ]
         _LOG.info(
-            "EnsembleDrivAerStarWrapper: loaded %d members from %s",
+            "GeoTransolverEnsembleDrivAerStarWrapper: loaded %d members from %s",
             len(self._models),
             [Path(m).name for m in members],
         )
@@ -200,7 +200,7 @@ class EnsembleDrivAerStarWrapper(CFDModel):
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:
         """Build the surface/volume batch once per case (shared by every member)."""
         if not self._models:
-            raise RuntimeError("EnsembleDrivAerStarWrapper: call load() first")
+            raise RuntimeError("GeoTransolverEnsembleDrivAerStarWrapper: call load() first")
         result = build_transolver_batch(
             case=case,
             inference_mode=self._inference_mode,
@@ -243,13 +243,13 @@ class EnsembleDrivAerStarWrapper(CFDModel):
         predictions the engine immediately folds into its running mean/variance.
         """
         if not self._models or self._datapipe is None:
-            raise RuntimeError("EnsembleDrivAerStarWrapper: call load() first")
+            raise RuntimeError("GeoTransolverEnsembleDrivAerStarWrapper: call load() first")
         return [self._forward_member(model, model_input) for model in self._models]
 
     def predict(self, model_input: ModelInput) -> RawOutput:
         """Deterministic fallback (first member). The engine uses :meth:`predict_ensemble` for UQ."""
         if not self._models or self._datapipe is None:
-            raise RuntimeError("EnsembleDrivAerStarWrapper: call load() first")
+            raise RuntimeError("GeoTransolverEnsembleDrivAerStarWrapper: call load() first")
         return self._forward_member(self._models[0], model_input)
 
     def decode_outputs(

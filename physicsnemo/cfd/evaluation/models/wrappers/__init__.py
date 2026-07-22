@@ -29,10 +29,10 @@ from physicsnemo.cfd.evaluation.models.wrappers.geotransolver_gp import (
     GeoTransolverGPDrivAerStarWrapper,
 )
 from physicsnemo.cfd.evaluation.models.wrappers.ensemble_drivaerstar import (
-    EnsembleDrivAerStarWrapper,
+    GeoTransolverEnsembleDrivAerStarWrapper,
 )
 from physicsnemo.cfd.evaluation.models.wrappers.mc_dropout import (
-    MCDropoutDrivAerStarWrapper,
+    GeoTransolverMCDropoutDrivAerStarWrapper,
 )
 from physicsnemo.cfd.evaluation.models.wrappers.surface_baseline import (
     SurfaceBaselineWrapper,
@@ -49,11 +49,8 @@ register_model("geotransolver_surface", GeoTransolverWrapper)
 register_model("geotransolver_volume", GeoTransolverWrapper)
 register_model("geotransolver_drivaerstar_surface", GeoTransolverDrivAerStarWrapper)
 register_model("geotransolver_gp_surface", GeoTransolverGPDrivAerStarWrapper)
-# DUE-style bi-Lipschitz field GP: same wrapper class, distinct model name so it scores as its own
-# matrix row (config supplies gp_spectral_norm_coeff / gp_dkl_residual + the DUE checkpoint).
-register_model("geotransolver_gp_due_surface", GeoTransolverGPDrivAerStarWrapper)
-register_model("mc_dropout_surface", MCDropoutDrivAerStarWrapper)
-register_model("ensemble_surface", EnsembleDrivAerStarWrapper)
+register_model("geotransolver_mc_dropout_surface", GeoTransolverMCDropoutDrivAerStarWrapper)
+register_model("geotransolver_ensemble_surface", GeoTransolverEnsembleDrivAerStarWrapper)
 register_model("transolver_surface", TransolverWrapper)
 register_model("transolver_volume", TransolverWrapper)
 register_model("domino_surface", DominoWrapper)
@@ -67,8 +64,8 @@ __all__ = [
     "GeoTransolverWrapper",
     "GeoTransolverDrivAerStarWrapper",
     "GeoTransolverGPDrivAerStarWrapper",
-    "EnsembleDrivAerStarWrapper",
-    "MCDropoutDrivAerStarWrapper",
+    "GeoTransolverEnsembleDrivAerStarWrapper",
+    "GeoTransolverMCDropoutDrivAerStarWrapper",
     "TransolverWrapper",
     "DominoWrapper",
     "SurfaceBaselineWrapper",

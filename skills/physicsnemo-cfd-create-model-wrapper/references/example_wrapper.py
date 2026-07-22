@@ -17,17 +17,23 @@
 """Self-contained reference wrappers for the PhysicsNeMo CFD benchmarking workflow.
 
 These are complete, correct ``CFDModel`` implementations to **adapt** when writing a
-new wrapper — one surface model and one volume model. They are built from the real
-evaluation APIs and the patterns in the shipped baseline wrappers
-(``physicsnemo/cfd/evaluation/models/wrappers/surface_baseline.py`` and
-``volume_baseline.py``) plus the ``adding_a_new_model.ipynb`` tutorial, so they stay
-usable as a template even when the full PhysicsNeMo source tree is not on disk. When the
-repo is present, verify the imported names against it — these templates are hints, not
-ground truth.
+new wrapper. They cover:
+  * ``ExampleSurfaceWrapper`` / ``ExampleVolumeWrapper`` — deterministic models.
+  * ``ExampleAnalyticUQWrapper`` — a single-pass UQ model (GP head / mean-variance /
+    evidential): ``UQ_METHOD="analytic"``, returns a predictive distribution directly.
+  * ``ExampleSamplingUQWrapper`` — a multi-pass UQ model (MC-Dropout / deep ensemble):
+    ``UQ_METHOD="sampling"``, the engine drives the passes and aggregates them.
+
+They are built from the real evaluation APIs and the patterns in the shipped baseline and
+UQ wrappers, so they stay usable as a template even when the full PhysicsNeMo source tree
+is not on disk. When the repo is present, verify the imported names against it — these
+templates are hints, not ground truth.
 
 Adapt, don't copy blindly. The four things every wrapper must mirror from the model's
 own training/inference code are flagged inline below:
   (1) NORMALIZATION scheme, (2) INPUT tier, (3) OUTPUT fields + channel order, (4) shapes.
+For UQ wrappers there is a fifth: (5) the UQ CONTRACT (see the two UQ examples and the
+"Uncertainty quantification" section of SKILL.md).
 """
 
 from __future__ import annotations
@@ -44,8 +50,10 @@ from physicsnemo.cfd.evaluation.common.io import (
 )
 from physicsnemo.cfd.evaluation.datasets.schema import (
     CanonicalCase,
+    FieldDistribution,
     InferenceDomain,
     build_predictions_dict,
+    build_predictive_distribution,
 )
 from physicsnemo.cfd.evaluation.inference.progress import log_inference
 from physicsnemo.cfd.evaluation.models.model_registry import (
@@ -244,6 +252,220 @@ class ExampleVolumeWrapper(CFDModel):
         return tensor * std + mean
 
 
+class ExampleAnalyticUQWrapper(CFDModel):
+    """Single-pass UQ model (GP head / mean-variance / evidential): ``UQ_METHOD="analytic"``.
+
+    The model itself emits the predictive distribution (or its parameters) in ONE forward
+    pass. The extra contract vs a deterministic wrapper is:
+      * declare ``SUPPORTS_UQ = True`` and ``UQ_METHOD = "analytic"``;
+      * implement ``decode_distribution`` to return a ``FieldDistribution`` per field.
+    ``decode_outputs`` is still provided (the distribution *mean*) so the deterministic
+    metrics (L2 / drag / lift) and non-UQ runs keep working unchanged.
+    """
+
+    INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "surface"
+    OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
+    # (5) UQ CONTRACT: one forward pass -> a distribution, materialized in decode_distribution.
+    SUPPORTS_UQ: ClassVar[bool] = True
+    UQ_METHOD: ClassVar[str] = "analytic"
+
+    def __init__(self) -> None:
+        self._model: torch.nn.Module | None = None
+        self._stats: dict[str, Any] | None = None
+        self._device: str = "cpu"
+
+    @property
+    def output_location(self) -> OutputLocation:
+        return self.OUTPUT_LOCATION
+
+    def load(
+        self, checkpoint_path: str, stats_path: str, device: str, **kwargs: Any
+    ) -> "ExampleAnalyticUQWrapper":
+        self._device = device
+        # Build the architecture + UQ head and load weights here (e.g. a GP head whose
+        # hyperparameters come from kwargs and MUST match training so the state dict loads).
+        self._stats = load_global_stats(stats_path, device)
+        log_inference("example_analytic_uq", f"Loaded from {checkpoint_path}")
+        return self
+
+    def prepare_inputs(self, case: CanonicalCase) -> torch.Tensor:
+        mesh = pv.read(case.mesh_path)
+        if not isinstance(mesh, pv.PolyData):
+            mesh = mesh.extract_surface()
+        coords = np.array(mesh.cell_centers().points, dtype=np.float32)
+        return torch.tensor(coords, device=self._device)
+
+    def predict(self, model_input: torch.Tensor) -> dict[str, torch.Tensor]:
+        """One forward pass -> raw posterior summary (still normalized).
+
+        Return whatever the head produces; here the Gaussian summary mean + total std +
+        the epistemic (model) component. A GP splits posterior variance (epistemic) from the
+        learned noise floor (aleatoric); a mean-variance net returns mean + a variance head.
+        """
+        with torch.no_grad():
+            n = model_input.shape[0]
+            # raw = self._model(model_input)  # -> mean, variance, epistemic_variance, ...
+            raw = {
+                "mean": torch.zeros((n, 4), device=self._device),        # p + WSS(3)
+                "total_std": torch.ones((n, 4), device=self._device),
+                "epistemic_std": torch.ones((n, 4), device=self._device),
+            }
+        return raw
+
+    def _to_physical(self, arr: torch.Tensor, field: str, *, is_std: bool) -> np.ndarray:
+        """Inverse mean-std. NOTE: means map with +mean; std/variance channels do NOT
+        add the offset (they scale by ``std`` only). Denormalize BOTH here so metrics never
+        touch normalization stats (all UQ metrics run in physical units)."""
+        if self._stats is None:
+            return arr.cpu().numpy()
+        mean = self._stats["mean"].get(field, 0.0)
+        std = self._stats["std"].get(field, 1.0)
+        out = arr * std if is_std else arr * std + mean
+        return out.cpu().numpy()
+
+    def decode_distribution(
+        self,
+        raw_output: dict[str, torch.Tensor],
+        case: CanonicalCase,
+        model_input: Optional[torch.Tensor] = None,
+    ) -> dict[str, FieldDistribution]:
+        """Map the raw posterior to a ``FieldDistribution`` per canonical field (physical units).
+
+        ``build_predictive_distribution`` mirrors ``build_predictions_dict`` but carries the
+        std channels. Provide ``std`` (total) and, when the method separates them,
+        ``epistemic_std`` / ``aleatoric_std`` — the pooled UQ metrics consume them directly.
+        """
+        mean = raw_output["mean"]
+        tot = raw_output["total_std"]
+        epi = raw_output["epistemic_std"]
+        return {
+            "pressure": build_predictive_distribution(
+                mean=self._to_physical(mean[:, 0], "pressure", is_std=False),
+                std=self._to_physical(tot[:, 0], "pressure", is_std=True),
+                epistemic_std=self._to_physical(epi[:, 0], "pressure", is_std=True),
+            ),
+            "shear_stress": build_predictive_distribution(
+                mean=self._to_physical(mean[:, 1:4], "shear_stress", is_std=False),
+                std=self._to_physical(tot[:, 1:4], "shear_stress", is_std=True),
+                epistemic_std=self._to_physical(epi[:, 1:4], "shear_stress", is_std=True),
+            ),
+        }
+
+    def decode_outputs(
+        self,
+        raw_output: dict[str, torch.Tensor],
+        case: CanonicalCase,
+        model_input: Optional[torch.Tensor] = None,
+    ) -> dict[str, np.ndarray]:
+        """Point estimate (distribution mean) for the deterministic metric paths / non-UQ runs."""
+        mean = raw_output["mean"]
+        return build_predictions_dict(
+            pressure=self._to_physical(mean[:, 0], "pressure", is_std=False),
+            shear_stress=self._to_physical(mean[:, 1:4], "shear_stress", is_std=False),
+        )
+
+
+class ExampleSamplingUQWrapper(CFDModel):
+    """Multi-pass UQ model (MC-Dropout / deep ensemble): ``UQ_METHOD="sampling"``.
+
+    The wrapper only produces ONE (stochastic) pass at a time; the ENGINE drives ``N``
+    passes and aggregates the spread into a ``FieldDistribution`` (streaming Welford). So the
+    contract is:
+      * declare ``SUPPORTS_UQ = True`` and ``UQ_METHOD = "sampling"``;
+      * make ``predict`` produce a *different* draw each call (dropout stays stochastic at
+        inference, or a weight sample is drawn) — the engine re-seeds per pass for
+        reproducibility, so do NOT freeze the RNG yourself;
+      * ``decode_outputs`` maps one raw pass to physical predictions (the engine calls it
+        once per pass, then aggregates);
+      * OPTIONAL fast path: implement ``predict_ensemble(model_input, n)`` to return all
+        passes/members in one call (an ensemble returns one output per member and ignores
+        ``n``). No ``decode_distribution`` is needed — the engine builds the distribution.
+
+    The number of passes is the benchmark-wide ``run.uq.num_samples`` (NOT a model kwarg), so
+    every sampling method is compared at the same budget.
+    """
+
+    INFERENCE_DOMAIN: ClassVar[InferenceDomain] = "surface"
+    OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
+    # (5) UQ CONTRACT: engine calls predict() N times (or predict_ensemble once) and aggregates.
+    SUPPORTS_UQ: ClassVar[bool] = True
+    UQ_METHOD: ClassVar[str] = "sampling"
+
+    def __init__(self) -> None:
+        self._models: list[torch.nn.Module] = []  # one for MC-Dropout, K for an ensemble
+        self._stats: dict[str, Any] | None = None
+        self._device: str = "cpu"
+
+    @property
+    def output_location(self) -> OutputLocation:
+        return self.OUTPUT_LOCATION
+
+    def load(
+        self, checkpoint_path: str, stats_path: str, device: str, **kwargs: Any
+    ) -> "ExampleSamplingUQWrapper":
+        self._device = device
+        # MC-Dropout: load ONE model and keep its dropout layers in train() mode (stochastic)
+        # while the rest is eval(). Ensemble: load one model per kwargs["member_checkpoints"].
+        #   model.load_state_dict(torch.load(checkpoint_path, weights_only=True)); model.eval()
+        #   for m in model.modules():
+        #       if isinstance(m, torch.nn.Dropout): m.train()
+        self._stats = load_global_stats(stats_path, device)
+        log_inference("example_sampling_uq", f"Loaded from {checkpoint_path}")
+        return self
+
+    def prepare_inputs(self, case: CanonicalCase) -> torch.Tensor:
+        mesh = pv.read(case.mesh_path)
+        if not isinstance(mesh, pv.PolyData):
+            mesh = mesh.extract_surface()
+        coords = np.array(mesh.cell_centers().points, dtype=np.float32)
+        return torch.tensor(coords, device=self._device)
+
+    def predict(self, model_input: torch.Tensor) -> dict[str, torch.Tensor]:
+        """ONE stochastic pass. Must differ call-to-call (dropout mask / weight sample)."""
+        with torch.no_grad():
+            n = model_input.shape[0]
+            # raw = self._models[0](model_input)  # dropout re-samples its mask each call
+            raw = {
+                "pressure": torch.randn(n, device=self._device),
+                "shear_stress": torch.randn((n, 3), device=self._device),
+            }
+        return raw
+
+    def predict_ensemble(
+        self, model_input: torch.Tensor, n: int
+    ) -> Optional[list[dict[str, torch.Tensor]]]:
+        """Optional fast path: return every pass/member in one call.
+
+        For a deep ensemble, return one raw output per member (``n`` is ignored). For
+        multi-pass single-model methods you may batch ``n`` passes here. Return ``None`` to
+        let the engine fall back to calling ``predict`` ``n`` times.
+        """
+        if not self._models:
+            return None
+        return [self.predict(model_input) for _ in self._models]
+
+    def decode_outputs(
+        self,
+        raw_output: dict[str, torch.Tensor],
+        case: CanonicalCase,
+        model_input: Optional[torch.Tensor] = None,
+    ) -> dict[str, np.ndarray]:
+        """Denormalize ONE pass to physical predictions (the engine aggregates across passes)."""
+        p = raw_output["pressure"] * self._std("pressure") + self._mean("pressure")
+        w = raw_output["shear_stress"] * self._std("shear_stress") + self._mean("shear_stress")
+        return build_predictions_dict(
+            pressure=p.cpu().numpy(), shear_stress=w.cpu().numpy().reshape(-1, 3)
+        )
+
+    def _mean(self, field: str) -> Any:
+        return 0.0 if self._stats is None else self._stats["mean"].get(field, 0.0)
+
+    def _std(self, field: str) -> Any:
+        return 1.0 if self._stats is None else self._stats["std"].get(field, 1.0)
+
+
 # Registration: do this once at import time so the engine can resolve the name.
 register_model("example_surface", ExampleSurfaceWrapper)
 register_model("example_volume", ExampleVolumeWrapper)
+register_model("example_analytic_uq", ExampleAnalyticUQWrapper)
+register_model("example_sampling_uq", ExampleSamplingUQWrapper)

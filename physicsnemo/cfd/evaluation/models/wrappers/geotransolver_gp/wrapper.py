@@ -32,7 +32,7 @@ only — no dynamic-pressure re-dimensionalization (:attr:`REDIMENSIONALIZE_OUTP
 ``decode_distribution`` returns, per canonical field, a
 :class:`~physicsnemo.cfd.evaluation.datasets.schema.FieldDistribution` with ``mean``, total
 ``std`` (epistemic + observation noise), ``epistemic_std``, and ``aleatoric_std`` — all in
-**physical units** (both mean and the std channels are denormalized here, §6.3), so the pooled UQ
+**physical units** (both mean and the std channels are denormalized here), so the pooled UQ
 metrics consume them directly.
 
 Surface only (the GP head predicts 4 surface tasks: pressure + 3 wall-shear components).
@@ -55,10 +55,6 @@ Model kwargs (``model.kwargs`` in config), matching the trained checkpoint's GP 
 - ``gp_inference_chunk_size`` (default 51200): points per backbone+GP chunk (drawn from a random
   permutation, then inverted — see the standalone script for why contiguous chunks degrade preds).
 - ``cuda_bf16_autocast`` (bool, default False): run forwards under bf16 autocast.
-
-The same wrapper class is registered under two keys: ``geotransolver_gp_surface`` (plain DKL) and
-``geotransolver_gp_due_surface`` (DUE variant). They differ only by ``model.kwargs`` + checkpoint,
-so DUE scores as its own matrix row without a bespoke subclass.
 """
 
 from contextlib import nullcontext

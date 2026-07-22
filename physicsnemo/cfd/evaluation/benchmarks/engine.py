@@ -752,7 +752,7 @@ def _run_single(
         supports_uq = bool(getattr(wrapper, "SUPPORTS_UQ", False))
         uq_method = getattr(wrapper, "UQ_METHOD", "none")
         if supports_uq and uq_method == "sampling" and run_config.uq.enabled:
-            # N stochastic passes; prepare_inputs already ran once (see UQ design doc §6.2).
+            # N stochastic passes; prepare_inputs already ran once (only the forward is repeated).
             predictions = run_sampling_inference(
                 wrapper,
                 case,
