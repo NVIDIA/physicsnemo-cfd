@@ -130,6 +130,7 @@ from physicsnemo.cfd.evaluation.benchmarks.uq_inference import (
     make_reducer_partial_key,
     make_sample_partial_key,
     run_sampling_inference,
+    select_inference_path,
     strip_reducer_partials,
 )
 
@@ -749,9 +750,16 @@ def _run_single(
                 case_cache[case_key] = case
         seed_inference_rng(run_config.seed, cid)
         model_input = wrapper.prepare_inputs(case)
-        supports_uq = bool(getattr(wrapper, "SUPPORTS_UQ", False))
-        uq_method = getattr(wrapper, "UQ_METHOD", "none")
-        if supports_uq and uq_method == "sampling" and run_config.uq.enabled:
+        # ``run.uq.enabled`` is the master switch: when off, EVERY wrapper (sampling AND analytic)
+        # takes the deterministic path (single ``predict`` + ``decode_outputs``), so no
+        # distributions are emitted and no UQ metrics are produced — enabling apples-to-apples
+        # deterministic comparison runs. See :func:`select_inference_path`.
+        inference_path = select_inference_path(
+            supports_uq=bool(getattr(wrapper, "SUPPORTS_UQ", False)),
+            uq_method=getattr(wrapper, "UQ_METHOD", "none"),
+            uq_enabled=run_config.uq.enabled,
+        )
+        if inference_path == "sampling":
             # N stochastic passes; prepare_inputs already ran once (only the forward is repeated).
             predictions = run_sampling_inference(
                 wrapper,
@@ -762,7 +770,7 @@ def _run_single(
                 case_id=cid,
                 retain_samples=run_config.uq.retain_samples,
             )
-        elif supports_uq and uq_method == "analytic":
+        elif inference_path == "analytic":
             raw = wrapper.predict(model_input)
             predictions = wrapper.decode_distribution(raw, case, model_input)
         else:
@@ -931,9 +939,16 @@ def _run_single(
 
     # Pooled reducer + sample-wise metrics. In distributed runs these are recomputed after the
     # merge on rank 0 (merge_benchmark_result_shards) from the merged per-case partials; this
-    # local pass keeps single-process runs correct.
-    metrics_summary.update(finalize_reducer_metrics(per_case, m_dom))
-    metrics_summary.update(finalize_sample_metrics(per_case, m_dom))
+    # local pass keeps single-process runs correct. Pass the configured metric names so a
+    # deterministic wrapper (no UQ partials) still reports configured UQ metrics as NaN rather
+    # than omitting them (consistent schema; fail_on_any_metric_nan can flag them).
+    configured_metric_names = [mname for mname, _ in metric_names]
+    metrics_summary.update(
+        finalize_reducer_metrics(per_case, m_dom, configured_metric_names)
+    )
+    metrics_summary.update(
+        finalize_sample_metrics(per_case, m_dom, configured_metric_names)
+    )
 
     return (
         {
@@ -1248,6 +1263,7 @@ def _config_to_dict(c: Config) -> dict:
         },
         "dataset": {
             "name": c.dataset.name,
+            "label": c.dataset.label,
             "root": c.dataset.root,
             "case_ids": c.dataset.case_ids,
             "kwargs": c.dataset.kwargs,
@@ -1257,6 +1273,12 @@ def _config_to_dict(c: Config) -> dict:
             "volume_mesh_field_names": c.output.volume_mesh_field_names,
             "ground_truth_mesh_field_names": c.output.ground_truth_mesh_field_names,
             "ground_truth_volume_mesh_field_names": c.output.ground_truth_volume_mesh_field_names,
+            # UQ uncertainty array-name maps (drive the std / epistemic-std companions attached to
+            # comparison meshes and read back by drag_uq); serialized for reproducibility.
+            "std_mesh_field_names": c.output.std_mesh_field_names,
+            "epistemic_std_mesh_field_names": c.output.epistemic_std_mesh_field_names,
+            "std_volume_mesh_field_names": c.output.std_volume_mesh_field_names,
+            "epistemic_std_volume_mesh_field_names": c.output.epistemic_std_volume_mesh_field_names,
             "streamlines_vector_canonical": c.output.streamlines_vector_canonical,
         },
         "metrics": c.metrics,

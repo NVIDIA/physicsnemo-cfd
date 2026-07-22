@@ -39,6 +39,7 @@ import math
 from typing import Any, Callable, Iterator
 
 import numpy as np
+from scipy.stats import spearmanr
 
 from physicsnemo.cfd.evaluation.datasets.schema import as_distribution
 from physicsnemo.cfd.postprocessing_tools.metric_registry import register_metric
@@ -46,6 +47,10 @@ from physicsnemo.cfd.postprocessing_tools.metric_registry import register_metric
 _LOG_2PI = math.log(2.0 * math.pi)
 #: Numerical floor on variance for the log / division terms.
 _VAR_FLOOR = 1.0e-12
+
+#: ``np.trapz`` was deprecated in NumPy 2.0 and removed in 2.4; ``np.trapezoid`` is its drop-in
+#: replacement. Resolve once so AUSE works across the pinned range of NumPy versions.
+_trapezoid = getattr(np, "trapezoid", None) or np.trapz  # type: ignore[attr-defined]
 
 #: Component suffixes for 3-vector fields.
 _VEC3_SUFFIXES = ("x", "y", "z")
@@ -173,7 +178,10 @@ class _PooledUQMetric:
             chan, stat = key.split("::", 1)
             by_channel.setdefault(chan, {})[stat] = val
         if not by_channel:
-            return float("nan")
+            # No contributions (e.g. deterministic wrapper): return the SAME headline sub-key a
+            # populated finalize would (``{metric}_mean``) so the report schema is consistent and
+            # ``fail_on_any_metric_nan`` can flag the unavailable configured metric.
+            return {"mean": float("nan")}
         out: dict[str, float] = {}
         values: list[float] = []
         for chan in sorted(by_channel):
@@ -243,30 +251,22 @@ def _zrms_finalize(d: dict[str, float]) -> float:
 # channel (+ headline ``mean``) and averaged over cases by the engine.
 
 
-def _rankdata(x: np.ndarray) -> np.ndarray:
-    """Ordinal ranks (0..n-1) of ``x`` via argsort-of-argsort.
-
-    Continuous std / error values effectively never tie, so ordinal (vs average-tie) ranks are
-    fine here and avoid a SciPy dependency.
-    """
-    order = np.argsort(x, kind="stable")
-    ranks = np.empty(x.size, dtype=np.float64)
-    ranks[order] = np.arange(x.size, dtype=np.float64)
-    return ranks
-
-
 def _spearman(a: np.ndarray, b: np.ndarray) -> float:
-    """Spearman rank correlation = Pearson correlation of the ranks of ``a`` and ``b``."""
-    if a.size < 2:
+    """Tie-aware Spearman rank correlation of ``a`` and ``b`` (via ``scipy.stats.spearmanr``).
+
+    ``scipy`` handles ties with *average* ranks (ordinal ranks are wrong when values tie — and
+    ties are common here: zero-spread regions, quantized uncertainty, repeated ensemble draws).
+    Returns ``NaN`` for fewer than two points, mismatched sizes, or a constant input (rank
+    correlation is mathematically undefined when either variable has zero rank variance).
+    """
+    a = np.asarray(a, dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64)
+    if a.size < 2 or a.size != b.size:
         return float("nan")
-    ra = _rankdata(a)
-    rb = _rankdata(b)
-    ra -= ra.mean()
-    rb -= rb.mean()
-    denom = math.sqrt(float((ra**2).sum()) * float((rb**2).sum()))
-    if denom <= 0.0:
+    # Undefined for a constant input; short-circuit to avoid SciPy's "input is constant" warning.
+    if np.ptp(a) == 0.0 or np.ptp(b) == 0.0:
         return float("nan")
-    return float((ra * rb).sum() / denom)
+    return float(spearmanr(a, b).correlation)
 
 
 class _UncertaintyErrorSpearman:
@@ -339,7 +339,7 @@ def _sparsification_curve(
     oracle = _suffix_rmse(np.argsort(-err2))
     full = float(np.sqrt(err2.mean()))
     ause = (
-        float(np.trapz((by_unc - oracle) / full, fr)) if full > 0.0 else float("nan")
+        float(_trapezoid((by_unc - oracle) / full, fr)) if full > 0.0 else float("nan")
     )
     return fr, by_unc, oracle, full, ause
 
@@ -411,7 +411,9 @@ class _SampleAUSE:
     ) -> float | dict[str, float]:
         by_channel = self._regroup(collected)
         if not by_channel:
-            return float("nan")
+            # No per-geometry scalars (e.g. deterministic wrapper): return the same headline
+            # sub-keys a populated finalize would, as NaN, for a consistent report schema.
+            return {"mean": float("nan"), "mean_spearman": float("nan")}
         out: dict[str, float] = {}
         values: list[float] = []
         rhos: list[float] = []
@@ -516,9 +518,12 @@ class _SampleDragUQ:
     geometries by drag epistemic-std and by drag total-std against ``|Cd_pred - Cd_true|``, and adds
     ``<epistemic|total>_spearman`` (rank correlation of drag error vs. drag uncertainty) as the
     scale-independent trend-alignment companion to the drag AUSE.
-    Requires the comparison mesh to carry cell-dof std companions (the benchmark attaches them when
-    ``output.std_mesh_field_names`` / ``epistemic_std_mesh_field_names`` are set), so it is a no-op
-    for deterministic wrappers or when std fields are unavailable.
+    Requires the comparison mesh to carry cell-dof std companions. The benchmark attaches those
+    for any distribution-valued prediction using the *same* names as :func:`uq_std_field_names`
+    (configured ``output.std_mesh_field_names`` / ``epistemic_std_mesh_field_names`` when given,
+    else the auto-derived ``<pred>Std`` / ``<pred>EpistemicStd``), so drag_uq resolves them with
+    that shared helper and works with the default output config. It is a no-op for deterministic
+    wrappers or when std fields are unavailable.
 
     ``coeff`` (Cd prefactor ``2/(A·ρ·U²)``; only sets the overall scale, which cancels in AUSE) and
     ``drag_direction`` are configurable exactly like the deterministic ``drag`` metric
@@ -568,6 +573,7 @@ class _SampleDragUQ:
             return {}
         from physicsnemo.cfd.evaluation.metrics.mesh_bridge import (
             resolve_comparison_mesh_for_metric,
+            uq_std_field_names,
         )
 
         mesh, dtype = resolve_comparison_mesh_for_metric(
@@ -586,10 +592,27 @@ class _SampleDragUQ:
         prw = output.mesh_field_names.get("shear_stress")
         gtp = output.ground_truth_mesh_field_names.get("pressure")
         gtw = output.ground_truth_mesh_field_names.get("shear_stress")
-        std_p = output.std_mesh_field_names.get("pressure")
-        std_w = output.std_mesh_field_names.get("shear_stress")
-        epi_p = output.epistemic_std_mesh_field_names.get("pressure")
-        epi_w = output.epistemic_std_mesh_field_names.get("shear_stress")
+        # Uncertainty array names: mirror the mesh-attachment fallback so drag_uq works with the
+        # documented *default* output config (no explicit std_mesh_field_names). When pressure/WSS
+        # are not mapped to the mesh at all, ``_cell_array(None)`` below simply yields None.
+        std_p, epi_p = (
+            uq_std_field_names(
+                prp,
+                output.std_mesh_field_names.get("pressure"),
+                output.epistemic_std_mesh_field_names.get("pressure"),
+            )
+            if prp is not None
+            else (None, None)
+        )
+        std_w, epi_w = (
+            uq_std_field_names(
+                prw,
+                output.std_mesh_field_names.get("shear_stress"),
+                output.epistemic_std_mesh_field_names.get("shear_stress"),
+            )
+            if prw is not None
+            else (None, None)
+        )
 
         # Explicit per-cell normals + areas (physically correct surface integral; consistent
         # weights for mean and variance).

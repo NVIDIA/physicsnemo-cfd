@@ -34,12 +34,15 @@ from physicsnemo.cfd.postprocessing_tools.metric_registry import (
     is_sample_metric,
 )
 from physicsnemo.cfd.evaluation.metrics.builtin.uq import (
+    _ause_curve_area,
     _curve_payload,
     _drag_mean_and_std,
     _make_pointwise_uq_metrics,
     _make_sample_uq_metrics,
     _make_uq_metrics,
     _SampleDragUQ,
+    _spearman,
+    _trapezoid,
 )
 
 
@@ -198,6 +201,43 @@ def test_spearman_high_when_uncertainty_tracks_error() -> None:
         {"pressure": y}, {"pressure": FieldDistribution(mean=mu, std=random_sig)}
     )
     assert abs(uninformative["pressure"]) < 0.1
+
+
+def test_spearman_tie_aware_and_constant_input() -> None:
+    """Ties use *average* ranks and a constant input is undefined (NaN), not spuriously 1.0."""
+    from scipy.stats import spearmanr
+
+    # Increasing error paired with completely CONSTANT uncertainty: rank correlation is undefined
+    # (zero rank variance). The old ordinal-rank implementation wrongly reported rho = 1.0.
+    err = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    const_unc = np.full(5, 0.7)
+    assert math.isnan(_spearman(err, const_unc))
+    assert math.isnan(_spearman(const_unc, err))
+    # Tie-aware: half the uncertainties tie but the trend is still monotone -> strongly positive
+    # (average ranks give ~0.949; ordinal ranks would spuriously read higher/inconsistent).
+    tied_unc = np.array([0.1, 0.1, 0.2, 0.2, 0.3])
+    mono_err = np.array([1.0, 1.5, 2.0, 2.5, 3.0])
+    assert _spearman(mono_err, tied_unc) > 0.9
+    assert abs(
+        _spearman(mono_err, tied_unc)
+        - float(spearmanr(mono_err, tied_unc).correlation)
+    ) < 1e-12
+    # Matches scipy (which we delegate to) on a small tied example.
+    a = np.array([1.0, 2.0, 2.0, 3.0])
+    b = np.array([10.0, 20.0, 20.0, 40.0])
+    assert abs(_spearman(a, b) - float(spearmanr(a, b).correlation)) < 1e-12
+    # Degenerate sizes -> NaN.
+    assert math.isnan(_spearman(np.array([1.0]), np.array([1.0])))
+    assert math.isnan(_spearman(np.array([1.0, 2.0]), np.array([1.0])))
+
+
+def test_trapezoid_available_and_ause_uses_it() -> None:
+    """``_trapezoid`` resolves (np.trapz was removed in NumPy 2.4) and AUSE integrates cleanly."""
+    assert callable(_trapezoid)
+    assert _trapezoid(np.array([0.0, 1.0, 0.0]), np.array([0.0, 0.5, 1.0])) == 0.5
+    # Perfectly-ranked errors -> AUSE ~ 0 (no AttributeError from a missing np.trapz).
+    err = np.array([0.2, 0.5, 1.0, 2.0, 4.0])
+    assert abs(_ause_curve_area(err, err)) < 1e-9
 
 
 def test_spearman_deterministic_and_epistemic_variants() -> None:

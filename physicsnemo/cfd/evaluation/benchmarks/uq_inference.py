@@ -70,7 +70,9 @@ def _split_reducer_partial_key(key: str) -> tuple[str, str]:
 
 
 def finalize_reducer_metrics(
-    per_case_rows: list[dict[str, Any]], domain: str | None
+    per_case_rows: list[dict[str, Any]],
+    domain: str | None,
+    configured_metric_names: list[str] | None = None,
 ) -> dict[str, float]:
     """Sum reducer sufficient statistics over cases and finalize to pooled metric value(s).
 
@@ -78,6 +80,12 @@ def finalize_reducer_metrics(
     ``(metric, stat)``, resolves each metric from the registry, and calls ``finalize``. Dict
     returns expand to ``f"{metric}_{subkey}"`` (matching the engine's pointwise expansion).
     Returns the mapping of finalized metric key -> value to merge into the run summary.
+
+    ``configured_metric_names`` (the metrics requested in the run config) drives NaN placeholders:
+    any configured reducer metric that produced **no** partials this run — e.g. a deterministic
+    wrapper emits no ``_uq::`` keys — is still finalized via ``finalize({})`` so the row reports
+    ``nlpd``/``coverage``/… as ``NaN`` rather than silently omitting them (consistent report
+    schema; ``fail_on_any_metric_nan`` can then flag an unavailable configured metric).
     """
     # Resolve from the lightweight registry (no torch-backed metrics-package import needed;
     # the metric instances were registered there when the builtin metrics loaded).
@@ -99,8 +107,14 @@ def finalize_reducer_metrics(
                 summed[metric_name].get(partial_key, 0.0) + float(val)
             )
 
+    # Finalize every metric that produced partials, plus any configured reducer metric that did
+    # not (with empty stats -> NaN) so deterministic rows keep a consistent schema.
+    stats_by_metric: dict[str, dict[str, float]] = dict(summed)
+    for name in configured_metric_names or ():
+        stats_by_metric.setdefault(name, {})
+
     out: dict[str, float] = {}
-    for metric_name, stats in summed.items():
+    for metric_name, stats in stats_by_metric.items():
         try:
             metric = get_metric(metric_name, domain=domain)
         except KeyError:
@@ -144,7 +158,9 @@ def _split_sample_partial_key(key: str) -> tuple[str, str]:
 
 
 def finalize_sample_metrics(
-    per_case_rows: list[dict[str, Any]], domain: str | None
+    per_case_rows: list[dict[str, Any]],
+    domain: str | None,
+    configured_metric_names: list[str] | None = None,
 ) -> dict[str, float]:
     """Collect sample-metric per-geometry scalars over cases and finalize (e.g. sample-wise AUSE).
 
@@ -152,6 +168,11 @@ def finalize_sample_metrics(
     summed): each ``_uqs::`` key contributes one value per case, appended in ``per_case`` order.
     ``finalize_samples`` maps the per-key lists to the final value(s); dict returns expand to
     ``f"{metric}_{subkey}"``.
+
+    ``configured_metric_names`` drives NaN placeholders the same way as
+    :func:`finalize_reducer_metrics`: a configured sample metric with no partials this run (e.g.
+    a deterministic wrapper) is finalized with an empty mapping so AUSE / drag_uq report ``NaN``
+    instead of being dropped from the row.
     """
     from physicsnemo.cfd.postprocessing_tools.metric_registry import (
         get_metric,
@@ -170,8 +191,12 @@ def finalize_sample_metrics(
                 float(val)
             )
 
+    stats_by_metric: dict[str, dict[str, list[float]]] = dict(collected)
+    for name in configured_metric_names or ():
+        stats_by_metric.setdefault(name, {})
+
     out: dict[str, float] = {}
-    for metric_name, stats in collected.items():
+    for metric_name, stats in stats_by_metric.items():
         try:
             metric = get_metric(metric_name, domain=domain)
         except KeyError:
@@ -235,6 +260,23 @@ def compute_sparsification_payload(
 def is_uq_partial_key(key: str) -> bool:
     """True for any reserved UQ per-case key (reducer sufficient stat or sample-metric scalar)."""
     return is_reducer_partial_key(key) or is_sample_partial_key(key)
+
+
+def select_inference_path(
+    *, supports_uq: bool, uq_method: str, uq_enabled: bool
+) -> str:
+    """Engine per-case dispatch: ``"sampling"`` | ``"analytic"`` | ``"deterministic"``.
+
+    ``uq_enabled`` (``run.uq.enabled``) is the master switch: when it is off, EVERY wrapper takes
+    the deterministic path regardless of ``SUPPORTS_UQ`` / ``UQ_METHOD`` — so an analytic GP head
+    is not executed as a distribution and produces no UQ metrics, matching the documented behavior
+    and enabling apples-to-apples deterministic comparison runs.
+    """
+    if uq_enabled and supports_uq and uq_method == "sampling":
+        return "sampling"
+    if uq_enabled and supports_uq and uq_method == "analytic":
+        return "analytic"
+    return "deterministic"
 
 
 def strip_reducer_partials(per_case_rows: list[dict[str, Any]]) -> None:

@@ -18,8 +18,8 @@
 
 The GeoTransolver-family wrappers are **independent** :class:`CFDModel` subclasses (no shared base
 beyond ``CFDModel``): the DrivAerML baseline, the ``transformer_models`` deterministic wrapper, the
-GP-head wrapper, and the MC weight-perturbation proxy. They share their plumbing through the free
-functions here rather than class inheritance:
+GP-head wrapper, the MC-Dropout wrapper, and the ensemble wrapper. They share their plumbing through
+the free functions here rather than class inheritance:
 
 * :func:`build_geotransolver_backbone` — construct the backbone and load its checkpoint.
 * :func:`parse_runtime_kwargs` — pull the common inference kwargs into a :class:`GeoTransolverRuntimeConfig`.
@@ -421,6 +421,19 @@ def build_transolver_batch(
     )
 
 
+def make_forward_permutation(batch: dict[str, Any]) -> torch.Tensor:
+    """A random point permutation for :func:`geotransolver_forward` (one per case).
+
+    Multi-pass UQ wrappers (ensemble / MC-dropout) should build this **once per case** and pass it
+    to every pass/member so the across-pass spread reflects genuine model/dropout differences, not
+    the random block-partition grouping. Note the permutation always covers *all* ``n`` points
+    (every point is predicted exactly once, order restored), so it never subsamples the cloud — it
+    only controls which points share a forward block.
+    """
+    n = batch["embeddings"].shape[1]
+    return torch.randperm(n, device=batch["embeddings"].device)
+
+
 def geotransolver_forward(
     *,
     model: "GeoTransolver",
@@ -428,12 +441,22 @@ def geotransolver_forward(
     batch_resolution: int,
     cuda_bf16_autocast_enabled: bool,
     device: str,
+    perm: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Blocked GeoTransolver forward pass; returns model-space predictions (N, C), order restored."""
+    """Blocked GeoTransolver forward pass; returns model-space predictions (N, C), order restored.
+
+    ``perm`` optionally fixes the point permutation used to form forward blocks (see
+    :func:`make_forward_permutation`); when ``None`` a fresh random permutation is drawn. Either
+    way every point is predicted exactly once and the output is returned in the original order.
+    """
     fx_bn_c = global_fx_to_bnc(batch["fx"])
     n = batch["embeddings"].shape[1]
     batch_res = min(batch_resolution, n)
-    indices = torch.randperm(n, device=batch["embeddings"].device)
+    indices = (
+        perm
+        if perm is not None
+        else torch.randperm(n, device=batch["embeddings"].device)
+    )
     index_blocks = torch.split(indices, batch_res)
     preds_list: list[torch.Tensor] = []
     use_full_fx = "geometry" in batch
@@ -560,6 +583,7 @@ __all__ = [
     "build_surface_datapipe",
     "build_volume_datapipe",
     "build_transolver_batch",
+    "make_forward_permutation",
     "geotransolver_forward",
     "unscale_targets",
     "decode_surface_predictions",

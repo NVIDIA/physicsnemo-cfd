@@ -109,6 +109,14 @@ def merge_benchmark_result_shards(shards: list[dict[str, Any]]) -> dict[str, Any
     inference_domain = active[0].get("inference_domain")
     metrics_summary.update(finalize_reducer_metrics(per_case, inference_domain))
     metrics_summary.update(finalize_sample_metrics(per_case, inference_domain))
+    # Preserve NaN placeholders for configured-but-unavailable UQ metrics: each shard already
+    # finalized them (via the configured metric names in _run_single_model_dataset), so carry any
+    # summary key missing from the merged set forward as-is. setdefault never clobbers a value
+    # recomputed above from real partials.
+    for s in active:
+        for k, v in (s.get("metrics") or {}).items():
+            if isinstance(v, (int, float)):
+                metrics_summary.setdefault(k, float(v))
     case_ids_raw = [str(r["case_id"]) for r in per_case if r.get("case_id") is not None]
     case_ids_no_dup = sorted(set(case_ids_raw), key=natural_sort_key)
     return {

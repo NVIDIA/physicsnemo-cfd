@@ -45,6 +45,21 @@ def _unwrap_prediction_means(predictions: dict[str, Any] | None) -> dict[str, An
     return {k: distribution_mean(v) for k, v in predictions.items()}
 
 
+def uq_std_field_names(
+    pred_name: str,
+    std_name: str | None = None,
+    epi_std_name: str | None = None,
+) -> tuple[str, str]:
+    """Resolve the ``(std, epistemic_std)`` VTK array names for a prediction field.
+
+    Single source of truth for the auto-derived uncertainty array names so the mesh-attachment
+    path (:func:`_attach_uq_std_companions`) and any metric that reads those arrays back off the
+    comparison mesh (e.g. ``drag_uq``) stay in agreement: use the configured name when given, else
+    suffix the prediction field name with ``"Std"`` / ``"EpistemicStd"``.
+    """
+    return (std_name or f"{pred_name}Std", epi_std_name or f"{pred_name}EpistemicStd")
+
+
 def _attach_uq_std_companions(
     mesh: pv.DataSet,
     preference: str,
@@ -67,14 +82,15 @@ def _attach_uq_std_companions(
         if not isinstance(value, FieldDistribution) or canonical not in pred_map:
             continue
         pred_name = pred_map[canonical]
+        std_name, epi_std_name = uq_std_field_names(
+            pred_name, std_map.get(canonical), epi_std_map.get(canonical)
+        )
         if value.std is not None:
-            name = std_map.get(canonical) or f"{pred_name}Std"
-            _assign_field(mesh, preference, name, value.std)
-            attached.append(name)
+            _assign_field(mesh, preference, std_name, value.std)
+            attached.append(std_name)
         if value.epistemic_std is not None:
-            name = epi_std_map.get(canonical) or f"{pred_name}EpistemicStd"
-            _assign_field(mesh, preference, name, value.epistemic_std)
-            attached.append(name)
+            _assign_field(mesh, preference, epi_std_name, value.epistemic_std)
+            attached.append(epi_std_name)
     return attached
 
 

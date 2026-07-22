@@ -69,6 +69,7 @@ from physicsnemo.cfd.evaluation.models.common_wrapper_utils.geotransolver_runtim
     decode_volume_predictions,
     geotransolver_available,
     geotransolver_forward,
+    make_forward_permutation,
     parse_runtime_kwargs,
     unscale_targets,
 )
@@ -237,14 +238,18 @@ class GeoTransolverMCDropoutDrivAerStarWrapper(CFDModel):
         self._datapipe_geometry_effective = result.geometry_effective
         if result.volume_length_scale is not None:
             self._volume_length_scale = result.volume_length_scale
-        return {"batch": result.batch, "datapipe": result.datapipe}
+        # Fix ONE forward block-partition per case (reused across all N passes below) so the
+        # across-pass spread reflects only the resampled dropout masks, not random point grouping.
+        perm = make_forward_permutation(result.batch)
+        return {"batch": result.batch, "datapipe": result.datapipe, "perm": perm}
 
     def predict(self, model_input: ModelInput) -> RawOutput:
         """One stochastic MC-Dropout pass (Concrete-Dropout layers resample their masks).
 
         No weights are modified: the stochasticity comes entirely from the dropout masks, which are
         redrawn from the global torch RNG (re-seeded per pass by the engine's sampling loop, so
-        passes differ from each other yet are reproducible run-to-run).
+        passes differ from each other yet are reproducible run-to-run). The forward block-partition
+        is held fixed across passes (from :meth:`prepare_inputs`) so only the dropout varies.
         """
         if self._model is None or self._datapipe is None:
             raise RuntimeError("GeoTransolverMCDropoutDrivAerStarWrapper: call load() first")
@@ -254,6 +259,7 @@ class GeoTransolverMCDropoutDrivAerStarWrapper(CFDModel):
             batch_resolution=self._cfg.batch_resolution,
             cuda_bf16_autocast_enabled=self._cfg.cuda_bf16_autocast,
             device=self._cfg.device,
+            perm=model_input.get("perm"),
         )
         return unscale_targets(
             datapipe=model_input["datapipe"],

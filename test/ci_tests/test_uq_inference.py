@@ -18,15 +18,19 @@
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 # Registers built-in metrics (including the pooled UQ reducers) into the registry.
 import physicsnemo.cfd.evaluation.metrics  # noqa: F401
 from physicsnemo.cfd.evaluation.benchmarks.uq_inference import (
     finalize_reducer_metrics,
+    finalize_sample_metrics,
     is_reducer_partial_key,
     make_reducer_partial_key,
     run_sampling_inference,
+    select_inference_path,
     strip_reducer_partials,
     _Welford,
 )
@@ -140,3 +144,103 @@ def test_finalize_reducer_metrics_pools_over_cases() -> None:
     assert abs(summary["calibration_zrms_pressure"] - 1.0) < 0.02
     # pooled sharpness = (300000*1 + 100000*2) / 400000 = 1.25 (not mean-of-means 1.5)
     assert abs(summary["sharpness_std_pressure"] - 1.25) < 1e-3
+
+
+# --------------------------------------------------------------------------------------------
+# Configured-metric NaN placeholders: deterministic rows report NaN, not omitted keys
+# --------------------------------------------------------------------------------------------
+
+
+def test_finalize_reducer_metrics_emits_nan_for_configured_but_absent() -> None:
+    """A deterministic row (no ``_uq::`` partials) still reports configured reducer metrics as NaN.
+
+    The placeholder uses the SAME headline key a populated finalize would (``{metric}_mean``) so
+    deterministic and UQ rows share a schema.
+    """
+    rows = [{"case_id": "a", "metrics": {"l2_pressure": 0.1}}]  # no reducer partials
+    # Without the configured names the metric is simply absent (legacy behavior)...
+    assert "nlpd_mean" not in finalize_reducer_metrics(rows, "surface")
+    # ...with them it is finalized to NaN so the report schema stays consistent.
+    summary = finalize_reducer_metrics(rows, "surface", ["nlpd", "coverage_95"])
+    assert "nlpd_mean" in summary and math.isnan(summary["nlpd_mean"])
+    assert "coverage_95_mean" in summary and math.isnan(summary["coverage_95_mean"])
+    # An unknown / non-reducer configured name is ignored (not every metric is a reducer).
+    assert "l2_mean" not in finalize_reducer_metrics(rows, "surface", ["l2", "nlpd"])
+
+
+def test_finalize_sample_metrics_emits_nan_for_configured_but_absent() -> None:
+    """A deterministic row (no ``_uqs::`` partials) still reports configured sample metrics as NaN."""
+    rows = [{"case_id": "a", "metrics": {"l2_pressure": 0.1}}]
+    summary = finalize_sample_metrics(
+        rows, "surface", ["sparsification_ause", "drag_uq"]
+    )
+    assert math.isnan(summary["sparsification_ause_mean"])
+    # drag_uq returns a dict -> expands to <metric>_<sub>, all NaN.
+    assert math.isnan(summary["drag_uq_epistemic"])
+    assert math.isnan(summary["drag_uq_total"])
+
+
+# --------------------------------------------------------------------------------------------
+# Master switch dispatch (run.uq.enabled) + streaming ensemble generator
+# --------------------------------------------------------------------------------------------
+
+
+def test_select_inference_path_master_switch() -> None:
+    # UQ enabled: sampling / analytic wrappers take their UQ path.
+    assert (
+        select_inference_path(supports_uq=True, uq_method="sampling", uq_enabled=True)
+        == "sampling"
+    )
+    assert (
+        select_inference_path(supports_uq=True, uq_method="analytic", uq_enabled=True)
+        == "analytic"
+    )
+    # Master switch OFF: EVERY wrapper (incl. analytic GP) goes deterministic -> no UQ metrics.
+    assert (
+        select_inference_path(supports_uq=True, uq_method="analytic", uq_enabled=False)
+        == "deterministic"
+    )
+    assert (
+        select_inference_path(supports_uq=True, uq_method="sampling", uq_enabled=False)
+        == "deterministic"
+    )
+    # Non-UQ wrapper is always deterministic.
+    assert (
+        select_inference_path(supports_uq=False, uq_method="none", uq_enabled=True)
+        == "deterministic"
+    )
+
+
+class _GeneratorEnsembleWrapper:
+    """Ensemble whose ``predict_ensemble`` is a *generator* (one output resident at a time)."""
+
+    SUPPORTS_UQ = True
+    UQ_METHOD = "sampling"
+
+    def __init__(self, outs):
+        self._outs = outs
+        self.live = 0
+        self.max_live = 0
+
+    def predict_ensemble(self, model_input, n):
+        for o in self._outs:
+            self.live += 1
+            self.max_live = max(self.max_live, self.live)
+            yield o
+            self.live -= 1  # engine consumed it before the next is produced
+
+    def predict(self, model_input):  # pragma: no cover
+        raise AssertionError("generator ensemble path should be used")
+
+    def decode_outputs(self, raw, case, model_input=None):
+        return {"pressure": raw}
+
+
+def test_run_sampling_inference_consumes_generator_streaming() -> None:
+    """A generator ``predict_ensemble`` is consumed lazily (never all members resident at once)."""
+    outs = [np.array([1.0, 10.0]), np.array([3.0, 10.0]), np.array([5.0, 10.0])]
+    w = _GeneratorEnsembleWrapper(outs)
+    d = run_sampling_inference(w, None, None, n=3, run_seed=0, case_id="c")
+    assert np.allclose(d["pressure"].mean, [3.0, 10.0])
+    assert np.allclose(d["pressure"].epistemic_std, [np.sqrt(8 / 3), 0.0])
+    assert w.max_live == 1  # streaming: only one member output alive at any time

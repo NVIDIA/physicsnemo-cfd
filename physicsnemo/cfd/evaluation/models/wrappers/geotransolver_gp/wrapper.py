@@ -192,7 +192,9 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
         # GP-head hyperparameters (must match the trained checkpoint). Pulled off here so they
         # are not consumed by the shared runtime-kwargs parsing.
         self._gp_chunk_size = int(kw.pop("gp_inference_chunk_size", 51200))
-        # Explicit GP-head checkpoint (optional; validated against the backbone below).
+        # Explicit GP-head checkpoint file (optional). When omitted we fall back to the backbone's
+        # sibling ``FieldGPHead.0.<epoch>.pt``. No cross-checking against the backbone — passing a
+        # matching pair is the caller's responsibility.
         head_ckpt_arg = kw.pop("gp_head_checkpoint", None)
         self._gp_kw = {
             "num_tasks": int(kw.pop("num_tasks", NUM_SURFACE_TASKS)),
@@ -282,7 +284,14 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
         return {"batch": result.batch, "datapipe": result.datapipe}
 
     def _build_and_load_head(self, batch: dict) -> None:
-        """Probe the backbone feature dim on ``batch``, build the GP head, load its weights."""
+        """Probe the backbone feature dim on ``batch``, build the GP head, load ONLY its weights.
+
+        The backbone was already loaded from its own ``checkpoint`` in :meth:`load`; here we load
+        just the ``FieldGPHead`` from the head checkpoint's directory + epoch (which resolves to the
+        exact ``FieldGPHead.0.<epoch>.pt`` file named by ``gp_head_checkpoint``). Passing only the
+        head to ``load_checkpoint`` avoids reloading — or silently overwriting — the backbone with a
+        different one that happens to sit in the head's directory.
+        """
         dev = torch.device(self._cfg.device)
         feature_dim = self._probe_feature_dim(batch)
         self._head = FieldGPHead(
@@ -293,7 +302,7 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
         with trusted_torch_load_context():
             loaded_epoch = load_checkpoint(
                 path=self._checkpoint_dir,
-                models=[self._model, self._head],
+                models=[self._head],
                 device=dev,
                 epoch=self._checkpoint_epoch,
             )

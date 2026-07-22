@@ -34,10 +34,12 @@ Completely independent :class:`CFDModel` subclass (no inheritance from the other
 wrappers). It composes the shared GeoTransolver + ``TransolverDataPipe`` plumbing in
 :mod:`physicsnemo.cfd.evaluation.models.common_wrapper_utils.geotransolver_runtime`, holding one
 backbone per member. :meth:`predict_ensemble` runs every member on the shared per-case batch and
-returns their raw outputs; the engine's
-:func:`~physicsnemo.cfd.evaluation.benchmarks.uq_inference.run_sampling_inference` aggregates them
-(Welford) into mean + across-member (epistemic) std. Because ``predict_ensemble`` returns exactly
-the member count, ``run.uq.num_samples`` is ignored for this row.
+**yields** their raw outputs one at a time (a generator, so device memory stays O(field) rather than
+O(K × field)); the engine's
+:func:`~physicsnemo.cfd.evaluation.benchmarks.uq_inference.run_sampling_inference` folds each into a
+streaming Welford mean + across-member (epistemic) std. All members share one per-case block
+partition so the spread is model-only. Because ``predict_ensemble`` yields exactly the member count,
+``run.uq.num_samples`` is ignored for this row.
 
 It decorates ``transformer_models`` (physical-target) checkpoints, so predictions are
 re-standardized only — no dynamic-pressure re-dimensionalization
@@ -58,7 +60,7 @@ identity / cache fingerprint); point it at any one of the members (e.g. the fina
 
 import logging
 from pathlib import Path
-from typing import Any, ClassVar, Literal, Optional
+from typing import Any, ClassVar, Iterator, Literal, Optional
 
 from physicsnemo.cfd.evaluation.datasets.schema import (
     CanonicalCase,
@@ -78,6 +80,7 @@ from physicsnemo.cfd.evaluation.models.common_wrapper_utils.geotransolver_runtim
     decode_volume_predictions,
     geotransolver_available,
     geotransolver_forward,
+    make_forward_permutation,
     parse_runtime_kwargs,
     unscale_targets,
 )
@@ -216,14 +219,21 @@ class GeoTransolverEnsembleDrivAerStarWrapper(CFDModel):
             self._volume_length_scale = result.volume_length_scale
         return {"batch": result.batch, "datapipe": result.datapipe}
 
-    def _forward_member(self, model: Any, model_input: ModelInput) -> RawOutput:
-        """Run one member's forward + target unscaling on the shared per-case batch."""
+    def _forward_member(
+        self, model: Any, model_input: ModelInput, perm: Any = None
+    ) -> RawOutput:
+        """Run one member's forward + target unscaling on the shared per-case batch.
+
+        ``perm`` fixes the forward block-partition so every member sees the same point grouping;
+        the across-member spread then reflects genuine model differences, not partition noise.
+        """
         raw = geotransolver_forward(
             model=model,
             batch=model_input["batch"],
             batch_resolution=self._cfg.batch_resolution,
             cuda_bf16_autocast_enabled=self._cfg.cuda_bf16_autocast,
             device=self._cfg.device,
+            perm=perm,
         )
         return unscale_targets(
             datapipe=model_input["datapipe"],
@@ -234,17 +244,19 @@ class GeoTransolverEnsembleDrivAerStarWrapper(CFDModel):
 
     def predict_ensemble(
         self, model_input: ModelInput, n: int
-    ) -> Optional[list[RawOutput]]:
-        """Run every member on the shared batch; return one raw output per member.
+    ) -> Optional[Iterator[RawOutput]]:
+        """Yield one raw output per member (lazy generator), sharing one per-case permutation.
 
         ``n`` (``run.uq.num_samples``) is intentionally ignored: the ensemble has a fixed number of
-        members, and the engine iterates over exactly the returned list. Only one member's forward is
-        resident on the device at a time; the returned raw outputs are the (host-bound) unscaled
-        predictions the engine immediately folds into its running mean/variance.
+        members and the engine iterates over exactly what is yielded. This is a **generator**, so
+        only one member's output is resident at a time — the engine's Welford accumulator consumes
+        each before the next is produced (O(field) device memory, not O(K × field)). All members use
+        the same fixed block-partition permutation so the spread is model-only.
         """
         if not self._models or self._datapipe is None:
             raise RuntimeError("GeoTransolverEnsembleDrivAerStarWrapper: call load() first")
-        return [self._forward_member(model, model_input) for model in self._models]
+        perm = make_forward_permutation(model_input["batch"])
+        return (self._forward_member(model, model_input, perm) for model in self._models)
 
     def predict(self, model_input: ModelInput) -> RawOutput:
         """Deterministic fallback (first member). The engine uses :meth:`predict_ensemble` for UQ."""
