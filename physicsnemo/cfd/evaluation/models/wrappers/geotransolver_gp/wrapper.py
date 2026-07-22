@@ -48,9 +48,17 @@ Model kwargs (``model.kwargs`` in config), matching the trained checkpoint's GP 
 - ``gp_feature_norm`` (``"none"`` | ``"l2"`` | ``"layernorm"`` | ``"l2_radial"``): must match training.
 - ``gp_lengthscale_range`` / ``gp_lengthscale_prior`` / ``gp_outputscale_prior``: GP kernel config.
 - ``gp_n_inducing`` (default 256), ``gp_mlp_hidden`` (optional DKL MLP), ``num_tasks`` (default 4).
+- ``gp_spectral_norm_coeff`` (float, default 0.0) / ``gp_dkl_residual`` (bool, default True):
+  DUE-style bi-Lipschitz DKL. When ``gp_spectral_norm_coeff > 0`` the head uses a spectral-
+  normalised + residual feature extractor (van Amersfoort et al., 2021) instead of the plain DKL
+  MLP; both must match training. The defaults reproduce the plain MLP (non-DUE) path unchanged.
 - ``gp_inference_chunk_size`` (default 51200): points per backbone+GP chunk (drawn from a random
   permutation, then inverted — see the standalone script for why contiguous chunks degrade preds).
 - ``cuda_bf16_autocast`` (bool, default False): run forwards under bf16 autocast.
+
+The same wrapper class is registered under two keys: ``geotransolver_gp_surface`` (plain DKL) and
+``geotransolver_gp_due_surface`` (DUE variant). They differ only by ``model.kwargs`` + checkpoint,
+so DUE scores as its own matrix row without a bespoke subclass.
 """
 
 from contextlib import nullcontext
@@ -198,6 +206,13 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
                 else kw.pop("gp_outputscale_prior", None)
             ),
             "feature_norm": str(kw.pop("gp_feature_norm", "none")),
+            # DUE-style bi-Lipschitz DKL extractor (van Amersfoort et al., 2021). When
+            # ``gp_spectral_norm_coeff > 0`` the head builds a spectral-normalised + residual
+            # feature extractor instead of the plain DKL MLP, so this MUST match training or the
+            # ``FieldGPHead`` state dict will not reconstruct. Defaults (0.0 / True) keep the plain
+            # MLP path, so existing (non-DUE) GP checkpoints are unaffected.
+            "spectral_norm_coeff": float(kw.pop("gp_spectral_norm_coeff", 0.0)),
+            "dkl_residual": bool(kw.pop("gp_dkl_residual", True)),
         }
 
         self._cfg = parse_runtime_kwargs(kw, device)

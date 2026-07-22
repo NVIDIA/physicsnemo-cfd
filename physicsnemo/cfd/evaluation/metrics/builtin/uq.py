@@ -373,7 +373,10 @@ class _SampleAUSE:
 
     Per channel, ``partial`` reduces one geometry to its RMS error (``err``) and its mean
     predicted std (``unc``; epistemic when ``rank_epistemic``). ``finalize_samples`` gathers those
-    across all geometries and computes the AUSE of ranking geometries by ``unc``.
+    across all geometries and computes the AUSE of ranking geometries by ``unc``, plus a
+    ``<chan>_spearman`` companion (rank correlation of per-geometry error vs. uncertainty) that
+    captures monotonic *trend alignment* independent of error scale — the standard complement to
+    AUSE when comparing methods whose absolute errors differ.
     """
 
     def __init__(self, *, rank_epistemic: bool) -> None:
@@ -411,17 +414,27 @@ class _SampleAUSE:
             return float("nan")
         out: dict[str, float] = {}
         values: list[float] = []
+        rhos: list[float] = []
         for chan in sorted(by_channel):
             err = np.asarray(by_channel[chan].get("err", []), dtype=np.float64)
             unc = np.asarray(by_channel[chan].get("unc", []), dtype=np.float64)
             if err.size != unc.size or err.size < 2:
                 out[chan] = float("nan")
+                out[f"{chan}_spearman"] = float("nan")
                 continue
             v = _ause_curve_area(err, unc)
             out[chan] = float(v)
             if v == v:  # skip NaN in the headline mean
                 values.append(float(v))
+            # Trend-alignment companion to AUSE: does higher per-geometry uncertainty rank the
+            # higher-error geometries (rho -> 1)? AUSE measures the *area* gap to the oracle;
+            # Spearman measures monotonic ordering, independent of error scale.
+            rho = _spearman(err, unc)
+            out[f"{chan}_spearman"] = float(rho)
+            if rho == rho:
+                rhos.append(float(rho))
         out["mean"] = float(np.mean(values)) if values else float("nan")
+        out["mean_spearman"] = float(np.mean(rhos)) if rhos else float("nan")
         return out
 
     def curves(self, collected: dict[str, list[float]]) -> dict[str, dict[str, Any]]:
@@ -497,7 +510,9 @@ class _SampleDragUQ:
     ``partial`` reduces one geometry to ``(drag_abs_err, drag_epistemic_std, drag_total_std)`` by
     integrating the comparison mesh's predicted / GT pressure + WSS and propagating the per-cell
     predictive std into the drag integral. ``finalize_samples`` computes the AUSE of ranking
-    geometries by drag epistemic-std and by drag total-std against ``|Cd_pred - Cd_true|``.
+    geometries by drag epistemic-std and by drag total-std against ``|Cd_pred - Cd_true|``, and adds
+    ``<epistemic|total>_spearman`` (rank correlation of drag error vs. drag uncertainty) as the
+    scale-independent trend-alignment companion to the drag AUSE.
     Requires the comparison mesh to carry cell-dof std companions (the benchmark attaches them when
     ``output.std_mesh_field_names`` / ``epistemic_std_mesh_field_names`` are set), so it is a no-op
     for deterministic wrappers or when std fields are unavailable.
@@ -623,8 +638,11 @@ class _SampleDragUQ:
             unc = np.asarray(collected.get(key, []), dtype=np.float64)
             if err.size == unc.size and err.size >= 2:
                 out[sub] = _ause_curve_area(err, unc)
+                # Trend alignment: rank correlation of per-geometry drag error vs drag uncertainty.
+                out[f"{sub}_spearman"] = _spearman(err, unc)
             else:
                 out[sub] = float("nan")
+                out[f"{sub}_spearman"] = float("nan")
         return out
 
     def curves(self, collected: dict[str, list[float]]) -> dict[str, dict[str, Any]]:

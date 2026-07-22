@@ -33,10 +33,14 @@ load and inference for that case. The cache stores scalars only and does not
 replace mesh or visualization workflows. The cache fingerprint includes
 ``run.seed`` (influences subsampling / ``randperm`` RNG in model wrappers).
 
-When ``save_inference_mesh`` is enabled, per-case ``inference_<model>_<case>.vt[p|u]`` meshes are
-written for every scored case unless ``reports.visual_case_ids`` is set — in which case only those
-ids get a mesh (all other cases are still scored for metrics). This keeps large validation runs from
-dumping one VTP per case when only a couple are needed for inspection / report visuals.
+When ``save_inference_mesh`` is enabled, per-case ``inference_<model>_<dataset>_<case>.vt[p|u]``
+meshes are written for every scored case unless ``reports.visual_case_ids`` is set — in which case
+only those ids get a mesh (all other cases are still scored for metrics). This keeps large validation
+runs from dumping one VTP per case when only a couple are needed for inspection / report visuals.
+The dataset label is embedded so multi-dataset sweeps that reuse case ids (e.g. per body-style
+classes) do not overwrite each other. ``reports.save_comparison_meshes`` writes richer
+``<model>_<dataset>_<case>_comparison.vt[p|u]`` files (prediction + ground truth + std side by side)
+and honours the same ``visual_case_ids`` gating.
 
 When ``save_inference_mesh`` is enabled but exporting ``inference_<model>_<case>.vt[p|u]`` fails,
 the full traceback is logged and persisted for audit: ``per_case[]`` keys and ``benchmark_artifacts.json``
@@ -231,6 +235,11 @@ def _retain_comparison_mesh_for_visual_context(
     return case_id in allow
 
 
+def _sanitize_path_token(token: str) -> str:
+    """Make a string safe to embed in an output filename (drop path/whitespace chars)."""
+    return "".join(c if (c.isalnum() or c in "-.") else "_" for c in str(token))
+
+
 def _save_inference_mesh_for_case(
     reports: ReportsConfig | None, case_id: str
 ) -> bool:
@@ -310,6 +319,7 @@ def _save_inference_mesh_if_requested(
     predictions: dict[str, Any],
     output_dir: str,
     dataset_name: str,
+    dataset_label: str | None = None,
 ) -> str | None:
     """
     Write ``inference_<model>_<case>.vtp`` or ``.vtu`` when requested.
@@ -351,10 +361,16 @@ def _save_inference_mesh_if_requested(
     import pyvista as pv
 
     m_dom = case.inference_domain
-    out_path = (
-        Path(output_dir)
-        / f"inference_{model_config.name}_{case_id}{'.vtp' if m_dom == 'surface' else '.vtu'}"
+    # Include the dataset label so multi-dataset sweeps (e.g. per body-style classes that reuse the
+    # same numeric case ids) do not overwrite one another's meshes. Falls back to model+case only.
+    ext = ".vtp" if m_dom == "surface" else ".vtu"
+    label_tok = _sanitize_path_token(dataset_label) if dataset_label else ""
+    stem = (
+        f"inference_{model_config.name}_{label_tok}_{case_id}"
+        if label_tok
+        else f"inference_{model_config.name}_{case_id}"
     )
+    out_path = Path(output_dir) / f"{stem}{ext}"
     log_dataset(
         dataset_name,
         f"Writing inference mesh (predictions only) to {out_path}…",
@@ -765,6 +781,7 @@ def _run_single(
             predictions=predictions,
             output_dir=output_dir,
             dataset_name=dataset_config.name,
+            dataset_label=dataset_config.display_name,
         )
 
         comparison_mesh = None
@@ -862,11 +879,16 @@ def _run_single(
         if comparison_mesh is not None and metric_dtype is not None:
             row["metric_dtype"] = metric_dtype
             if reports:
-                if reports.save_comparison_meshes:
+                if reports.save_comparison_meshes and _save_inference_mesh_for_case(
+                    reports, cid
+                ):
                     sub = Path(output_dir) / reports.comparison_mesh_subdir
                     sub.mkdir(parents=True, exist_ok=True)
                     ext = ".vtp" if case.inference_domain == "surface" else ".vtu"
-                    cmp_p = sub / f"{cid}_comparison{ext}"
+                    # Disambiguate by model + dataset label: the comparison mesh carries this model's
+                    # predictions, and case ids repeat across body-style classes.
+                    _lbl = _sanitize_path_token(dataset_config.display_name)
+                    cmp_p = sub / f"{model_config.name}_{_lbl}_{cid}_comparison{ext}"
                     try:
                         comparison_mesh.save(str(cmp_p))
                         row["comparison_mesh_path"] = str(cmp_p.resolve())

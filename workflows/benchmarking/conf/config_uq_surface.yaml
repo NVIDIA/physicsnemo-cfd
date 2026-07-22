@@ -14,10 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Probabilistic (UQ) surface benchmark — compares deterministic, analytic-GP, and a
-# sampling (weight-perturbation) proxy model on the *same* cases, scoring the pooled UQ
-# metrics (NLPD, calibration zRMS, 95% coverage, sharpness) alongside the usual L2 / drag / lift.
-# See docs/design/uq_metrics_integration.md.
+# Probabilistic (UQ) surface benchmark — compares deterministic, analytic-GP, and real MC-Dropout
+# on the *same* cases, scoring the pooled UQ metrics (NLPD, calibration zRMS, 95% coverage,
+# sharpness) alongside the usual L2 / drag / lift. See docs/design/uq_metrics_integration.md.
 #
 # Run (on a GPU node):
 #   python main.py --config-name=config_uq_surface
@@ -26,9 +25,8 @@
 #   * geotransolver_drivaerstar_surface -> deterministic baseline. UQ metrics finalize to NaN
 #                                    (no std); included so the report shows the det-vs-UQ contrast.
 #   * geotransolver_gp_surface    -> UQ_METHOD="analytic": one forward pass, GP posterior std.
-#   * mc_perturbation_surface     -> UQ_METHOD="sampling": run.uq.num_samples stochastic passes,
-#                                    aggregated by the engine (Welford). THROWAWAY proxy — its
-#                                    uncertainties are NOT calibrated; swap for real MC-Dropout later.
+#   * mc_dropout_surface          -> UQ_METHOD="sampling": run.uq.num_samples stochastic passes over
+#                                    the Concrete-Dropout backbone, aggregated by the engine (Welford).
 
 defaults:
   - _self_
@@ -61,25 +59,26 @@ run:
     retain_samples: false
     device_metrics: false
 
-# Shared anchors for the surface normalization (both checkpoints were trained with the same npz)
-# and the deterministic baseline checkpoint (used by both the baseline and the perturbation proxy).
-# Paths are the in-container mounts from interactive_job.sh:
+# Shared anchors for the surface normalization (all checkpoints were trained with the same npz) and
+# the deterministic baseline checkpoint. Paths are the in-container mounts from interactive_job.sh:
 #   /workspace -> /lustre/fsw/portfolios/coreai/users/ktangsali
 #   /data      -> /lustre/fsw/portfolios/coreai/projects/coreai_modulus_cae
 _paths:
   transformer_src: &transformer_src /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models
   surface_stats: &surface_stats /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/src/surface_fields_normalization.npz
   baseline_ckpt: &baseline_ckpt /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/baseline_fastback_bf/checkpoints/checkpoint.0.100.pt
+  # Concrete-Dropout run (model.concrete_dropout=true), same backbone/data/normalization as baseline.
+  concrete_dropout_ckpt: &concrete_dropout_ckpt /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/concrete_dropout_fastback_bf/checkpoints/GeoTransolver.0.100.mdlus
 
 benchmark:
   mode: matrix
   # All three rows are transformer_models checkpoints (physical, standardize-only targets:
   # physical = norm*std + mean). They use the DrivAerStar GeoTransolver wrappers, which do NOT
   # re-dimensionalize by ρu² (that is only for the non-dimensional DrivAerML/HF
-  # `geotransolver_surface` wrapper). The deterministic, GP, and MC-perturbation wrappers are three
+  # `geotransolver_surface` wrapper). The deterministic, GP, and MC-Dropout wrappers are three
   # completely independent CFDModel subclasses (no shared base), each with REDIMENSIONALIZE_OUTPUTS=False.
   models:
-    # Deterministic baseline (same checkpoint the perturbation proxy decorates). Epoch 100 = final.
+    # Deterministic baseline. Epoch 100 = final.
     - name: geotransolver_drivaerstar_surface
       inference_domain: surface
       checkpoint: *baseline_ckpt
@@ -87,14 +86,14 @@ benchmark:
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
 
     # Analytic GP field head. Point `checkpoint` at the specific GeoTransolver backbone file for the
-    # epoch you want; the epoch (30 here = the best-calibrated checkpoint from the prior eval) is
-    # parsed from that name and the sibling FieldGPHead.0.30.pt is loaded from the same directory.
-    # (No `checkpoint_epoch` knob / directory scanning -> the backbone and head can't drift.) The GP
-    # hyperparameters below MATCH the field_gp_v4_long_fastback_bf training run (feature_norm=l2_radial,
-    # lengthscale_range=[0.01,0.5], lengthscale_prior=[2.0,6.0]; the rest are the conf defaults).
+    # epoch you want; the epoch (38 here) is parsed from that name and the sibling FieldGPHead.0.38.pt
+    # is loaded from the same directory. (No `checkpoint_epoch` knob / directory scanning -> the
+    # backbone and head can't drift.) e38 of the pinned l2_radial run won the e30/e35/e38 sweep on
+    # drag AUSE and calibration. The GP hyperparameters below MATCH that training run
+    # (feature_norm=l2_radial, lengthscale_range=[0.01,0.5], lengthscale_prior=[2.0,6.0]; rest are conf defaults).
     - name: geotransolver_gp_surface
       inference_domain: surface
-      checkpoint: /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/field_gp_v4_long_fastback_bf/checkpoints_field_gp/GeoTransolver.0.30.mdlus
+      checkpoint: /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/field_gp_v4_long_fastback_pin/checkpoints_field_gp/GeoTransolver.0.38.mdlus
       stats_path: *surface_stats
       kwargs:
         gp_feature_norm: "l2_radial"
@@ -107,14 +106,13 @@ benchmark:
         gp_inference_chunk_size: 51200
         geometry_sampling: 300000
 
-    # Sampling proxy (weight perturbation) over the deterministic baseline — no new training.
-    - name: mc_perturbation_surface
+    # Real MC-Dropout: run.uq.num_samples stochastic passes over the Concrete-Dropout backbone
+    # (the ConcreteDropout layers stay stochastic at inference).
+    - name: mc_dropout_surface
       inference_domain: surface
-      checkpoint: *baseline_ckpt
+      checkpoint: *concrete_dropout_ckpt
       stats_path: *surface_stats
       kwargs:
-        perturb_std: 0.02
-        perturb_scope: "last_n_layers=4"
         batch_resolution: 60000
         geometry_sampling: 300000
 

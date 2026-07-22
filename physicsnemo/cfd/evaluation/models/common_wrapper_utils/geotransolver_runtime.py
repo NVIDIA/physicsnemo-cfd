@@ -242,18 +242,30 @@ def resolve_checkpoint_file(checkpoint_path: str) -> tuple[Path, int]:
 
 
 def build_geotransolver_backbone(
-    *, checkpoint_path: str, device: str, inference_mode: str
+    *,
+    checkpoint_path: str,
+    device: str,
+    inference_mode: str,
+    concrete_dropout: bool = False,
 ) -> "GeoTransolver":
     """Construct a ``GeoTransolver`` for ``surface``/``volume`` and load its checkpoint onto ``device``.
 
     ``checkpoint_path`` must be a specific checkpoint file (see :func:`resolve_checkpoint_file`);
     a directory or an epoch-less name is rejected rather than silently loading the latest epoch.
+
+    Set ``concrete_dropout=True`` to build the backbone with learned per-layer
+    :class:`~physicsnemo.nn.ConcreteDropout` layers, matching a checkpoint trained with
+    ``model.concrete_dropout=true`` (required for the MC-Dropout wrapper: without it
+    ``load_checkpoint`` would reject the extra ``p_logit`` parameters). The returned model is in
+    ``eval()`` mode; callers that want stochastic passes must re-enable the dropout layers.
     """
     model_kw = dict(
         DEFAULT_GEOTRANSOLVER_VOLUME_KW
         if inference_mode == "volume"
         else DEFAULT_GEOTRANSOLVER_KW
     )
+    if concrete_dropout:
+        model_kw["concrete_dropout"] = True
     checkpoint_dir, epoch = resolve_checkpoint_file(checkpoint_path)
 
     ensure_distributed_initialized()

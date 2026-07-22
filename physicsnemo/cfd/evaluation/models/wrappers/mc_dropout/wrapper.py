@@ -14,30 +14,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Deep-/snapshot-ensemble sampling UQ wrapper for GeoTransolver (surface).
+"""Real **MC-Dropout** sampling UQ over a Concrete-Dropout GeoTransolver (surface/volume).
 
-An ensemble aggregates the predictions of several independently-saved model checkpoints (a sibling
-sampling UQ method to :mod:`..mc_dropout`, which instead resamples dropout masks on one model). The
-engine drives it through the SAME ``UQ_METHOD="sampling"`` path — but here each "pass" is a genuine
-model, so the across-member spread
-is a meaningful epistemic uncertainty (subject to the caveat below).
+This is the MC-Dropout sampling baseline (``mc_dropout_surface``). The backbone was trained with
+learned per-layer :class:`~physicsnemo.nn.ConcreteDropout` (``model.concrete_dropout=true``,
+Gal-Hron-Kendall 2017), so its dropout rates are calibrated by the training objective rather than
+hand-picked. UQ is obtained at inference exactly as in the training repo's ``setup_mc_dropout`` /
+``mc_dropout_inference_loop``: put the network in ``eval()`` but keep the Concrete-Dropout layers
+**stochastic** (``.train()``), then average over ``N`` forward passes. The engine drives the ``N``
+passes (``run.uq.num_samples``) and aggregates the across-pass spread into a
+:class:`~physicsnemo.cfd.evaluation.datasets.schema.FieldDistribution` (mean + epistemic std) via
+streaming Welford — same ``UQ_METHOD="sampling"`` path as the ensemble wrapper.
 
-.. note::
-   As configured for the benchmark, the members are the **last K checkpoints of a single training
-   run** (a *snapshot ensemble*), NOT K independently-initialized runs (a *deep ensemble*). Snapshot
-   members are correlated, so the ensemble tends to be **under-dispersed** (over-confident) relative
-   to a true deep ensemble — but it needs no extra training and is a concrete, honest multi-model
-   example. Point ``checkpoint`` at checkpoints from separate runs (via ``member_checkpoints``) for a
-   true deep ensemble.
-
-Completely independent :class:`CFDModel` subclass (no inheritance from the other GeoTransolver
-wrappers). It composes the shared GeoTransolver + ``TransolverDataPipe`` plumbing in
-:mod:`physicsnemo.cfd.evaluation.models.common_wrapper_utils.geotransolver_runtime`, holding one
-backbone per member. :meth:`predict_ensemble` runs every member on the shared per-case batch and
-returns their raw outputs; the engine's
-:func:`~physicsnemo.cfd.evaluation.benchmarks.uq_inference.run_sampling_inference` aggregates them
-(Welford) into mean + across-member (epistemic) std. Because ``predict_ensemble`` returns exactly
-the member count, ``run.uq.num_samples`` is ignored for this row.
+Completely independent :class:`CFDModel` subclass (no inheritance from the deterministic
+GeoTransolver wrappers). It composes the shared GeoTransolver + ``TransolverDataPipe`` plumbing in
+:mod:`physicsnemo.cfd.evaluation.models.common_wrapper_utils.geotransolver_runtime`; the *only*
+difference from a deterministic forward is that the Concrete-Dropout submodules stay stochastic, so
+:meth:`predict` returns a different draw each call.
 
 It decorates ``transformer_models`` (physical-target) checkpoints, so predictions are
 re-standardized only — no dynamic-pressure re-dimensionalization
@@ -45,19 +38,17 @@ re-standardized only — no dynamic-pressure re-dimensionalization
 
 Model kwargs (``model.kwargs``):
 
-- ``member_checkpoints`` (list[str], **required**): the explicit member checkpoint files, one per
-  ensemble member (any number ``K``). Each must be a specific checkpoint file whose name encodes an
-  epoch (``checkpoint.0.<epoch>.pt`` / ``<Model>.0.<epoch>.mdlus``). List members from a single run
-  (snapshot ensemble) or from separate runs (true deep ensemble) — same code path either way.
-- plus the shared GeoTransolver runtime kwargs (``batch_resolution``, ``geometry_sampling``,
-  ``cuda_bf16_autocast``; datapipe overrides; etc.); ``stats_path`` is the shared normalization.
+- the shared GeoTransolver runtime kwargs (``batch_resolution``, ``geometry_sampling``,
+  ``cuda_bf16_autocast``; datapipe overrides; etc.). ``checkpoint`` must point at a
+  Concrete-Dropout checkpoint file (trained with ``concrete_dropout=true``); ``stats_path`` is the
+  shared surface/volume normalization.
 
-The top-level ``checkpoint`` field is still required by the benchmark (it anchors the run's asset
-identity / cache fingerprint); point it at any one of the members (e.g. the final epoch).
+The number of stochastic passes is **not** a model kwarg — it is the benchmark-wide
+``run.uq.num_samples`` so every sampling method (this and the ensemble) is compared at the same
+budget.
 """
 
 import logging
-from pathlib import Path
 from typing import Any, ClassVar, Literal, Optional
 
 from physicsnemo.cfd.evaluation.datasets.schema import (
@@ -89,13 +80,22 @@ from physicsnemo.cfd.evaluation.models.model_registry import (
     RawOutput,
 )
 
+# ConcreteDropout is only needed to (a) find the dropout submodules and (b) read their learned
+# rates for a sanity log. Guard the import like geotransolver_runtime guards physicsnemo.
+try:
+    from physicsnemo.nn import ConcreteDropout, get_concrete_dropout_rates
+
+    _CONCRETE_DROPOUT_AVAILABLE = True
+except ImportError:
+    _CONCRETE_DROPOUT_AVAILABLE = False
+
 _LOG = logging.getLogger(__name__)
 
 
-class EnsembleDrivAerStarWrapper(CFDModel):
-    """K-member (snapshot/deep) ensemble over GeoTransolver checkpoints (surface).
+class MCDropoutDrivAerStarWrapper(CFDModel):
+    """Real MC-Dropout sampling over a Concrete-Dropout GeoTransolver (surface/volume).
 
-    Decorates ``transformer_models`` (physical-target) checkpoints, so predictions are
+    Decorates a ``transformer_models`` (physical-target) checkpoint, so predictions are
     re-standardized only (no dynamic-pressure re-dimensionalization):
     :attr:`REDIMENSIONALIZE_OUTPUTS` = ``False``.
     """
@@ -103,8 +103,9 @@ class EnsembleDrivAerStarWrapper(CFDModel):
     INFERENCE_DOMAIN: ClassVar[InferenceDomain | None] = None
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
     REDIMENSIONALIZE_OUTPUTS: ClassVar[bool] = False
-    # UQ contract with the engine: "I produce uncertainty via repeated passes." predict_ensemble()
-    # returns one pass per member, and the engine aggregates the spread into mean + epistemic std.
+    # Contract with the engine: "I produce uncertainty, get it by calling predict() many times."
+    # The engine loops predict() run.uq.num_samples times per case and turns the spread of the
+    # stochastic passes into a mean + epistemic std (streaming Welford).
     SUPPORTS_UQ: ClassVar[bool] = True
     UQ_METHOD: ClassVar[str] = "sampling"
 
@@ -125,7 +126,7 @@ class EnsembleDrivAerStarWrapper(CFDModel):
         )
 
     def __init__(self) -> None:
-        self._models: list[Any] = []
+        self._model: Any = None
         self._datapipe: Any = None
         self._datapipe_geometry_effective: Optional[int] = None
         self._surface_factors: Any = None
@@ -140,15 +141,19 @@ class EnsembleDrivAerStarWrapper(CFDModel):
         stats_path: str,
         device: str,
         **kwargs: Any,
-    ) -> "EnsembleDrivAerStarWrapper":
-        """Build one GeoTransolver backbone per explicitly-listed member checkpoint."""
+    ) -> "MCDropoutDrivAerStarWrapper":
+        """Load the Concrete-Dropout backbone and keep its dropout layers stochastic for MC passes."""
         if not geotransolver_available():
             raise RuntimeError(
-                "EnsembleDrivAerStarWrapper requires physicsnemo (GeoTransolver, "
+                "MCDropoutDrivAerStarWrapper requires physicsnemo (GeoTransolver, "
                 "TransolverDataPipe, load_checkpoint)."
             )
+        if not _CONCRETE_DROPOUT_AVAILABLE:
+            raise RuntimeError(
+                "MCDropoutDrivAerStarWrapper requires physicsnemo.nn.ConcreteDropout "
+                "(train the backbone with model.concrete_dropout=true)."
+            )
         kw = dict(kwargs)
-        member_checkpoints = kw.pop("member_checkpoints", None)
         self._inference_mode = coerce_inference_domain_or_default(
             kw.pop("inference_domain", None),
             default="surface",
@@ -157,7 +162,7 @@ class EnsembleDrivAerStarWrapper(CFDModel):
         self._cfg = parse_runtime_kwargs(kw, device)
 
         if self._inference_mode == "volume":
-            log_inference("ensemble", f"Loading volume normalization from {stats_path}")
+            log_inference("mc_dropout", f"Loading volume normalization from {stats_path}")
             self._volume_factors = load_transolver_volume_factors(stats_path, device)
             if self._volume_factors is None:
                 raise FileNotFoundError(
@@ -166,41 +171,59 @@ class EnsembleDrivAerStarWrapper(CFDModel):
                 )
             self._surface_factors = None
         else:
-            log_inference("ensemble", f"Loading surface normalization from {stats_path}")
+            log_inference("mc_dropout", f"Loading surface normalization from {stats_path}")
             self._surface_factors = load_transolver_surface_factors(stats_path, device)
             self._volume_factors = None
 
-        if not member_checkpoints:
-            raise ValueError(
-                "EnsembleDrivAerStarWrapper requires `member_checkpoints`: an explicit list of "
-                "checkpoint files (one per member). Auto-discovery from a directory is not "
-                "supported — list every member path in model.kwargs.member_checkpoints."
-            )
-        members = [str(p) for p in member_checkpoints]
-
         self._datapipe = None
         self._datapipe_geometry_effective = None
-        # One backbone per member. Members are ~O(100 MB) each; a handful fit comfortably on device.
-        # Each is loaded from its own checkpoint file (strict epoch-in-name resolution).
-        self._models = [
-            build_geotransolver_backbone(
-                checkpoint_path=member,
-                device=device,
-                inference_mode=self._inference_mode,
-            )
-            for member in members
-        ]
-        _LOG.info(
-            "EnsembleDrivAerStarWrapper: loaded %d members from %s",
-            len(self._models),
-            [Path(m).name for m in members],
+        # Build WITH concrete_dropout=True so the checkpoint's learned ConcreteDropout parameters
+        # (p_logit per layer) load cleanly; a plain backbone would reject those extra keys.
+        self._model = build_geotransolver_backbone(
+            checkpoint_path=checkpoint_path,
+            device=device,
+            inference_mode=self._inference_mode,
+            concrete_dropout=True,
         )
+        self._enable_mc_dropout()
         return self
 
+    def _enable_mc_dropout(self) -> None:
+        """Keep the network in eval() but flip ConcreteDropout layers to train() (stochastic).
+
+        This is the MC-Dropout trick: everything deterministic (norms, etc.) stays in eval, but the
+        Concrete-Dropout masks are re-sampled every forward pass, so N passes give N draws. Mirrors
+        the training repo's ``setup_mc_dropout``.
+        """
+        self._model.eval()
+        n_dropout = 0
+        for module in self._model.modules():
+            if isinstance(module, ConcreteDropout):
+                module.train()
+                n_dropout += 1
+        if n_dropout == 0:
+            raise RuntimeError(
+                "No ConcreteDropout layers found in the loaded checkpoint. Was it trained with "
+                "model.concrete_dropout=true? MC-Dropout has no source of stochasticity otherwise."
+            )
+        rates = get_concrete_dropout_rates(self._model)
+        if rates:
+            vals = list(rates.values())
+            _LOG.info(
+                "MC-Dropout enabled over %d ConcreteDropout layers; learned rates "
+                "min=%.4f max=%.4f mean=%.4f",
+                n_dropout,
+                min(vals),
+                max(vals),
+                sum(vals) / len(vals),
+            )
+        else:
+            _LOG.info("MC-Dropout enabled over %d ConcreteDropout layers.", n_dropout)
+
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:
-        """Build the surface/volume batch once per case (shared by every member)."""
-        if not self._models:
-            raise RuntimeError("EnsembleDrivAerStarWrapper: call load() first")
+        """Build the surface/volume data dict, lazily (re)create the datapipe, and run it."""
+        if self._model is None:
+            raise RuntimeError("MCDropoutDrivAerStarWrapper: call load() first")
         result = build_transolver_batch(
             case=case,
             inference_mode=self._inference_mode,
@@ -216,10 +239,17 @@ class EnsembleDrivAerStarWrapper(CFDModel):
             self._volume_length_scale = result.volume_length_scale
         return {"batch": result.batch, "datapipe": result.datapipe}
 
-    def _forward_member(self, model: Any, model_input: ModelInput) -> RawOutput:
-        """Run one member's forward + target unscaling on the shared per-case batch."""
+    def predict(self, model_input: ModelInput) -> RawOutput:
+        """One stochastic MC-Dropout pass (Concrete-Dropout layers resample their masks).
+
+        No weights are modified: the stochasticity comes entirely from the dropout masks, which are
+        redrawn from the global torch RNG (re-seeded per pass by the engine's sampling loop, so
+        passes differ from each other yet are reproducible run-to-run).
+        """
+        if self._model is None or self._datapipe is None:
+            raise RuntimeError("MCDropoutDrivAerStarWrapper: call load() first")
         raw = geotransolver_forward(
-            model=model,
+            model=self._model,
             batch=model_input["batch"],
             batch_resolution=self._cfg.batch_resolution,
             cuda_bf16_autocast_enabled=self._cfg.cuda_bf16_autocast,
@@ -231,26 +261,6 @@ class EnsembleDrivAerStarWrapper(CFDModel):
             batch=model_input["batch"],
             inference_mode=self._inference_mode,
         )
-
-    def predict_ensemble(
-        self, model_input: ModelInput, n: int
-    ) -> Optional[list[RawOutput]]:
-        """Run every member on the shared batch; return one raw output per member.
-
-        ``n`` (``run.uq.num_samples``) is intentionally ignored: the ensemble has a fixed number of
-        members, and the engine iterates over exactly the returned list. Only one member's forward is
-        resident on the device at a time; the returned raw outputs are the (host-bound) unscaled
-        predictions the engine immediately folds into its running mean/variance.
-        """
-        if not self._models or self._datapipe is None:
-            raise RuntimeError("EnsembleDrivAerStarWrapper: call load() first")
-        return [self._forward_member(model, model_input) for model in self._models]
-
-    def predict(self, model_input: ModelInput) -> RawOutput:
-        """Deterministic fallback (first member). The engine uses :meth:`predict_ensemble` for UQ."""
-        if not self._models or self._datapipe is None:
-            raise RuntimeError("EnsembleDrivAerStarWrapper: call load() first")
-        return self._forward_member(self._models[0], model_input)
 
     def decode_outputs(
         self,

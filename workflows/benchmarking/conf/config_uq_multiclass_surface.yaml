@@ -14,21 +14,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Probabilistic (UQ) surface benchmark ACROSS DrivAerStar body styles — four models
-# (deterministic / analytic-GP / MC weight-perturbation proxy / 5-member snapshot ensemble) scored on
-# a 100-geometry validation sample from EACH class: estateback (class_E), fastback (class_F),
-# notchback (class_N). See docs/design/uq_metrics_integration.md and conf/config_uq_surface.yaml.
+# Probabilistic (UQ) surface benchmark ACROSS DrivAerStar body styles — five models
+# (deterministic / analytic-GP / DUE bi-Lipschitz GP / real MC-Dropout / 5-member snapshot ensemble)
+# scored on a 100-geometry validation sample from EACH class: estateback (class_E), fastback
+# (class_F), notchback (class_N). See docs/design/uq_metrics_integration.md and config_uq_surface.yaml.
 #
-# Rerun-in-place: this config writes to the SAME run.output_dir as before. With
-# run.metrics_cache.enabled: true, the already-scored rows (deterministic / GP / MC across the 3
-# classes) are served from the per-case cache, so only the NEW ensemble_surface x 3 classes actually
-# runs inference. Re-run tools/combine_class_results.py afterward to refresh the all_classes rows.
+# NOTE: MC-Dropout (mc_dropout_surface) is the real Concrete-Dropout baseline, and the plain GP row
+# uses the from-scratch joint epoch-100 (final) checkpoint (field_gp_jointscratch_fastback): random
+# init, 1024 inducing points, relaxed lengthscale cap [0.01, 2.0] for more input-dependent variance.
+# The DUE row (geotransolver_gp_due_surface) is the same recipe with a spectral-norm + residual
+# (bi-Lipschitz) DKL extractor to fight feature collapse. This reuses run.output_dir
+# (latest_gp_mc_jointscratch): only the NEW DUE row is a cache miss and runs (300 cases); the
+# deterministic / plain-GP / MC-Dropout / ensemble results are served from the existing metrics_cache
+# unchanged. Drag-UQ ranking (drag AUSE / Spearman) is included (see the metrics section). Re-run
+# tools/combine_class_results.py afterward to build the all_classes rows.
+#
+# Per-case VTP visuals: reports.visual_case_ids (below) lists one representative geometry per class,
+# so each gets an inference mesh + a full comparison mesh (pred / GT / std). Because this is a fresh
+# dir every case runs inference, so the meshes are written with no cache surgery needed. Outputs:
+#   latest_gp_mc_jointscratch/inference_<model>_<class>_<case>.vtp
+#   latest_gp_mc_jointscratch/comparison_meshes/<model>_<class>_<case>_comparison.vtp
 #
 # Per-class vs. combined:
 #   * Per-class is native: each dataset entry below is a separate matrix row, so the report shows
 #     one row per (model x class) with its own pooled UQ metrics.
 #   * "All classes combined" is produced post-hoc (no extra inference) by pooling the per-case rows:
-#         python tools/combine_class_results.py uq_multiclass_surface/benchmark_results.json
+#         python tools/combine_class_results.py latest_gp_mc_jointscratch/benchmark_results.json
 #     which appends an ``all_classes`` dataset row per model (correct pooled NLPD / coverage / zRMS /
 #     AUSE, and case-mean L2 / drag / lift).
 #
@@ -55,7 +66,7 @@ case_id: null
 
 run:
   device: "cuda:0"
-  output_dir: "uq_multiclass_surface"
+  output_dir: "latest_gp_mc_jointscratch"
   seed: 42
   batch_size: 1
   save_inference_mesh: true
@@ -64,7 +75,7 @@ run:
     path: ${run.output_dir}/metrics_cache
   uq:
     enabled: true
-    num_samples: 32
+    num_samples: 20
     retain_samples: false
     device_metrics: false
 
@@ -75,6 +86,8 @@ _paths:
   transformer_src: &transformer_src /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models
   surface_stats: &surface_stats /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/src/surface_fields_normalization.npz
   baseline_ckpt: &baseline_ckpt /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/baseline_fastback_bf/checkpoints/checkpoint.0.100.pt
+  # Concrete-Dropout run (model.concrete_dropout=true), same backbone/data/normalization as baseline.
+  concrete_dropout_ckpt: &concrete_dropout_ckpt /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/concrete_dropout_fastback_bf/checkpoints/GeoTransolver.0.100.mdlus
 
 benchmark:
   mode: matrix
@@ -89,28 +102,61 @@ benchmark:
       stats_path: *surface_stats
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
 
+    # GP field head, epoch 100 (final) of the from-scratch joint run (field_gp_jointscratch_fastback):
+    # trained end-to-end from random init (no warm-started backbone) with 1024 inducing points and a
+    # RELAXED lengthscale cap [0.01, 2.0] so the kernel can learn longer-range, input-dependent
+    # (heteroscedastic) variance. Hyperparameters MUST match training so the FieldGPHead reconstructs
+    # before the state dict loads (n_inducing, mlp_hidden, lengthscale range/prior, feature_norm).
+    # Sibling FieldGPHead.0.100.pt loads from the same dir.
     - name: geotransolver_gp_surface
       inference_domain: surface
-      checkpoint: /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/field_gp_v4_long_fastback_bf/checkpoints_field_gp/GeoTransolver.0.30.mdlus
+      checkpoint: /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/field_gp_jointscratch_fastback/checkpoints_field_gp/GeoTransolver.0.100.mdlus
       stats_path: *surface_stats
       kwargs:
         gp_feature_norm: "l2_radial"
-        gp_n_inducing: 256
+        gp_n_inducing: 1024
         gp_mlp_hidden: [128, 16]
-        gp_lengthscale_range: [0.01, 0.5]
-        gp_lengthscale_prior: [2.0, 6.0]
+        gp_lengthscale_range: [0.01, 2.0]
+        gp_lengthscale_prior: [2.0, 3.0]
         gp_outputscale_prior: [2.0, 0.5]
         num_tasks: 4
         gp_inference_chunk_size: 51200
         geometry_sampling: 300000
 
-    - name: mc_perturbation_surface
+    # DUE field GP (van Amersfoort et al., 2021): identical to the GP row above EXCEPT the DKL
+    # feature extractor is bi-Lipschitz (spectral-norm coeff 0.95 + residual skips) to fight DKL
+    # feature collapse (flat per-geometry epistemic contrast). It re-uses the same wrapper class via
+    # a distinct model name (geotransolver_gp_due_surface), so it is its own matrix row and cache
+    # namespace — the four existing rows are served from cache unchanged. The extractor is widened to
+    # [128, 128, 16] (vs the plain GP's [128, 16]) so the 128->128 layer forms a residual block; all
+    # of gp_spectral_norm_coeff / gp_dkl_residual / gp_mlp_hidden MUST match the DUE training run
+    # (field_gp_jointscratch_due_fastback) or the FieldGPHead state dict will not reconstruct.
+    # Checkpoint epoch 100 (final) — matches the plain GP row's epoch for a like-for-like comparison.
+    - name: geotransolver_gp_due_surface
       inference_domain: surface
-      checkpoint: *baseline_ckpt
+      checkpoint: /workspace/gp_fields/physicsnemo/examples/cfd/external_aerodynamics/transformer_models/runs/geotransolver/surface/field_gp_jointscratch_due_fastback/checkpoints_field_gp/GeoTransolver.0.100.mdlus
       stats_path: *surface_stats
       kwargs:
-        perturb_std: 0.02
-        perturb_scope: "last_n_layers=4"
+        gp_feature_norm: "l2_radial"
+        gp_n_inducing: 1024
+        gp_mlp_hidden: [128, 128, 16]
+        gp_spectral_norm_coeff: 0.95
+        gp_dkl_residual: true
+        gp_lengthscale_range: [0.01, 2.0]
+        gp_lengthscale_prior: [2.0, 3.0]
+        gp_outputscale_prior: [2.0, 0.5]
+        num_tasks: 4
+        gp_inference_chunk_size: 51200
+        geometry_sampling: 300000
+
+    # Real MC-Dropout: N stochastic forward passes over the Concrete-Dropout backbone (the dropout
+    # layers stay stochastic at inference). Pass count is the benchmark-wide run.uq.num_samples (20),
+    # NOT a model kwarg, so it matches the ensemble's budget.
+    - name: mc_dropout_surface
+      inference_domain: surface
+      checkpoint: *concrete_dropout_ckpt
+      stats_path: *surface_stats
+      kwargs:
         batch_resolution: 60000
         geometry_sampling: 300000
 
@@ -186,15 +232,23 @@ metrics:
   - uncertainty_error_spearman_epistemic
   - sparsification_ause
   - sparsification_ause_epistemic
+  # Drag-based UQ ranking (drag AUSE / drag Spearman + the drag sparsification panels), integrated
+  # along the same axis as the deterministic `drag` metric. CAVEAT: drag is a coherent surface
+  # integral and the cheap diagonal (per-cell independent) variance propagation discards the
+  # spatially-correlated epistemic covariance that dominates it, so the drag-EPISTEMIC ranking in
+  # particular is a lower bound — interpret it alongside the field-level epistemic metrics above.
   - { name: drag_uq, drag_direction: [1, 0, 0] }
 
 reports:
   enabled: true
-  save_comparison_meshes: false
+  # Save the rich comparison meshes (pred + ground truth + std, per model) for the inspected cases.
+  # Mesh filenames now embed the model + dataset label, so the per-class case-id overlap is safe.
+  save_comparison_meshes: true
   comparison_mesh_subdir: comparison_meshes
-  # Case ids are per-class (they repeat across classes) and the sets are randomly sampled, so a given
-  # id may not exist in every class — present ids get a VTP, others are simply skipped. Leave empty
-  # to skip per-case mesh export entirely on this multi-class sweep.
-  visual_case_ids: []
+  # One representative geometry per class (median pressure-L2 for the GP row). Case ids are per-class
+  # and randomly sampled, so a given id lives in exactly one class — present ids get a VTP/comparison
+  # mesh, others are skipped. This is a fresh output dir, so every case runs inference and these
+  # meshes are written directly (no cache surgery needed).
+  visual_case_ids: ["03275", "07251", "02456"]
   visuals:
     - sparsification_plot

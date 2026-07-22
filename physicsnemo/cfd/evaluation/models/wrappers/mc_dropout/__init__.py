@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from physicsnemo.cfd.evaluation.models.wrappers.mc_perturbation.wrapper import (
-    MCPerturbationDrivAerStarWrapper,
+from physicsnemo.cfd.evaluation.models.wrappers.mc_dropout.wrapper import (
+    MCDropoutDrivAerStarWrapper,
 )
 
-__all__ = ["MCPerturbationDrivAerStarWrapper"]
+__all__ = ["MCDropoutDrivAerStarWrapper"]

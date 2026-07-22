@@ -252,6 +252,9 @@ def test_sample_ause_informative_below_random_over_geometries() -> None:
     random_rank = _collect_samples(ause, [_geom(s, r) for s, r in zip(scales, shuffled)])
     assert informative["pressure"] <= random_rank["pressure"] + 1e-9
     assert abs(informative["pressure"]) < 1e-6  # perfect ranking -> AUSE ~ 0
+    # Spearman companion: informative ranking -> rho ~ 1, and never worse than random ranking.
+    assert informative["pressure_spearman"] >= random_rank["pressure_spearman"] - 1e-9
+    assert informative["pressure_spearman"] > 0.99
 
 
 def test_sample_ause_needs_two_geometries() -> None:
@@ -321,9 +324,17 @@ def test_drag_uq_finalize_and_curves_rank_geometries() -> None:
         "total_std": err[::-1],  # anti-correlated
     }
     fin = drag_uq.finalize_samples(collected)
-    assert set(fin) == {"epistemic", "total"}
+    assert set(fin) == {
+        "epistemic",
+        "total",
+        "epistemic_spearman",
+        "total_spearman",
+    }
     assert abs(fin["epistemic"]) < 1e-9
     assert fin["total"] > fin["epistemic"]
+    # Trend-alignment companion: perfect rank -> rho=+1, anti-correlated -> rho=-1.
+    assert abs(fin["epistemic_spearman"] - 1.0) < 1e-9
+    assert abs(fin["total_spearman"] + 1.0) < 1e-9
     curves = drag_uq.curves(collected)
     assert set(curves) == {"epistemic", "total"}
     assert curves["epistemic"]["n"] == 6
