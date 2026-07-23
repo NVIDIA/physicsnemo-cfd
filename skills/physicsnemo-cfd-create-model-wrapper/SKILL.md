@@ -98,11 +98,11 @@ dict from `prepare_inputs`; use when decode must mirror inference
 geometry).
 
 **Uncertainty-quantification (UQ) models** set two more class variables
-(`SUPPORTS_UQ`, `UQ_METHOD`) and implement one extra hook — either
-`decode_distribution` (analytic) or `predict_ensemble` (sampling,
-optional). This is fully additive: deterministic wrappers leave the
-defaults (`SUPPORTS_UQ=False`) and are unaffected. See the
-"Uncertainty quantification" section below.
+(`SUPPORTS_UQ`, `UQ_METHOD`) and implement extra hooks — `decode_distribution`
+(analytic), or for sampling a stochastic `predict` plus
+`predict_deterministic` (and optionally `predict_ensemble`). This is fully
+additive: deterministic wrappers leave the defaults (`SUPPORTS_UQ=False`) and
+are unaffected. See the "Uncertainty quantification" section below.
 
 ## Step 1: Write the wrapper class
 
@@ -357,10 +357,16 @@ distribution is produced*:
   the passes and aggregates them (streaming Welford) — you do **not**
   build the distribution. Just make `predict` produce a *different* draw
   each call (keep dropout stochastic at inference; don't freeze the RNG —
-  the engine re-seeds per pass for reproducibility). Optionally implement
-  **`predict_ensemble(model_input, n) -> list[RawOutput] | None`** as a
-  fast path (ensembles return one output per member and ignore `n`;
-  return `None` to fall back to N× `predict`).
+  the engine re-seeds per pass for reproducibility). Because `predict` is
+  stochastic here, also override **`predict_deterministic(model_input)`**
+  so `run.uq.enabled=false` gives a true point prediction (disable dropout
+  for one pass, or return a single member). Optionally implement
+  **`predict_ensemble(model_input, n) -> Iterable[RawOutput] | None`** to
+  yield the passes/members (prefer a lazy generator so only one output is
+  device-resident at a time). Honor `n`: yield `n` passes for a per-model
+  sampler, or `min(n, member_count)` members for a fixed-size ensemble
+  (it cannot fabricate more distinct members than it holds); return `None`
+  to fall back to N× `predict`.
 
 Deterministic wrappers keep `SUPPORTS_UQ=False`; UQ metrics simply report
 `NaN` for them (a useful det-vs-UQ contrast in the same report).

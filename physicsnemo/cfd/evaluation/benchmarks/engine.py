@@ -749,9 +749,11 @@ def _run_single(
         seed_inference_rng(run_config.seed, cid)
         model_input = wrapper.prepare_inputs(case)
         # ``run.uq.enabled`` is the master switch: when off, EVERY wrapper (sampling AND analytic)
-        # takes the deterministic path (single ``predict`` + ``decode_outputs``), so no
-        # distributions are emitted and no UQ metrics are produced — enabling apples-to-apples
-        # deterministic comparison runs. See :func:`select_inference_path`.
+        # takes the deterministic path — a single ``predict_deterministic`` + ``decode_outputs`` —
+        # so no distributions are emitted and no UQ metrics are produced, enabling apples-to-apples
+        # deterministic comparison runs. ``predict_deterministic`` (not ``predict``) is used so a
+        # stochastic sampler (e.g. MC-Dropout) returns a true point prediction here rather than one
+        # random draw. See :func:`select_inference_path`.
         inference_path = select_inference_path(
             supports_uq=bool(getattr(wrapper, "SUPPORTS_UQ", False)),
             uq_method=getattr(wrapper, "UQ_METHOD", "none"),
@@ -772,7 +774,7 @@ def _run_single(
             raw = wrapper.predict(model_input)
             predictions = wrapper.decode_distribution(raw, case, model_input)
         else:
-            raw = wrapper.predict(model_input)
+            raw = wrapper.predict_deterministic(model_input)
             predictions = wrapper.decode_outputs(raw, case, model_input)
         gt = case.ground_truth or {}
 

@@ -82,8 +82,11 @@ run:
 # targets), so they reuse the same stats.
 _paths:
   surface_stats: &surface_stats /path/to/surface_fields_normalization.npz
-  # Deterministic + ensemble members come from a standard training run's checkpoints.
-  baseline_ckpt: &baseline_ckpt /path/to/run/checkpoints/checkpoint.0.100.pt
+  # Deterministic + ensemble members come from a standard training run. Point these at the
+  # MODEL-weights file physicsnemo writes per saved epoch (``GeoTransolver.0.<epoch>.mdlus``),
+  # NOT the ``checkpoint.0.<epoch>.pt`` training-state file — the wrapper loads the exact file
+  # named here (and raises if it is missing), so an epoch's `.mdlus` is what you want.
+  baseline_ckpt: &baseline_ckpt /path/to/run/checkpoints/GeoTransolver.0.100.mdlus
   # A backbone trained with Concrete-Dropout (model.concrete_dropout=true) for the MC-Dropout row.
   concrete_dropout_ckpt: &concrete_dropout_ckpt /path/to/run_concrete_dropout/checkpoints/GeoTransolver.0.100.mdlus
 
@@ -139,12 +142,13 @@ benchmark:
       checkpoint: *baseline_ckpt
       stats_path: *surface_stats
       kwargs:
+        # Model-weights files (one per member); NOT the checkpoint.0.<epoch>.pt training state.
         member_checkpoints:
-          - /path/to/run/checkpoints/checkpoint.0.96.pt
-          - /path/to/run/checkpoints/checkpoint.0.97.pt
-          - /path/to/run/checkpoints/checkpoint.0.98.pt
-          - /path/to/run/checkpoints/checkpoint.0.99.pt
-          - /path/to/run/checkpoints/checkpoint.0.100.pt
+          - /path/to/run/checkpoints/GeoTransolver.0.96.mdlus
+          - /path/to/run/checkpoints/GeoTransolver.0.97.mdlus
+          - /path/to/run/checkpoints/GeoTransolver.0.98.mdlus
+          - /path/to/run/checkpoints/GeoTransolver.0.99.mdlus
+          - /path/to/run/checkpoints/GeoTransolver.0.100.mdlus
         batch_resolution: 60000
         geometry_sampling: 300000
 
@@ -152,7 +156,10 @@ benchmark:
     - name: drivaerstar
       root: /path/to/drivaerstar/surface_files/class_F/val
       # flip_wss_sign controls the wall-shear-stress sign convention. The adapter default (True)
-      # targets DrivAerML-trained checkpoints; set it to match how your checkpoints were trained.
+      # negates DrivAerStar WSS to the DrivAerML convention; it is set False here because the
+      # GeoTransolver checkpoints in this example were trained on the NATIVE DrivAerStar WSS sign
+      # (the transformer_models pipeline). Match this to how YOUR checkpoints were trained — a
+      # mismatch silently flips WSS, and therefore drag and lift, for every case.
       kwargs: { inference_domain: surface, flip_wss_sign: false }
 
   reproducibility:

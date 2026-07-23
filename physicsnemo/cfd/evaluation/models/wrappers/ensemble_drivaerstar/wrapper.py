@@ -33,13 +33,15 @@ is a meaningful epistemic uncertainty (subject to the caveat below).
 Completely independent :class:`CFDModel` subclass (no inheritance from the other GeoTransolver
 wrappers). It composes the shared GeoTransolver + ``TransolverDataPipe`` plumbing in
 :mod:`physicsnemo.cfd.evaluation.models.common_wrapper_utils.geotransolver_runtime`, holding one
-backbone per member. :meth:`predict_ensemble` runs every member on the shared per-case batch and
-**yields** their raw outputs one at a time (a generator, so device memory stays O(field) rather than
-O(K × field)); the engine's
+backbone per member. :meth:`predict_ensemble` runs up to ``run.uq.num_samples`` members on the
+shared per-case batch and **yields** their raw outputs one at a time (a generator, so device memory
+stays O(field) rather than O(K × field)); the engine's
 :func:`~physicsnemo.cfd.evaluation.benchmarks.uq_inference.run_sampling_inference` folds each into a
 streaming Welford mean + across-member (epistemic) std. All members share one per-case block
-partition so the spread is model-only. Because ``predict_ensemble`` yields exactly the member count,
-``run.uq.num_samples`` is ignored for this row.
+partition so the spread is model-only. ``run.uq.num_samples`` is honored as a budget:
+``min(num_samples, member_count)`` members run (a fixed-size ensemble cannot fabricate more distinct
+members than it holds; when ``num_samples`` exceeds the member count all members run and a warning is
+logged).
 
 It decorates ``transformer_models`` (physical-target) checkpoints, so predictions are
 re-standardized only — no dynamic-pressure re-dimensionalization
@@ -48,9 +50,11 @@ re-standardized only — no dynamic-pressure re-dimensionalization
 Model kwargs (``model.kwargs``):
 
 - ``member_checkpoints`` (list[str], **required**): the explicit member checkpoint files, one per
-  ensemble member (any number ``K``). Each must be a specific checkpoint file whose name encodes an
-  epoch (``checkpoint.0.<epoch>.pt`` / ``<Model>.0.<epoch>.mdlus``). List members from a single run
-  (snapshot ensemble) or from separate runs (true deep ensemble) — same code path either way.
+  ensemble member (any number ``K``). Each must be a specific **model-weights** file whose name
+  encodes an epoch (``<Model>.0.<epoch>.mdlus`` or a bare state-dict ``.pt``) — NOT the
+  ``checkpoint.0.<epoch>.pt`` training-state file; the exact file is loaded and a missing one
+  raises. List members from a single run (snapshot ensemble) or from separate runs (true deep
+  ensemble) — same code path either way.
 - plus the shared GeoTransolver runtime kwargs (``batch_resolution``, ``geometry_sampling``,
   ``cuda_bf16_autocast``; datapipe overrides; etc.); ``stats_path`` is the shared normalization.
 
@@ -148,7 +152,7 @@ class GeoTransolverEnsembleDrivAerStarWrapper(CFDModel):
         if not geotransolver_available():
             raise RuntimeError(
                 "GeoTransolverEnsembleDrivAerStarWrapper requires physicsnemo (GeoTransolver, "
-                "TransolverDataPipe, load_checkpoint)."
+                "TransolverDataPipe, load_model_weights)."
             )
         kw = dict(kwargs)
         member_checkpoints = kw.pop("member_checkpoints", None)
@@ -249,21 +253,32 @@ class GeoTransolverEnsembleDrivAerStarWrapper(CFDModel):
     def predict_ensemble(
         self, model_input: ModelInput, n: int
     ) -> Optional[Iterator[RawOutput]]:
-        """Yield one raw output per member (lazy generator), sharing one per-case permutation.
+        """Yield up to ``n`` member raw outputs (lazy generator), sharing one per-case permutation.
 
-        ``n`` (``run.uq.num_samples``) is intentionally ignored: the ensemble has a fixed number of
-        members and the engine iterates over exactly what is yielded. This is a **generator**, so
-        only one member's output is resident at a time — the engine's Welford accumulator consumes
-        each before the next is produced (O(field) device memory, not O(K × field)). All members use
-        the same fixed block-partition permutation so the spread is model-only.
+        ``n`` (``run.uq.num_samples``) is honored as a budget: this yields ``min(n, member_count)``
+        members. A fixed-size ensemble cannot fabricate more distinct members than it holds, so when
+        ``n`` exceeds the member count all members are used and a warning is logged (the two sampling
+        rows may then run different pass counts — e.g. 32 MC-Dropout passes vs 5 ensemble members).
+        This is a **generator**, so only one member's output is resident at a time — the engine's
+        Welford accumulator consumes each before the next is produced (O(field) device memory, not
+        O(K × field)). All members use the same fixed block-partition permutation so the spread is
+        model-only.
         """
         if not self._models or self._datapipe is None:
             raise RuntimeError(
                 "GeoTransolverEnsembleDrivAerStarWrapper: call load() first"
             )
+        k = min(int(n), len(self._models))
+        if int(n) > len(self._models):
+            _LOG.warning(
+                "num_samples=%d exceeds ensemble member count %d; using all %d members.",
+                int(n),
+                len(self._models),
+                len(self._models),
+            )
         perm = make_forward_permutation(model_input["batch"])
         return (
-            self._forward_member(model, model_input, perm) for model in self._models
+            self._forward_member(model, model_input, perm) for model in self._models[:k]
         )
 
     def predict(self, model_input: ModelInput) -> RawOutput:

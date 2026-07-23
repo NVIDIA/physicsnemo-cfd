@@ -64,7 +64,7 @@ try:
     from physicsnemo.datapipes.cae.transolver_datapipe import TransolverDataPipe
     from physicsnemo.distributed import DistributedManager
     from physicsnemo.experimental.models.geotransolver import GeoTransolver
-    from physicsnemo.utils import load_checkpoint
+    from physicsnemo.utils import load_model_weights
 
     _PHYSICSNEMO_AVAILABLE = True
 except ImportError:
@@ -115,7 +115,7 @@ DATAPIPE_KEYS = frozenset(
 
 
 def geotransolver_available() -> bool:
-    """True when physicsnemo (GeoTransolver, TransolverDataPipe, load_checkpoint) is importable."""
+    """True when physicsnemo (GeoTransolver, TransolverDataPipe, load_model_weights) is importable."""
     return _PHYSICSNEMO_AVAILABLE
 
 
@@ -209,19 +209,23 @@ def parse_runtime_kwargs(kw: dict[str, Any], device: str) -> GeoTransolverRuntim
 
 
 def ensure_distributed_initialized() -> None:
-    """Initialize ``DistributedManager`` once (``load_checkpoint`` relies on it)."""
+    """Initialize ``DistributedManager`` once (the weight loaders rely on it)."""
     if not DistributedManager.is_initialized():
         DistributedManager.initialize()
 
 
 def resolve_checkpoint_file(checkpoint_path: str) -> tuple[Path, int]:
-    """Resolve a checkpoint knob to ``(directory, epoch)`` from a **specific file name**.
+    """Resolve a checkpoint knob to ``(directory, epoch)`` from a **specific, existing file**.
 
     The config must point ``checkpoint`` at a concrete checkpoint file whose name encodes the
     epoch (``<Model>.0.<epoch>.mdlus`` or ``checkpoint.0.<epoch>.pt``) rather than a directory.
     This makes the loaded epoch a single source of truth (no silent "latest epoch" fallback and
-    no drift between the backbone and a separately-loaded head). ``physicsnemo.load_checkpoint``
-    itself takes the parent directory plus the epoch, which are both derived here.
+    no drift between the backbone and a separately-loaded head).
+
+    The file **must exist**: a mistyped or missing checkpoint raises :class:`FileNotFoundError`
+    here rather than letting the loader log-and-skip and silently return a randomly-initialized
+    model. Validation order is name-shape first (so a malformed config gives a clear message even
+    if the file happens to be absent), then existence.
     """
     ckpt = Path(checkpoint_path)
     if not checkpoint_path:
@@ -240,6 +244,11 @@ def resolve_checkpoint_file(checkpoint_path: str) -> tuple[Path, int]:
             f"cannot parse an epoch from checkpoint file name {ckpt.name!r}; expected "
             "``<Model>.0.<epoch>.mdlus`` or ``checkpoint.0.<epoch>.pt``."
         )
+    if not ckpt.is_file():
+        raise FileNotFoundError(
+            f"checkpoint file {checkpoint_path!r} does not exist. A missing/mistyped checkpoint "
+            "would otherwise be skipped by the loader, leaving a randomly-initialized model."
+        )
     return ckpt.parent, epoch
 
 
@@ -257,9 +266,13 @@ def build_geotransolver_backbone(
 
     Set ``concrete_dropout=True`` to build the backbone with learned per-layer
     :class:`~physicsnemo.nn.ConcreteDropout` layers, matching a checkpoint trained with
-    ``model.concrete_dropout=true`` (required for the MC-Dropout wrapper: without it
-    ``load_checkpoint`` would reject the extra ``p_logit`` parameters). The returned model is in
-    ``eval()`` mode; callers that want stochastic passes must re-enable the dropout layers.
+    ``model.concrete_dropout=true`` (required for the MC-Dropout wrapper: without it the loader
+    would reject the extra ``p_logit`` parameters). The returned model is in ``eval()`` mode;
+    callers that want stochastic passes must re-enable the dropout layers.
+
+    The exact file named by ``checkpoint_path`` is loaded (via
+    :func:`physicsnemo.utils.load_model_weights`); a missing file raises rather than silently
+    leaving the freshly-constructed random weights in place.
     """
     model_kw = dict(
         DEFAULT_GEOTRANSOLVER_VOLUME_KW
@@ -268,15 +281,16 @@ def build_geotransolver_backbone(
     )
     if concrete_dropout:
         model_kw["concrete_dropout"] = True
-    checkpoint_dir, epoch = resolve_checkpoint_file(checkpoint_path)
+    # Strict: rejects a directory / epoch-less name and raises FileNotFoundError for a missing file.
+    resolve_checkpoint_file(checkpoint_path)
 
     ensure_distributed_initialized()
     dev = torch.device(device)
     model = GeoTransolver(**model_kw)
+    # Load the exact named file (not a dir + reconstructed name), so the checkpoint the config
+    # points at is the one that is loaded, and a missing file raises here.
     with trusted_torch_load_context():
-        _ = load_checkpoint(
-            path=str(checkpoint_dir), models=model, epoch=epoch, device=dev
-        )
+        load_model_weights(model, checkpoint_path, device=dev)
     model = model.to(dev)
     model.eval()
     return model

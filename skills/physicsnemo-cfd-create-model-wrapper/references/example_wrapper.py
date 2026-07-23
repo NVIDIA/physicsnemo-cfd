@@ -38,7 +38,7 @@ For UQ wrappers there is a fifth: (5) the UQ CONTRACT (see the two UQ examples a
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar, Iterable, Optional
 
 import numpy as np
 import torch
@@ -384,9 +384,14 @@ class ExampleSamplingUQWrapper(CFDModel):
         reproducibility, so do NOT freeze the RNG yourself;
       * ``decode_outputs`` maps one raw pass to physical predictions (the engine calls it
         once per pass, then aggregates);
-      * OPTIONAL fast path: implement ``predict_ensemble(model_input, n)`` to return all
-        passes/members in one call (an ensemble returns one output per member and ignores
-        ``n``). No ``decode_distribution`` is needed — the engine builds the distribution.
+      * override ``predict_deterministic`` when ``predict`` is stochastic, so ``run.uq.enabled=
+        false`` yields a true point prediction (MC-Dropout disables dropout for one pass; an
+        ensemble returns a single member);
+      * OPTIONAL multi-pass path: implement ``predict_ensemble(model_input, n)`` to yield the
+        passes/members as an ``Iterable[RawOutput]`` (prefer a lazy generator so only one output
+        is device-resident at a time). Honor ``n``: yield ``n`` passes for a per-model sampler, or
+        ``min(n, member_count)`` members for a fixed-size ensemble. No ``decode_distribution`` is
+        needed — the engine builds the distribution.
 
     The number of passes is the benchmark-wide ``run.uq.num_samples`` (NOT a model kwarg), so
     every sampling method is compared at the same budget.
@@ -443,18 +448,42 @@ class ExampleSamplingUQWrapper(CFDModel):
             }
         return raw
 
+    def predict_deterministic(
+        self, model_input: torch.Tensor
+    ) -> dict[str, torch.Tensor]:
+        """One DETERMINISTIC pass for ``run.uq.enabled=false`` (no dropout / one member).
+
+        The default ``CFDModel.predict_deterministic`` just calls ``predict``; override it whenever
+        ``predict`` is stochastic. MC-Dropout: flip the dropout modules to ``eval()`` for one pass
+        then restore them. Ensemble: return a single member. Otherwise turning UQ off would still
+        return one random draw instead of a point prediction.
+        """
+        # MC-Dropout sketch:
+        #   dropouts = [m for m in self._models[0].modules() if isinstance(m, torch.nn.Dropout)]
+        #   were_training = [m.training for m in dropouts]
+        #   for m in dropouts: m.eval()
+        #   try: return self.predict(model_input)
+        #   finally:
+        #       for m, t in zip(dropouts, were_training): m.train(t)
+        return self.predict(model_input)
+
     def predict_ensemble(
         self, model_input: torch.Tensor, n: int
-    ) -> Optional[list[dict[str, torch.Tensor]]]:
-        """Optional fast path: return every pass/member in one call.
+    ) -> Optional[Iterable[dict[str, torch.Tensor]]]:
+        """Optional multi-pass path: YIELD each pass/member (prefer a lazy generator).
 
-        For a deep ensemble, return one raw output per member (``n`` is ignored). For
-        multi-pass single-model methods you may batch ``n`` passes here. Return ``None`` to
-        let the engine fall back to calling ``predict`` ``n`` times.
+        Return an ``Iterable[RawOutput]`` (ideally a generator, so only one output is device-
+        resident at a time — a ``list`` materializes all ``n`` at once and can OOM). Honor ``n``:
+        yield ``n`` stochastic passes for a per-model sampler, or ``min(n, member_count)`` members
+        for a fixed-size ensemble (it cannot fabricate more distinct members than it holds). Return
+        ``None`` to let the engine fall back to calling ``predict`` ``n`` times.
         """
         if not self._models:
             return None
-        return [self.predict(model_input) for _ in self._models]
+        k = min(
+            n, len(self._models)
+        )  # ensemble: honor the budget, capped at member count
+        return (self.predict(model_input) for _ in range(k))
 
     def decode_outputs(
         self,

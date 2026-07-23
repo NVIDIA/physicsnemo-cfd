@@ -27,22 +27,31 @@ from physicsnemo.cfd.evaluation.models.common_wrapper_utils.geotransolver_runtim
     make_forward_permutation,
     resolve_checkpoint_file,
 )
+from physicsnemo.cfd.evaluation.models.model_registry import CFDModel
 
 
 # --------------------------------------------------------------------------------------------
-# Checkpoint routing: a specific file (epoch-in-name) -> (dir, epoch); directory / bad name reject
+# Checkpoint routing: a specific, EXISTING file (epoch-in-name) -> (dir, epoch); everything else
+# (directory / bad name / missing file) rejects rather than silently loading a random model.
 # --------------------------------------------------------------------------------------------
 
 
 def test_resolve_checkpoint_file_parses_epoch(tmp_path) -> None:
-    """A specific checkpoint file name resolves to ``(directory, epoch)``."""
+    """An existing checkpoint file name resolves to ``(directory, epoch)``."""
     ckpt = tmp_path / "GeoTransolver.0.30.mdlus"
-    ckpt.write_bytes(b"")  # existence not required, but harmless
+    ckpt.write_bytes(b"")
     directory, epoch = resolve_checkpoint_file(str(ckpt))
     assert directory == tmp_path and epoch == 30
-    # Nonexistent path still resolves purely from the file name (no silent latest-epoch fallback).
-    d2, e2 = resolve_checkpoint_file(str(tmp_path / "checkpoint.0.100.pt"))
+    pt = tmp_path / "checkpoint.0.100.pt"
+    pt.write_bytes(b"")
+    d2, e2 = resolve_checkpoint_file(str(pt))
     assert d2 == tmp_path and e2 == 100
+
+
+def test_resolve_checkpoint_file_missing_file_raises(tmp_path) -> None:
+    """A well-named but MISSING checkpoint raises FileNotFoundError (no random-model fallback)."""
+    with pytest.raises(FileNotFoundError):
+        resolve_checkpoint_file(str(tmp_path / "GeoTransolver.0.30.mdlus"))
 
 
 def test_resolve_checkpoint_file_rejects_directory_and_epochless(tmp_path) -> None:
@@ -54,7 +63,83 @@ def test_resolve_checkpoint_file_rejects_directory_and_epochless(tmp_path) -> No
     with pytest.raises(ValueError):
         resolve_checkpoint_file(
             str(tmp_path / "GeoTransolver.mdlus")
-        )  # no epoch in name
+        )  # no epoch in name (name-shape checked before existence)
+
+
+# --------------------------------------------------------------------------------------------
+# Deterministic-prediction hook: run.uq.enabled=false must give a POINT prediction even for a
+# stochastic sampler (MC-Dropout keeps dropout active in predict()).
+# --------------------------------------------------------------------------------------------
+
+
+class _EchoWrapper(CFDModel):
+    OUTPUT_LOCATION = "cell"
+
+    @property
+    def output_location(self):
+        return self.OUTPUT_LOCATION
+
+    def load(self, *a, **k):
+        return self
+
+    def prepare_inputs(self, case):
+        return None
+
+    def predict(self, model_input):
+        return model_input
+
+    def decode_outputs(self, raw_output, case, model_input=None):
+        return {"pressure": raw_output}
+
+
+class _StochasticDropoutWrapper(CFDModel):
+    OUTPUT_LOCATION = "cell"
+    SUPPORTS_UQ = True
+    UQ_METHOD = "sampling"
+
+    def __init__(self):
+        self.drop = torch.nn.Dropout(p=0.5)
+        self.drop.train()  # stochastic, as MC-Dropout keeps it
+
+    @property
+    def output_location(self):
+        return self.OUTPUT_LOCATION
+
+    def load(self, *a, **k):
+        return self
+
+    def prepare_inputs(self, case):
+        return None
+
+    def predict(self, model_input):
+        return self.drop(torch.ones(4096))
+
+    def decode_outputs(self, raw_output, case, model_input=None):
+        return {"pressure": raw_output}
+
+    def predict_deterministic(self, model_input):
+        was_training = self.drop.training
+        self.drop.eval()
+        try:
+            return self.predict(model_input)
+        finally:
+            self.drop.train(was_training)
+
+
+def test_predict_deterministic_default_delegates_to_predict() -> None:
+    """The base hook simply calls predict() (correct for deterministic / analytic wrappers)."""
+    w = _EchoWrapper()
+    assert w.predict_deterministic("x") == w.predict("x") == "x"
+
+
+def test_predict_deterministic_override_removes_stochasticity() -> None:
+    """A sampling wrapper's override disables dropout for one pass, then restores stochastic state."""
+    w = _StochasticDropoutWrapper()
+    det = w.predict_deterministic(None)
+    assert torch.all(det == 1.0)  # dropout off -> identity, no zeros
+    assert w.drop.training is True  # stochastic state restored for subsequent UQ passes
+    torch.manual_seed(0)
+    assert torch.any(w.predict(None) == 0.0)  # a stochastic pass zeros some entries
 
 
 # --------------------------------------------------------------------------------------------

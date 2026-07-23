@@ -385,8 +385,9 @@ def run_sampling_inference(
 ) -> dict[str, FieldDistribution]:
     """Drive ``n`` stochastic passes and aggregate to a distribution per field.
 
-    Uses ``wrapper.predict_ensemble(model_input, n)`` when available (single batched call),
-    else calls ``wrapper.predict(model_input)`` ``n`` times, reseeding per pass from
+    Uses ``wrapper.predict_ensemble(model_input, n)`` when it returns an iterable (streamed one
+    output at a time, e.g. a generator over ensemble members), else calls
+    ``wrapper.predict(model_input)`` ``n`` times, reseeding per pass from
     ``(run_seed, case_id, pass_index)`` so each pass has a distinct, reproducible RNG state.
     """
     if n < 1:

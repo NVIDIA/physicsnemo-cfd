@@ -147,7 +147,7 @@ class GeoTransolverMCDropoutDrivAerStarWrapper(CFDModel):
         if not geotransolver_available():
             raise RuntimeError(
                 "GeoTransolverMCDropoutDrivAerStarWrapper requires physicsnemo (GeoTransolver, "
-                "TransolverDataPipe, load_checkpoint)."
+                "TransolverDataPipe, load_model_weights)."
             )
         if not _CONCRETE_DROPOUT_AVAILABLE:
             raise RuntimeError(
@@ -275,6 +275,29 @@ class GeoTransolverMCDropoutDrivAerStarWrapper(CFDModel):
             batch=model_input["batch"],
             inference_mode=self._inference_mode,
         )
+
+    def predict_deterministic(self, model_input: ModelInput) -> RawOutput:
+        """One dropout-free forward pass (used when ``run.uq.enabled`` is off).
+
+        MC-Dropout's :meth:`predict` is stochastic (the ConcreteDropout layers stay in ``train()``),
+        so the base :meth:`CFDModel.predict_deterministic` (which delegates to :meth:`predict`) would
+        return a single random draw. Here we temporarily flip the ConcreteDropout modules back to
+        ``eval()`` — their deterministic expectation — run one pass, then restore their stochastic
+        state, so ``run.uq.enabled=false`` yields a genuine point prediction.
+        """
+        if self._model is None:
+            raise RuntimeError(
+                "GeoTransolverMCDropoutDrivAerStarWrapper: call load() first"
+            )
+        dropouts = [m for m in self._model.modules() if isinstance(m, ConcreteDropout)]
+        were_training = [m.training for m in dropouts]
+        for m in dropouts:
+            m.eval()
+        try:
+            return self.predict(model_input)
+        finally:
+            for m, was_training in zip(dropouts, were_training):
+                m.train(was_training)
 
     def decode_outputs(
         self,

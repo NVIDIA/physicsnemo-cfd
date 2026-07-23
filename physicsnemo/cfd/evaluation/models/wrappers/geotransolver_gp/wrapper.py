@@ -44,11 +44,12 @@ both are named explicitly:
   (``GeoTransolver.0.<epoch>.mdlus``); the epoch is parsed from that name. Pointing at a directory
   (or an epoch-less name) is rejected — this removes the old ``checkpoint_epoch`` kwarg and the risk
   of the backbone drifting to a "latest" epoch.
-- ``gp_head_checkpoint`` should point at the matching ``FieldGPHead.0.<epoch>.pt``. Its directory /
-  epoch drive the load, so the head file named here is exactly the one read (no cross-validation
-  against the backbone — passing matching checkpoints is the caller's responsibility). It is
-  **optional**: when omitted the wrapper falls back to the backbone's sibling ``FieldGPHead`` at the
-  same epoch. Either way the exact head file it loads is logged.
+- ``gp_head_checkpoint`` should point at the matching ``FieldGPHead.0.<epoch>.pt``. The **exact
+  file named here is loaded** (via :func:`physicsnemo.utils.load_model_weights`), so a missing or
+  mistyped path raises rather than silently leaving the head randomly initialized (no cross-
+  validation against the backbone — passing matching checkpoints is the caller's responsibility).
+  It is **optional**: when omitted the wrapper falls back to the backbone's sibling
+  ``FieldGPHead.0.<epoch>.pt`` (which must exist). Either way the exact head file it loads is logged.
 
 Model kwargs (``model.kwargs`` in config), matching the trained checkpoint's GP settings:
 
@@ -105,7 +106,7 @@ from physicsnemo.cfd.evaluation.models.model_registry import (
 
 try:
     from physicsnemo.experimental.uq import FieldGPHead
-    from physicsnemo.utils import load_checkpoint
+    from physicsnemo.utils import load_model_weights
 
     _GP_AVAILABLE = True
 except ImportError:
@@ -160,7 +161,6 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
         self._cfg: GeoTransolverRuntimeConfig = GeoTransolverRuntimeConfig()
         self._head: Optional[FieldGPHead] = None
         self._gp_kw: dict[str, Any] = {}
-        self._checkpoint_dir: Optional[str] = None
         self._checkpoint_epoch: Optional[int] = None
         self._head_checkpoint: Optional[str] = None
         self._gp_chunk_size: int = 51200
@@ -248,20 +248,24 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
             inference_mode="surface",
         )
 
-        # The backbone + head are loaded together by ``load_checkpoint(dir, epoch)``. Derive that
-        # dir + epoch from ``gp_head_checkpoint`` when given (so the head file the user names is the
-        # one read), else from the backbone ``checkpoint``. No cross-validation between the two —
-        # passing matching checkpoints is the caller's responsibility.
+        # The head is loaded from the EXACT ``gp_head_checkpoint`` file when given (so the file the
+        # user names is the one read), else from the backbone's sibling ``FieldGPHead.0.<epoch>.pt``.
+        # Either way the file must exist (no cross-validation of contents — passing matching
+        # checkpoints is the caller's responsibility).
         if head_ckpt_arg is not None:
-            ckpt_dir, ckpt_epoch = resolve_checkpoint_file(str(head_ckpt_arg))
+            # resolve_checkpoint_file validates existence + the epoch-in-name shape.
+            _, self._checkpoint_epoch = resolve_checkpoint_file(str(head_ckpt_arg))
             self._head_checkpoint = str(Path(head_ckpt_arg))
         else:
-            ckpt_dir, ckpt_epoch = resolve_checkpoint_file(checkpoint_path)
+            ckpt_dir, self._checkpoint_epoch = resolve_checkpoint_file(checkpoint_path)
             self._head_checkpoint = str(
-                Path(ckpt_dir) / f"FieldGPHead.0.{ckpt_epoch}.pt"
+                Path(ckpt_dir) / f"FieldGPHead.0.{self._checkpoint_epoch}.pt"
             )
-        self._checkpoint_dir = str(ckpt_dir)
-        self._checkpoint_epoch = ckpt_epoch
+            if not Path(self._head_checkpoint).is_file():
+                raise FileNotFoundError(
+                    "GP head checkpoint not found next to the backbone: "
+                    f"{self._head_checkpoint!r}. Pass model.kwargs.gp_head_checkpoint explicitly."
+                )
         log_inference(
             "geotransolver_gp",
             f"GP checkpoints -> backbone: {checkpoint_path} | head: {self._head_checkpoint}",
@@ -289,10 +293,10 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
         """Probe the backbone feature dim on ``batch``, build the GP head, load ONLY its weights.
 
         The backbone was already loaded from its own ``checkpoint`` in :meth:`load`; here we load
-        just the ``FieldGPHead`` from the head checkpoint's directory + epoch (which resolves to the
-        exact ``FieldGPHead.0.<epoch>.pt`` file named by ``gp_head_checkpoint``). Passing only the
-        head to ``load_checkpoint`` avoids reloading — or silently overwriting — the backbone with a
-        different one that happens to sit in the head's directory.
+        just the ``FieldGPHead`` from the EXACT ``self._head_checkpoint`` file (the one named by
+        ``gp_head_checkpoint``, or the validated backbone sibling). Loading only the head from its
+        own file avoids reloading — or silently overwriting — the backbone, and a missing file
+        raises rather than leaving the head randomly initialized.
         """
         dev = torch.device(self._cfg.device)
         feature_dim = self._probe_feature_dim(batch)
@@ -302,18 +306,14 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
             **self._gp_kw,
         ).to(dev)
         with trusted_torch_load_context():
-            loaded_epoch = load_checkpoint(
-                path=self._checkpoint_dir,
-                models=[self._head],
-                device=dev,
-                epoch=self._checkpoint_epoch,
-            )
+            load_model_weights(self._head, self._head_checkpoint, device=dev)
         self._model.eval()
         self._head.eval()
         self._head.likelihood.eval()
         log_inference(
             "geotransolver_gp",
-            f"Loaded FieldGPHead (epoch {loaded_epoch}); feature_dim={feature_dim}, "
+            f"Loaded FieldGPHead from {self._head_checkpoint} "
+            f"(epoch {self._checkpoint_epoch}); feature_dim={feature_dim}, "
             f"gp_dim={getattr(self._head, 'gp_input_dim', '?')}",
         )
 

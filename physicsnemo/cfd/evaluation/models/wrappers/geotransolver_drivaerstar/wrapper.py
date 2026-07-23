@@ -112,7 +112,7 @@ class GeoTransolverDrivAerStarWrapper(CFDModel):
         if not geotransolver_available():
             raise RuntimeError(
                 "GeoTransolver wrapper requires physicsnemo (GeoTransolver, "
-                "TransolverDataPipe, load_checkpoint)."
+                "TransolverDataPipe, load_model_weights)."
             )
         kw = dict(kwargs)
         self._inference_mode = coerce_inference_domain_or_default(

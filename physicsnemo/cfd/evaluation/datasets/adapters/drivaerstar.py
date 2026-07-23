@@ -110,7 +110,13 @@ class DrivAerStarAdapter(DatasetAdapter):
     - ``pressure_field_name``: source pressure array name (default ``"Pressure"``).
     - ``wss_component_names``: three source WSS scalar names (default
       ``("WallShearStressi", "WallShearStressj", "WallShearStressk")``).
-    - ``flip_wss_sign``: negate combined WSS to match DrivAerML (default ``True``).
+    - ``flip_wss_sign``: wall-shear-stress **sign convention** knob. When ``True`` (default) the
+      combined WSS is negated so the DrivAerStar ground truth matches the DrivAerML sign
+      convention — use this for DrivAerML-convention checkpoints. Set it ``False`` for checkpoints
+      trained directly on the **native** DrivAerStar WSS sign (e.g. the GeoTransolver
+      ``transformer_models`` checkpoints scored in the UQ example config, which is why that config
+      sets ``flip_wss_sign: false``). This MUST match how your checkpoints were trained; a mismatch
+      silently flips WSS — and therefore drag and lift — for every case.
     - ``remove_normals_area``: drop explicit ``Normals`` / ``Area`` arrays (default ``True``).
     - ``gt_data_type``: ``auto`` / ``cell`` / ``point`` passed to GT extraction
       (default ``"cell"``; DrivAerStar fields are cell-centered).

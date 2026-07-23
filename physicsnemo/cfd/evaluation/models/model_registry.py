@@ -17,7 +17,7 @@
 """CFDModel base class and registry for model wrappers."""
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Literal, Optional, Type
+from typing import Any, ClassVar, Iterable, Literal, Optional, Type
 
 from physicsnemo.cfd.evaluation.datasets.schema import (
     CanonicalCase,
@@ -106,6 +106,21 @@ class CFDModel(ABC):
         """Run forward pass; return raw model output."""
         ...
 
+    def predict_deterministic(self, model_input: ModelInput) -> RawOutput:
+        """Single **deterministic** forward pass (used when ``run.uq.enabled`` is off).
+
+        The engine calls this (not :meth:`predict`) on the deterministic path so that turning UQ
+        off yields a true point prediction for *every* wrapper. The default simply delegates to
+        :meth:`predict`, which is correct for deterministic and analytic wrappers (their
+        :meth:`predict` is already deterministic).
+
+        **Sampling** wrappers whose :meth:`predict` is stochastic (e.g. MC-Dropout keeps dropout
+        masks active) MUST override this to remove the stochasticity — e.g. disable dropout for one
+        pass, or return a single ensemble member — otherwise ``run.uq.enabled=false`` would still
+        return a random draw rather than a deterministic prediction.
+        """
+        return self.predict(model_input)
+
     @abstractmethod
     def decode_outputs(
         self,
@@ -139,21 +154,24 @@ class CFDModel(ABC):
 
     def predict_ensemble(
         self, model_input: ModelInput, n: int
-    ) -> Optional[list[RawOutput]]:
-        """Optional fast-path for ``UQ_METHOD="sampling"`` wrappers.
+    ) -> Optional[Iterable[RawOutput]]:
+        """Optional multi-pass path for ``UQ_METHOD="sampling"`` wrappers.
 
-        Return ``n`` raw outputs (stochastic passes or ensemble members) in one call, letting
-        the engine skip its per-pass Python loop. **Only implement this when all ``n`` raw
-        outputs fit simultaneously in the compute device's memory (typically GPU), since the
-        returned list holds them all at once** — for full-mesh CFD fields that is usually ``n×``
-        the single-pass footprint and will OOM for large ``n``.
+        Return an **iterable of raw outputs** (stochastic passes or ensemble members) — ideally a
+        lazy generator — that the engine iterates, folding each into a streaming Welford
+        mean/variance
+        (:func:`~physicsnemo.cfd.evaluation.benchmarks.uq_inference.run_sampling_inference`). A
+        generator keeps only **one** raw output resident on the compute device at a time, so device
+        memory stays O(field), not O(n × field); a plain ``list`` materializes all outputs at once
+        and can OOM for large ``n`` / full-mesh fields, so prefer a generator.
 
-        Return ``None`` (the default, used by all shipped sampling wrappers) to have the engine
-        instead call :meth:`predict` ``n`` times and stream the passes through Welford
-        aggregation (:func:`~physicsnemo.cfd.evaluation.benchmarks.uq_inference.run_sampling_inference`):
-        only **one** raw output is resident on the GPU at a time, and the running mean/variance
-        accumulators are a handful of host (CPU) arrays of one field's size — i.e. memory is
-        O(1) in ``n``. Prefer this default unless you have measured that the batched path fits.
+        ``n`` is the requested budget (``run.uq.num_samples``). Honor it: yield ``n`` stochastic
+        passes for a per-model sampler (e.g. MC-Dropout), or ``min(n, member_count)`` members for a
+        fixed-size ensemble (which cannot fabricate more distinct members than it holds).
+
+        Return ``None`` (the default) to have the engine instead call :meth:`predict` ``n`` times
+        (reseeding per pass) and stream those — appropriate for a stochastic :meth:`predict` where a
+        batched path offers no benefit.
         """
         return None
 

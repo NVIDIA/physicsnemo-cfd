@@ -257,3 +257,39 @@ def test_run_sampling_inference_consumes_generator_streaming() -> None:
     assert np.allclose(d["pressure"].mean, [3.0, 10.0])
     assert np.allclose(d["pressure"].epistemic_std, [np.sqrt(8 / 3), 0.0])
     assert w.max_live == 1  # streaming: only one member output alive at any time
+
+
+class _BudgetEnsembleWrapper:
+    """Fixed-size ensemble that honors the budget: yields ``min(n, member_count)`` members."""
+
+    SUPPORTS_UQ = True
+    UQ_METHOD = "sampling"
+
+    def __init__(self, members):
+        self._members = members
+        self.yielded = 0
+
+    def predict_ensemble(self, model_input, n):
+        k = min(int(n), len(self._members))
+        for m in self._members[:k]:
+            self.yielded += 1
+            yield m
+
+    def predict(self, model_input):  # pragma: no cover - ensemble path used
+        raise AssertionError("ensemble path should be used")
+
+    def decode_outputs(self, raw, case, model_input=None):
+        return {"pressure": raw}
+
+
+def test_ensemble_predict_ensemble_honors_num_samples_budget() -> None:
+    """The ensemble caps at its member count but otherwise uses only ``n`` members (honors budget)."""
+    members = [np.array([float(i)]) for i in range(5)]
+    # n < K: only the first n members contribute.
+    w_small = _BudgetEnsembleWrapper(members)
+    run_sampling_inference(w_small, None, None, n=2, run_seed=0, case_id="c")
+    assert w_small.yielded == 2
+    # n > K: cannot fabricate members -> all K used.
+    w_big = _BudgetEnsembleWrapper(members)
+    run_sampling_inference(w_big, None, None, n=32, run_seed=0, case_id="c")
+    assert w_big.yielded == 5
