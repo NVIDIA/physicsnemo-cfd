@@ -14,20 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Register built-in evaluation metrics backed by physicsnemo.cfd.postprocessing_tools."""
+from physicsnemo.cfd.evaluation.models.wrappers.ensemble_drivaerstar.wrapper import (
+    GeoTransolverEnsembleDrivAerStarWrapper,
+)
 
-from physicsnemo.cfd.evaluation.metrics.builtin.forces import register_force_metrics
-from physicsnemo.cfd.evaluation.metrics.builtin.l2 import register_l2_metrics
-from physicsnemo.cfd.evaluation.metrics.builtin.physics import register_physics_metrics
-from physicsnemo.cfd.evaluation.metrics.builtin.uq import register_uq_metrics
-
-
-def register_all_builtin_metrics() -> None:
-    """Idempotent: register all default metric names."""
-    register_l2_metrics()
-    register_force_metrics()
-    register_physics_metrics()
-    register_uq_metrics()
-
-
-register_all_builtin_metrics()
+__all__ = ["GeoTransolverEnsembleDrivAerStarWrapper"]

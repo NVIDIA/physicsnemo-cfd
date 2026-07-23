@@ -17,10 +17,11 @@
 """CFDModel base class and registry for model wrappers."""
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Literal, Optional, Type
+from typing import Any, ClassVar, Iterable, Literal, Optional, Type
 
 from physicsnemo.cfd.evaluation.datasets.schema import (
     CanonicalCase,
+    FieldDistribution,
     InferenceDomain,
     normalize_inference_domain_str,
 )
@@ -51,6 +52,18 @@ class CFDModel(ABC):
     OUTPUT_LOCATION: ClassVar[OutputLocation]
     INFERENCE_DOMAIN: ClassVar[InferenceDomain | None] = "surface"
     REQUIRES_REMOTE_ASSETS: ClassVar[bool] = True
+
+    #: Whether this wrapper produces a predictive *distribution* (uncertainty), not just a
+    #: point estimate. Deterministic wrappers leave this ``False``; UQ metrics then report
+    #: ``NaN`` for them (consistent with the engine's recoverable-metric behavior).
+    SUPPORTS_UQ: ClassVar[bool] = False
+    #: How the predictive distribution is produced:
+    #: ``"analytic"`` — one forward pass emits the distribution/params (GP, mean-variance,
+    #: evidential); the wrapper overrides :meth:`decode_distribution`.
+    #: ``"sampling"`` — the distribution is built from statistics over ``N`` stochastic
+    #: passes / ensemble members; the engine drives the passes and aggregates.
+    #: ``"none"`` — deterministic.
+    UQ_METHOD: ClassVar[Literal["none", "analytic", "sampling"]] = "none"
 
     @classmethod
     def inference_domain_from_kwargs(
@@ -93,6 +106,21 @@ class CFDModel(ABC):
         """Run forward pass; return raw model output."""
         ...
 
+    def predict_deterministic(self, model_input: ModelInput) -> RawOutput:
+        """Single **deterministic** forward pass (used when ``run.uq.enabled`` is off).
+
+        The engine calls this (not :meth:`predict`) on the deterministic path so that turning UQ
+        off yields a true point prediction for *every* wrapper. The default simply delegates to
+        :meth:`predict`, which is correct for deterministic and analytic wrappers (their
+        :meth:`predict` is already deterministic).
+
+        **Sampling** wrappers whose :meth:`predict` is stochastic (e.g. MC-Dropout keeps dropout
+        masks active) MUST override this to remove the stochasticity — e.g. disable dropout for one
+        pass, or return a single ensemble member — otherwise ``run.uq.enabled=false`` would still
+        return a random draw rather than a deterministic prediction.
+        """
+        return self.predict(model_input)
+
     @abstractmethod
     def decode_outputs(
         self,
@@ -106,6 +134,46 @@ class CFDModel(ABC):
         align with inference geometry (e.g. interpolation / subsampling in xmgn/fignet).
         """
         ...
+
+    def decode_distribution(
+        self,
+        raw_output: RawOutput,
+        case: CanonicalCase,
+        model_input: Optional[ModelInput] = None,
+    ) -> dict[str, "FieldDistribution"]:
+        """Map raw output to a per-field predictive distribution (physical units).
+
+        **Analytic** UQ wrappers (``UQ_METHOD="analytic"``, e.g. a GP head) override this to
+        return :class:`~physicsnemo.cfd.evaluation.datasets.schema.FieldDistribution` with a
+        real ``std`` / ``epistemic_std``. The default wraps :meth:`decode_outputs` as
+        **degenerate** distributions (``std=None``) so callers can uniformly request a
+        distribution from any wrapper.
+        """
+        preds = self.decode_outputs(raw_output, case, model_input)
+        return {k: FieldDistribution(mean=v) for k, v in preds.items()}
+
+    def predict_ensemble(
+        self, model_input: ModelInput, n: int
+    ) -> Optional[Iterable[RawOutput]]:
+        """Optional multi-pass path for ``UQ_METHOD="sampling"`` wrappers.
+
+        Return an **iterable of raw outputs** (stochastic passes or ensemble members) — ideally a
+        lazy generator — that the engine iterates, folding each into a streaming Welford
+        mean/variance
+        (:func:`~physicsnemo.cfd.evaluation.benchmarks.uq_inference.run_sampling_inference`). A
+        generator keeps only **one** raw output resident on the compute device at a time, so device
+        memory stays O(field), not O(n × field); a plain ``list`` materializes all outputs at once
+        and can OOM for large ``n`` / full-mesh fields, so prefer a generator.
+
+        ``n`` is the requested budget (``run.uq.num_samples``). Honor it: yield ``n`` stochastic
+        passes for a per-model sampler (e.g. MC-Dropout), or ``min(n, member_count)`` members for a
+        fixed-size ensemble (which cannot fabricate more distinct members than it holds).
+
+        Return ``None`` (the default) to have the engine instead call :meth:`predict` ``n`` times
+        (reseeding per pass) and stream those — appropriate for a stochastic :meth:`predict` where a
+        batched path offers no benefit.
+        """
+        return None
 
 
 def register_model(name: str, wrapper_class: Type[CFDModel]) -> None:

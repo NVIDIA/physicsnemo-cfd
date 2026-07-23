@@ -93,6 +93,36 @@ class MetricsCacheConfig:
 
 
 @dataclass
+class UQConfig:
+    """Uncertainty-quantification controls for probabilistic benchmarking.
+
+    Attributes
+    ----------
+    enabled : bool
+        Master switch. When ``False`` (default), sampling wrappers run their single
+        deterministic ``predict`` path and UQ metrics report ``NaN`` — behavior is identical
+        to the pre-UQ engine.
+    num_samples : int
+        Number of stochastic passes / ensemble members the engine drives for
+        ``UQ_METHOD="sampling"`` wrappers (MC-Dropout, ensembles).
+        Ignored by ``UQ_METHOD="analytic"`` wrappers (GP), which emit the distribution in one
+        pass. Enters the metrics-cache fingerprint so cached sampling results are invalidated
+        when it changes.
+    retain_samples : bool
+        Keep per-point per-pass samples on the :class:`FieldDistribution` (for sampling-based
+        metrics such as CRPS). Default ``False`` — only streaming mean/variance are kept.
+    device_metrics : bool
+        Reserved for the on-device pooled-metric fast-path. Currently a
+        no-op placeholder; pooled UQ metrics run on host.
+    """
+
+    enabled: bool = False
+    num_samples: int = 32
+    retain_samples: bool = False
+    device_metrics: bool = False
+
+
+@dataclass
 class RunConfig:
     """Top-level run controls (device, output dir, seed, sharding, fail-on policies)."""
 
@@ -104,6 +134,8 @@ class RunConfig:
     #: If False, inference CLI skips writing ``inference_<model>_<case>.vtp|vtu`` (comparison mesh / visuals unchanged).
     save_inference_mesh: bool = True
     metrics_cache: MetricsCacheConfig = field(default_factory=MetricsCacheConfig)
+    #: Uncertainty-quantification controls (probabilistic benchmarking). Additive; default off.
+    uq: UQConfig = field(default_factory=UQConfig)
     #: When True (default) and launched multi-process (e.g. ``torchrun``), shard cases across ranks via
     #: ``DistributedManager`` and merge before reports. When False, each rank runs the full case list (debug only).
     distributed: bool = True
@@ -169,6 +201,16 @@ class DatasetConfig:
     #: If set, only these case IDs are run; if ``None``, the adapter lists all cases under :attr:`root`.
     case_ids: list[str] | None = None
     kwargs: dict[str, Any] = field(default_factory=dict)
+    #: Optional display label for benchmark result rows. Defaults to :attr:`name`. Set this to give
+    #: the SAME adapter multiple distinct rows in one matrix run (e.g. one DrivAerStar adapter at
+    #: three different class roots labeled ``estateback`` / ``fastback`` / ``notchback``). The
+    #: adapter is always resolved from :attr:`name`; only the reported/aggregated dataset key changes.
+    label: str | None = None
+
+    @property
+    def display_name(self) -> str:
+        """Label used as the ``dataset`` key in results (falls back to the adapter :attr:`name`)."""
+        return self.label or self.name
 
 
 @dataclass
@@ -260,6 +302,15 @@ class OutputConfig:
     ground_truth_volume_mesh_field_names: dict[str, str] = field(
         default_factory=lambda: dict(DEFAULT_GROUND_TRUTH_VOLUME_MESH_FIELD_NAMES)
     )
+    #: Optional VTK array names for the **total predictive std** companion of each canonical field
+    #: (surface / volume). When a wrapper returns a :class:`FieldDistribution`, the engine attaches
+    #: these to exported inference / comparison meshes for ParaView + spatial-UQ visuals. Empty
+    #: (default) → names are auto-derived by suffixing the prediction name with ``"Std"``.
+    std_mesh_field_names: dict[str, str] = field(default_factory=dict)
+    std_volume_mesh_field_names: dict[str, str] = field(default_factory=dict)
+    #: As above for the **epistemic std** companion (auto-derived suffix ``"EpistemicStd"``).
+    epistemic_std_mesh_field_names: dict[str, str] = field(default_factory=dict)
+    epistemic_std_volume_mesh_field_names: dict[str, str] = field(default_factory=dict)
     #: Canonical key for ``streamlines_comparison`` report visual (volume vector field).
     streamlines_vector_canonical: str = "velocity"
     #: If True and surface fields are on points (e.g. MeshGraphNet / FiGNet), kNN-IDW them to cell
@@ -293,6 +344,11 @@ class Config:
             mc_raw = {}
         elif not isinstance(mc_raw, dict):
             raise TypeError("run.metrics_cache must be a mapping if provided")
+        uq_raw = run_raw.pop("uq", None)
+        if uq_raw is None:
+            uq_raw = {}
+        elif not isinstance(uq_raw, dict):
+            raise TypeError("run.uq must be a mapping if provided")
         run = RunConfig(
             device=str(run_raw.get("device", "cuda:0")),
             output_dir=str(run_raw.get("output_dir", "benchmark_results")),
@@ -302,6 +358,12 @@ class Config:
             metrics_cache=MetricsCacheConfig(
                 enabled=_parse_bool(mc_raw.get("enabled"), default=False),
                 path=str(mc_raw.get("path") or ""),
+            ),
+            uq=UQConfig(
+                enabled=_parse_bool(uq_raw.get("enabled"), default=False),
+                num_samples=int(uq_raw.get("num_samples", 32)),
+                retain_samples=_parse_bool(uq_raw.get("retain_samples"), default=False),
+                device_metrics=_parse_bool(uq_raw.get("device_metrics"), default=False),
             ),
             distributed=bool(run_raw.get("distributed", True)),
             fail_on_all_skipped=bool(run_raw.get("fail_on_all_skipped", False)),
@@ -329,6 +391,16 @@ class Config:
             volume_mesh_field_names=vol_fn,
             ground_truth_mesh_field_names=gt_mesh,
             ground_truth_volume_mesh_field_names=gt_vol,
+            std_mesh_field_names=dict(out.get("std_mesh_field_names") or {}),
+            std_volume_mesh_field_names=dict(
+                out.get("std_volume_mesh_field_names") or {}
+            ),
+            epistemic_std_mesh_field_names=dict(
+                out.get("epistemic_std_mesh_field_names") or {}
+            ),
+            epistemic_std_volume_mesh_field_names=dict(
+                out.get("epistemic_std_volume_mesh_field_names") or {}
+            ),
             streamlines_vector_canonical=str(
                 out.get("streamlines_vector_canonical") or "velocity"
             ),

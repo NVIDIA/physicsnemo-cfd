@@ -24,10 +24,74 @@ import numpy as np
 import pyvista as pv
 
 from physicsnemo.cfd.evaluation.config import OutputConfig
-from physicsnemo.cfd.evaluation.datasets.schema import CanonicalCase
+from physicsnemo.cfd.evaluation.datasets.schema import (
+    CanonicalCase,
+    FieldDistribution,
+    distribution_mean,
+)
 from physicsnemo.cfd.postprocessing_tools.interpolation.interpolate_mesh_to_pc import (
     interpolate_point_data_to_cell_centers,
 )
+
+
+def _unwrap_prediction_means(predictions: dict[str, Any] | None) -> dict[str, Any]:
+    """Return a predictions view with each :class:`FieldDistribution` replaced by its ``mean``.
+
+    Deterministic array values pass through unchanged. Used so dof inference and mesh field
+    assignment (which expect plain arrays) work for probabilistic wrappers too.
+    """
+    if not predictions:
+        return {}
+    return {k: distribution_mean(v) for k, v in predictions.items()}
+
+
+def uq_std_field_names(
+    pred_name: str,
+    std_name: str | None = None,
+    epi_std_name: str | None = None,
+) -> tuple[str, str]:
+    """Resolve the ``(std, epistemic_std)`` VTK array names for a prediction field.
+
+    Single source of truth for the auto-derived uncertainty array names so the mesh-attachment
+    path (:func:`_attach_uq_std_companions`) and any metric that reads those arrays back off the
+    comparison mesh (e.g. ``drag_uq``) stay in agreement: use the configured name when given, else
+    suffix the prediction field name with ``"Std"`` / ``"EpistemicStd"``.
+    """
+    return (std_name or f"{pred_name}Std", epi_std_name or f"{pred_name}EpistemicStd")
+
+
+def _attach_uq_std_companions(
+    mesh: pv.DataSet,
+    preference: str,
+    predictions: dict[str, Any],
+    pairs: tuple[tuple[str, str], ...],
+    pred_map: dict[str, str],
+    std_map: dict[str, str],
+    epi_std_map: dict[str, str],
+) -> list[str]:
+    """Attach ``*_std`` / ``*_epistemic_std`` arrays for any prediction that is a distribution.
+
+    Names come from the configured std maps, else are auto-derived by suffixing the prediction
+    field name with ``"Std"`` / ``"EpistemicStd"``. Missing std channels are skipped silently.
+    Returns the list of attached array names so callers can interpolate them to cell dofs
+    alongside the mean fields (keeping std on the same dof as its prediction).
+    """
+    attached: list[str] = []
+    for canonical, _ in pairs:
+        value = predictions.get(canonical)
+        if not isinstance(value, FieldDistribution) or canonical not in pred_map:
+            continue
+        pred_name = pred_map[canonical]
+        std_name, epi_std_name = uq_std_field_names(
+            pred_name, std_map.get(canonical), epi_std_map.get(canonical)
+        )
+        if value.std is not None:
+            _assign_field(mesh, preference, std_name, value.std)
+            attached.append(std_name)
+        if value.epistemic_std is not None:
+            _assign_field(mesh, preference, epi_std_name, value.epistemic_std)
+            attached.append(epi_std_name)
+    return attached
 
 
 def _infer_surface_preference(
@@ -210,20 +274,27 @@ def build_comparison_mesh(
         # Fresh read; no second consumer, no need to copy.
         mesh = pv.read(case.mesh_path)
     gt = case.ground_truth or {}
+    # Probabilistic wrappers return FieldDistribution; unwrap to the mean for dof inference and
+    # field assignment. Std channels are attached separately below.
+    pred_means = _unwrap_prediction_means(predictions)
 
     if case.inference_domain == "surface":
         gt_map = output.ground_truth_mesh_field_names
         pred_map = output.mesh_field_names
+        std_map = output.std_mesh_field_names
+        epi_std_map = output.epistemic_std_mesh_field_names
         pairs = (("pressure", "pressure"), ("shear_stress", "shear_stress"))
         if not isinstance(mesh, pv.PolyData):
             mesh = mesh.extract_surface()
         # Do not call point_data_to_cell_data here: it can change n_cells vs the mesh the
         # adapter used when extracting GT, causing "expected N cell values, got ..." mismatches.
-        preference = _infer_surface_preference(mesh, gt, case.mesh_type, predictions)
+        preference = _infer_surface_preference(mesh, gt, case.mesh_type, pred_means)
     elif case.inference_domain == "volume":
-        preference = _infer_volume_preference(mesh, gt, predictions, case.mesh_type)
+        preference = _infer_volume_preference(mesh, gt, pred_means, case.mesh_type)
         gt_map = output.ground_truth_volume_mesh_field_names
         pred_map = output.volume_mesh_field_names
+        std_map = output.std_volume_mesh_field_names
+        epi_std_map = output.epistemic_std_volume_mesh_field_names
         pairs = (
             ("pressure", "pressure"),
             ("velocity", "velocity"),
@@ -237,10 +308,14 @@ def build_comparison_mesh(
             _assign_field(mesh, preference, gt_map[canonical], gt[canonical])
         if (
             canonical in pred_map
-            and canonical in predictions
-            and predictions[canonical] is not None
+            and canonical in pred_means
+            and pred_means[canonical] is not None
         ):
-            _assign_field(mesh, preference, pred_map[canonical], predictions[canonical])
+            _assign_field(mesh, preference, pred_map[canonical], pred_means[canonical])
+
+    std_names = _attach_uq_std_companions(
+        mesh, preference, predictions or {}, pairs, pred_map, std_map, epi_std_map
+    )
 
     if (
         case.inference_domain == "surface"
@@ -253,6 +328,9 @@ def build_comparison_mesh(
                 names.append(gt_map[canonical])
             if canonical in pred_map:
                 names.append(pred_map[canonical])
+        # Interpolate the UQ std companions on the same dof as their mean fields so metrics that
+        # read std off cells (e.g. drag_uq) and the saved comparison mesh stay dof-consistent.
+        names.extend(std_names)
         names = list(dict.fromkeys(names))
         interpolate_point_data_to_cell_centers(
             mesh,
