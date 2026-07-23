@@ -103,9 +103,9 @@ def finalize_reducer_metrics(
             if not partial_key:
                 continue
             summed.setdefault(metric_name, {})
-            summed[metric_name][partial_key] = (
-                summed[metric_name].get(partial_key, 0.0) + float(val)
-            )
+            summed[metric_name][partial_key] = summed[metric_name].get(
+                partial_key, 0.0
+            ) + float(val)
 
     # Finalize every metric that produced partials, plus any configured reducer metric that did
     # not (with empty stats -> NaN) so deterministic rows keep a consistent schema.
@@ -340,7 +340,9 @@ class _Welford:
         if self.n == 0 or self.mean is None:
             return None
         # Population variance across passes = epistemic uncertainty of the prediction.
-        epi_var = self._m2 / self.n if self._m2 is not None else np.zeros_like(self.mean)
+        epi_var = (
+            self._m2 / self.n if self._m2 is not None else np.zeros_like(self.mean)
+        )
         epi_var = np.clip(epi_var, 0.0, None)
         epistemic_std = np.sqrt(epi_var)
         if self._has_aleatoric and self._aleatoric_var_sum is not None:

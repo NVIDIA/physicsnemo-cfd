@@ -241,9 +241,7 @@ def _sanitize_path_token(token: str) -> str:
     return "".join(c if (c.isalnum() or c in "-.") else "_" for c in str(token))
 
 
-def _save_inference_mesh_for_case(
-    reports: ReportsConfig | None, case_id: str
-) -> bool:
+def _save_inference_mesh_for_case(reports: ReportsConfig | None, case_id: str) -> bool:
     """Whether this case should write an ``inference_<model>_<case>`` mesh.
 
     Saving every case's mesh is wasteful for large validation sets. When

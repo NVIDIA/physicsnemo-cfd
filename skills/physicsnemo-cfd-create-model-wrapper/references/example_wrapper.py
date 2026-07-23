@@ -276,11 +276,13 @@ class ExampleAnalyticUQWrapper(CFDModel):
 
     @property
     def output_location(self) -> OutputLocation:
+        """Where predictions live (cell-centered surface, here)."""
         return self.OUTPUT_LOCATION
 
     def load(
         self, checkpoint_path: str, stats_path: str, device: str, **kwargs: Any
     ) -> "ExampleAnalyticUQWrapper":
+        """Build the architecture + UQ head, load weights and normalization stats."""
         self._device = device
         # Build the architecture + UQ head and load weights here (e.g. a GP head whose
         # hyperparameters come from kwargs and MUST match training so the state dict loads).
@@ -289,6 +291,7 @@ class ExampleAnalyticUQWrapper(CFDModel):
         return self
 
     def prepare_inputs(self, case: CanonicalCase) -> torch.Tensor:
+        """Read the case mesh and return the model-ready input tensor."""
         mesh = pv.read(case.mesh_path)
         if not isinstance(mesh, pv.PolyData):
             mesh = mesh.extract_surface()
@@ -306,13 +309,15 @@ class ExampleAnalyticUQWrapper(CFDModel):
             n = model_input.shape[0]
             # raw = self._model(model_input)  # -> mean, variance, epistemic_variance, ...
             raw = {
-                "mean": torch.zeros((n, 4), device=self._device),        # p + WSS(3)
+                "mean": torch.zeros((n, 4), device=self._device),  # p + WSS(3)
                 "total_std": torch.ones((n, 4), device=self._device),
                 "epistemic_std": torch.ones((n, 4), device=self._device),
             }
         return raw
 
-    def _to_physical(self, arr: torch.Tensor, field: str, *, is_std: bool) -> np.ndarray:
+    def _to_physical(
+        self, arr: torch.Tensor, field: str, *, is_std: bool
+    ) -> np.ndarray:
         """Inverse mean-std. NOTE: means map with +mean; std/variance channels do NOT
         add the offset (they scale by ``std`` only). Denormalize BOTH here so metrics never
         touch normalization stats (all UQ metrics run in physical units)."""
@@ -347,7 +352,9 @@ class ExampleAnalyticUQWrapper(CFDModel):
             "shear_stress": build_predictive_distribution(
                 mean=self._to_physical(mean[:, 1:4], "shear_stress", is_std=False),
                 std=self._to_physical(tot[:, 1:4], "shear_stress", is_std=True),
-                epistemic_std=self._to_physical(epi[:, 1:4], "shear_stress", is_std=True),
+                epistemic_std=self._to_physical(
+                    epi[:, 1:4], "shear_stress", is_std=True
+                ),
             ),
         }
 
@@ -392,17 +399,21 @@ class ExampleSamplingUQWrapper(CFDModel):
     UQ_METHOD: ClassVar[str] = "sampling"
 
     def __init__(self) -> None:
-        self._models: list[torch.nn.Module] = []  # one for MC-Dropout, K for an ensemble
+        self._models: list[torch.nn.Module] = (
+            []
+        )  # one for MC-Dropout, K for an ensemble
         self._stats: dict[str, Any] | None = None
         self._device: str = "cpu"
 
     @property
     def output_location(self) -> OutputLocation:
+        """Where predictions live (cell-centered surface, here)."""
         return self.OUTPUT_LOCATION
 
     def load(
         self, checkpoint_path: str, stats_path: str, device: str, **kwargs: Any
     ) -> "ExampleSamplingUQWrapper":
+        """Load the stochastic model(s) used to draw repeated inference passes."""
         self._device = device
         # MC-Dropout: load ONE model and keep its dropout layers in train() mode (stochastic)
         # while the rest is eval(). Ensemble: load one model per kwargs["member_checkpoints"].
@@ -414,6 +425,7 @@ class ExampleSamplingUQWrapper(CFDModel):
         return self
 
     def prepare_inputs(self, case: CanonicalCase) -> torch.Tensor:
+        """Read the case mesh and return the model-ready input tensor."""
         mesh = pv.read(case.mesh_path)
         if not isinstance(mesh, pv.PolyData):
             mesh = mesh.extract_surface()
@@ -452,7 +464,9 @@ class ExampleSamplingUQWrapper(CFDModel):
     ) -> dict[str, np.ndarray]:
         """Denormalize ONE pass to physical predictions (the engine aggregates across passes)."""
         p = raw_output["pressure"] * self._std("pressure") + self._mean("pressure")
-        w = raw_output["shear_stress"] * self._std("shear_stress") + self._mean("shear_stress")
+        w = raw_output["shear_stress"] * self._std("shear_stress") + self._mean(
+            "shear_stress"
+        )
         return build_predictions_dict(
             pressure=p.cpu().numpy(), shear_stress=w.cpu().numpy().reshape(-1, 3)
         )

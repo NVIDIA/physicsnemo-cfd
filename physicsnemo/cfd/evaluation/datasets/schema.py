@@ -158,8 +158,12 @@ class FieldDistribution:
     epistemic_std: ArrayLike | None = None
     aleatoric_std: ArrayLike | None = None
     samples: ArrayLike | None = None  # optional (S, N[, C]) for CRPS / non-Gaussian
-    quantiles: ArrayLike | None = None  # optional (Q, N[, C]) values at ``quantile_levels``
-    quantile_levels: ArrayLike | None = None  # optional (Q,) in (0, 1), for interval methods
+    quantiles: ArrayLike | None = (
+        None  # optional (Q, N[, C]) values at ``quantile_levels``
+    )
+    quantile_levels: ArrayLike | None = (
+        None  # optional (Q,) in (0, 1), for interval methods
+    )
 
 
 def build_predictive_distribution(
@@ -198,9 +202,7 @@ def build_predictive_distribution(
     )
 
 
-def as_distribution(
-    predictions: dict[str, Any], key: str
-) -> FieldDistribution | None:
+def as_distribution(predictions: dict[str, Any], key: str) -> FieldDistribution | None:
     """Return the predictive distribution for ``key`` from a predictions dict.
 
     - A :class:`FieldDistribution` value is returned as-is.

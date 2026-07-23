@@ -69,7 +69,9 @@ def _panel_title(metric_name: str, series: str) -> str:
     return f"{metric_name}:{series}"
 
 
-def _collect_panels(runs: list[tuple[dict[str, Any], dict[str, Any]]]) -> list[tuple[str, str]]:
+def _collect_panels(
+    runs: list[tuple[dict[str, Any], dict[str, Any]]],
+) -> list[tuple[str, str]]:
     """Ordered, de-duplicated ``(metric_name, series)`` panel keys across all (run, payload) pairs."""
     seen: dict[tuple[str, str], None] = {}
     for _, payload in runs:
@@ -161,9 +163,7 @@ def sparsification_plot(
         if not panels:
             continue
         models = sorted({run["model"] for run, _ in runs})
-        color_by_model = {
-            m: _PALETTE[i % len(_PALETTE)] for i, m in enumerate(models)
-        }
+        color_by_model = {m: _PALETTE[i % len(_PALETTE)] for i, m in enumerate(models)}
         n = len(panels)
         ncols = min(max_cols, n)
         nrows = math.ceil(n / ncols)

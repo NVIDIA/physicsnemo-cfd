@@ -225,7 +225,9 @@ def resolve_checkpoint_file(checkpoint_path: str) -> tuple[Path, int]:
     """
     ckpt = Path(checkpoint_path)
     if not checkpoint_path:
-        raise ValueError("checkpoint path is empty; point it at a specific checkpoint file.")
+        raise ValueError(
+            "checkpoint path is empty; point it at a specific checkpoint file."
+        )
     if ckpt.is_dir():
         raise ValueError(
             f"checkpoint {checkpoint_path!r} is a directory; point it at a specific checkpoint "
@@ -287,7 +289,11 @@ def _move_reference_scale_to_device(dp: "TransolverDataPipe", device: str) -> No
 
 
 def build_surface_datapipe(
-    *, geometry_sampling: int, surface_factors: Any, device: str, user_kw: dict[str, Any]
+    *,
+    geometry_sampling: int,
+    surface_factors: Any,
+    device: str,
+    user_kw: dict[str, Any],
 ) -> "TransolverDataPipe":
     """Build a surface ``TransolverDataPipe`` (static defaults merged with ``user_kw``)."""
     merged = {**_surface_datapipe_static_kw(), **user_kw}
@@ -461,9 +467,7 @@ def geotransolver_forward(
     preds_list: list[torch.Tensor] = []
     use_full_fx = "geometry" in batch
 
-    ac_ctx = (
-        cuda_bf16_autocast(device) if cuda_bf16_autocast_enabled else nullcontext()
-    )
+    ac_ctx = cuda_bf16_autocast(device) if cuda_bf16_autocast_enabled else nullcontext()
     with torch.no_grad():
         with ac_ctx:
             for index_block in index_blocks:

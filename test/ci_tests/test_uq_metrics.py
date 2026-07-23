@@ -47,6 +47,7 @@ from physicsnemo.cfd.evaluation.metrics.builtin.uq import (
 
 
 def test_build_predictive_distribution_coerces_numpy_to_float32() -> None:
+    """``build_predictive_distribution`` coerces mean/std/epistemic arrays to float32."""
     fd = build_predictive_distribution(
         mean=np.ones(4, dtype=np.float64), std=np.full(4, 2.0), epistemic_std=np.ones(4)
     )
@@ -56,6 +57,7 @@ def test_build_predictive_distribution_coerces_numpy_to_float32() -> None:
 
 
 def test_as_distribution_passthrough_wrap_and_none() -> None:
+    """``as_distribution`` returns distributions as-is, wraps plain arrays, and yields None otherwise."""
     fd = FieldDistribution(mean=np.zeros(3), std=np.ones(3))
     preds = {"pressure": fd, "shear_stress": np.arange(6.0).reshape(3, 2), "z": None}
     assert as_distribution(preds, "pressure") is fd
@@ -66,6 +68,7 @@ def test_as_distribution_passthrough_wrap_and_none() -> None:
 
 
 def test_distribution_mean_unwraps() -> None:
+    """``distribution_mean`` returns the mean array for both distributions and plain arrays."""
     fd = FieldDistribution(mean=np.arange(3.0), std=np.ones(3))
     assert distribution_mean(fd) is fd.mean
     arr = np.zeros(3)
@@ -93,6 +96,7 @@ def _gaussian_case(rng, n, sigma, epi=None):
 
 
 def test_uq_metrics_are_registered_as_reducers() -> None:
+    """The pooled UQ metrics are all reducer metrics."""
     metrics = _make_uq_metrics()
     assert set(metrics) >= {
         "nlpd",
@@ -113,7 +117,9 @@ def test_pooled_calibration_on_synthetic_gaussian() -> None:
     n, sigma = 400_000, 1.0
     cases = [_gaussian_case(rng, n, sigma)]
     assert abs(_run_reducer(metrics["coverage_95"], cases)["pressure"] - 0.95) < 0.01
-    assert abs(_run_reducer(metrics["calibration_zrms"], cases)["pressure"] - 1.0) < 0.02
+    assert (
+        abs(_run_reducer(metrics["calibration_zrms"], cases)["pressure"] - 1.0) < 0.02
+    )
     nlpd = _run_reducer(metrics["nlpd"], cases)["pressure"]
     expected = 0.5 * (math.log(2 * math.pi) + math.log(sigma**2) + 1.0)
     assert abs(nlpd - expected) < 0.02
@@ -133,6 +139,7 @@ def test_pooling_is_global_not_mean_of_case_means() -> None:
 
 
 def test_deterministic_prediction_yields_nan() -> None:
+    """A deterministic prediction (no std) yields NaN NLPD under the headline ``mean`` sub-key."""
     metrics = _make_uq_metrics()
     cases = [
         (
@@ -140,15 +147,17 @@ def test_deterministic_prediction_yields_nan() -> None:
             {"pressure": FieldDistribution(mean=np.zeros(16, np.float32))},
         )
     ]
-    assert math.isnan(_run_reducer(metrics["nlpd"], cases))
+    # No channels contribute -> finalize({}) returns the {"mean": NaN} headline (consistent schema).
+    assert math.isnan(_run_reducer(metrics["nlpd"], cases)["mean"])
 
 
 def test_epistemic_metric_requires_epistemic_std() -> None:
+    """Epistemic metrics need an epistemic_std: absent -> NaN headline; present -> finite."""
     rng = np.random.default_rng(2)
     metrics = _make_uq_metrics()
-    # total std present but epistemic_std absent -> epistemic metric is NaN
+    # total std present but epistemic_std absent -> epistemic metric is NaN (headline "mean").
     cases_no_epi = [_gaussian_case(rng, 1000, 1.0)]
-    assert math.isnan(_run_reducer(metrics["nlpd_epistemic"], cases_no_epi))
+    assert math.isnan(_run_reducer(metrics["nlpd_epistemic"], cases_no_epi)["mean"])
     # epistemic_std present -> finite
     cases_epi = [_gaussian_case(rng, 1000, 1.0, epi=0.5)]
     res = _run_reducer(metrics["sharpness_epistemic_std"], cases_epi)
@@ -156,6 +165,7 @@ def test_epistemic_metric_requires_epistemic_std() -> None:
 
 
 def test_vector_field_splits_into_components() -> None:
+    """A 3-vector field expands into per-component channels plus the headline mean."""
     rng = np.random.default_rng(3)
     metrics = _make_uq_metrics()
     n, sigma, epi = 50_000, 1.0, 0.5
@@ -166,7 +176,9 @@ def test_vector_field_splits_into_components() -> None:
         std=np.full((n, 3), sigma, np.float32),
         epistemic_std=np.full((n, 3), epi, np.float32),
     )
-    res = _run_reducer(metrics["nlpd_epistemic"], [({"shear_stress": y}, {"shear_stress": fd})])
+    res = _run_reducer(
+        metrics["nlpd_epistemic"], [({"shear_stress": y}, {"shear_stress": fd})]
+    )
     assert set(res) == {"shear_stress_x", "shear_stress_y", "shear_stress_z", "mean"}
 
 
@@ -193,7 +205,9 @@ def test_spearman_high_when_uncertainty_tracks_error() -> None:
     sig = rng.uniform(0.2, 3.0, size=n).astype(np.float32)
     # Make |error| a monotonic function of sig so ranks align almost perfectly.
     y = (mu + sig * 3.0).astype(np.float32)
-    informative = spear({"pressure": y}, {"pressure": FieldDistribution(mean=mu, std=sig)})
+    informative = spear(
+        {"pressure": y}, {"pressure": FieldDistribution(mean=mu, std=sig)}
+    )
     assert informative["pressure"] > 0.99
 
     random_sig = rng.uniform(0.2, 3.0, size=n).astype(np.float32)
@@ -218,10 +232,13 @@ def test_spearman_tie_aware_and_constant_input() -> None:
     tied_unc = np.array([0.1, 0.1, 0.2, 0.2, 0.3])
     mono_err = np.array([1.0, 1.5, 2.0, 2.5, 3.0])
     assert _spearman(mono_err, tied_unc) > 0.9
-    assert abs(
-        _spearman(mono_err, tied_unc)
-        - float(spearmanr(mono_err, tied_unc).correlation)
-    ) < 1e-12
+    assert (
+        abs(
+            _spearman(mono_err, tied_unc)
+            - float(spearmanr(mono_err, tied_unc).correlation)
+        )
+        < 1e-12
+    )
     # Matches scipy (which we delegate to) on a small tied example.
     a = np.array([1.0, 2.0, 2.0, 3.0])
     b = np.array([10.0, 20.0, 20.0, 40.0])
@@ -241,12 +258,15 @@ def test_trapezoid_available_and_ause_uses_it() -> None:
 
 
 def test_spearman_deterministic_and_epistemic_variants() -> None:
+    """Deterministic (no std) and epistemic-without-epistemic-std both give a NaN Spearman mean."""
     spear = _make_pointwise_uq_metrics()["uncertainty_error_spearman"]
     spear_epi = _make_pointwise_uq_metrics()["uncertainty_error_spearman_epistemic"]
     n = 4000
     mu = np.zeros(n, np.float32)
     y = np.random.default_rng(6).normal(size=n).astype(np.float32)
-    assert math.isnan(spear({"pressure": y}, {"pressure": FieldDistribution(mean=mu)})["mean"])
+    assert math.isnan(
+        spear({"pressure": y}, {"pressure": FieldDistribution(mean=mu)})["mean"]
+    )
     fd_total = FieldDistribution(mean=mu, std=np.ones(n, np.float32))
     assert math.isnan(spear_epi({"pressure": y}, {"pressure": fd_total})["mean"])
 
@@ -266,9 +286,12 @@ def _collect_samples(metric, cases):
 
 
 def test_sample_ause_is_registered_as_sample_metric() -> None:
+    """The sample-wise AUSE metrics are sample metrics (finalize_samples, not finalize)."""
     for m in _make_sample_uq_metrics().values():
         assert is_sample_metric(m)
-        assert not is_reducer_metric(m)  # sample metrics use finalize_samples, not finalize
+        assert not is_reducer_metric(
+            m
+        )  # sample metrics use finalize_samples, not finalize
 
 
 def test_sample_ause_informative_below_random_over_geometries() -> None:
@@ -289,7 +312,9 @@ def test_sample_ause_informative_below_random_over_geometries() -> None:
     # Uninformative: uncertainty unrelated to error scale.
     shuffled = list(scales)
     rng.shuffle(shuffled)
-    random_rank = _collect_samples(ause, [_geom(s, r) for s, r in zip(scales, shuffled)])
+    random_rank = _collect_samples(
+        ause, [_geom(s, r) for s, r in zip(scales, shuffled)]
+    )
     assert informative["pressure"] <= random_rank["pressure"] + 1e-9
     assert abs(informative["pressure"]) < 1e-6  # perfect ranking -> AUSE ~ 0
     # Spearman companion: informative ranking -> rho ~ 1, and never worse than random ranking.
@@ -298,10 +323,13 @@ def test_sample_ause_informative_below_random_over_geometries() -> None:
 
 
 def test_sample_ause_needs_two_geometries() -> None:
+    """AUSE needs >= 2 geometries; a single geometry yields NaN for that channel."""
     ause = _make_sample_uq_metrics()["sparsification_ause"]
     n = 100
     fd = FieldDistribution(mean=np.zeros(n, np.float32), std=np.ones(n, np.float32))
-    res = _collect_samples(ause, [({"pressure": np.ones(n, np.float32)}, {"pressure": fd})])
+    res = _collect_samples(
+        ause, [({"pressure": np.ones(n, np.float32)}, {"pressure": fd})]
+    )
     assert math.isnan(res["pressure"])
 
 
@@ -397,4 +425,5 @@ def test_drag_uq_partial_skips_deterministic() -> None:
 
 
 def test_curve_payload_none_for_single_sample() -> None:
+    """The sparsification curve payload is None for a single geometry."""
     assert _curve_payload(np.array([1.0]), np.array([1.0])) is None

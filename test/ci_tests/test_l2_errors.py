@@ -80,11 +80,13 @@ def test_dof_coordinates_cell_returns_cell_centers() -> None:
 
 
 def test_bounds_mask_none_short_circuits() -> None:
+    """A None bounds spec short-circuits to no mask."""
     coords = np.zeros((5, 3))
     assert _bounds_mask(coords, None) is None
 
 
 def test_bounds_mask_inclusive_aabb() -> None:
+    """The bounds mask is an inclusive axis-aligned box test."""
     coords = np.array(
         [
             [0.0, 0.0, 0.0],
@@ -100,6 +102,7 @@ def test_bounds_mask_inclusive_aabb() -> None:
 
 
 def test_classify_fields_scalar_vs_vector() -> None:
+    """Field classification distinguishes scalar from vector arrays by component count."""
     grid = _grid()
     grid.point_data["scalar"] = np.zeros(grid.n_points, dtype=np.float64)
     grid.point_data["vector"] = np.zeros((grid.n_points, 3), dtype=np.float64)

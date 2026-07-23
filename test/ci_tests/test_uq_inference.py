@@ -39,6 +39,7 @@ from physicsnemo.cfd.postprocessing_tools.metric_registry import get_metric
 
 
 def test_reducer_partial_key_round_trip_and_strip() -> None:
+    """Reducer partial keys round-trip and are stripped from reported per-case rows."""
     key = make_reducer_partial_key("nlpd", "pressure::sum")
     assert key == "_uq::nlpd::pressure::sum"
     assert is_reducer_partial_key(key)
@@ -48,6 +49,7 @@ def test_reducer_partial_key_round_trip_and_strip() -> None:
 
 
 def test_welford_population_variance() -> None:
+    """``_Welford`` yields the streaming mean and population (epistemic) std across passes."""
     w = _Welford()
     for x in (np.array([1.0, 2.0]), np.array([3.0, 2.0]), np.array([5.0, 2.0])):
         w.update(x)
@@ -78,9 +80,16 @@ class _EnsembleWrapper:
 
 
 def test_run_sampling_inference_epistemic_and_samples() -> None:
+    """Ensemble sampling gives the across-member mean, epistemic std, and retained samples."""
     outs = [np.array([1.0, 10.0]), np.array([3.0, 10.0]), np.array([5.0, 10.0])]
     d = run_sampling_inference(
-        _EnsembleWrapper(outs), None, None, n=3, run_seed=0, case_id="c", retain_samples=True
+        _EnsembleWrapper(outs),
+        None,
+        None,
+        n=3,
+        run_seed=0,
+        case_id="c",
+        retain_samples=True,
     )
     fd = d["pressure"]
     assert np.allclose(fd.mean, [3.0, 10.0])
@@ -90,6 +99,7 @@ def test_run_sampling_inference_epistemic_and_samples() -> None:
 
 
 def test_run_sampling_inference_zero_spread_gives_zero_epistemic() -> None:
+    """Identical passes -> zero epistemic std."""
     d = run_sampling_inference(
         _EnsembleWrapper([np.array([2.0, 2.0])] * 4),
         None,
@@ -102,6 +112,7 @@ def test_run_sampling_inference_zero_spread_gives_zero_epistemic() -> None:
 
 
 def test_run_sampling_inference_law_of_total_variance() -> None:
+    """Per-pass aleatoric std combines with across-pass spread via the law of total variance."""
     outs = [np.array([1.0, 10.0]), np.array([3.0, 10.0]), np.array([5.0, 10.0])]
     d = run_sampling_inference(
         _EnsembleWrapper(outs, hetero_std=np.array([2.0, 2.0])),
@@ -118,6 +129,7 @@ def test_run_sampling_inference_law_of_total_variance() -> None:
 
 
 def test_finalize_reducer_metrics_pools_over_cases() -> None:
+    """Reducer finalization pools sufficient statistics over cases (not a mean of case means)."""
     rng = np.random.default_rng(0)
 
     def _case(n, sigma):
@@ -186,6 +198,7 @@ def test_finalize_sample_metrics_emits_nan_for_configured_but_absent() -> None:
 
 
 def test_select_inference_path_master_switch() -> None:
+    """``run.uq.enabled`` is the master switch: off -> every wrapper goes deterministic."""
     # UQ enabled: sampling / analytic wrappers take their UQ path.
     assert (
         select_inference_path(supports_uq=True, uq_method="sampling", uq_enabled=True)

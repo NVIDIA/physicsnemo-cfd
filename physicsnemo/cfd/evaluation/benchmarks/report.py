@@ -46,7 +46,11 @@ def _sanitize_for_strict_json(obj: Any) -> Any:
     if isinstance(obj, tuple):
         return tuple(_sanitize_for_strict_json(x) for x in obj)
     # NumPy types are not JSON-serializable; coerce to native Python and recurse.
-    if hasattr(obj, "item") and not isinstance(obj, type) and getattr(obj, "ndim", None) == 0:
+    if (
+        hasattr(obj, "item")
+        and not isinstance(obj, type)
+        and getattr(obj, "ndim", None) == 0
+    ):
         return _sanitize_for_strict_json(obj.item())
     if hasattr(obj, "tolist") and getattr(obj, "ndim", None) is not None:
         return _sanitize_for_strict_json(obj.tolist())

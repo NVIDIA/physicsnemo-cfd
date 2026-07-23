@@ -49,8 +49,12 @@ register_model("geotransolver_surface", GeoTransolverWrapper)
 register_model("geotransolver_volume", GeoTransolverWrapper)
 register_model("geotransolver_drivaerstar_surface", GeoTransolverDrivAerStarWrapper)
 register_model("geotransolver_gp_surface", GeoTransolverGPDrivAerStarWrapper)
-register_model("geotransolver_mc_dropout_surface", GeoTransolverMCDropoutDrivAerStarWrapper)
-register_model("geotransolver_ensemble_surface", GeoTransolverEnsembleDrivAerStarWrapper)
+register_model(
+    "geotransolver_mc_dropout_surface", GeoTransolverMCDropoutDrivAerStarWrapper
+)
+register_model(
+    "geotransolver_ensemble_surface", GeoTransolverEnsembleDrivAerStarWrapper
+)
 register_model("transolver_surface", TransolverWrapper)
 register_model("transolver_volume", TransolverWrapper)
 register_model("domino_surface", DominoWrapper)

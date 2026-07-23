@@ -257,7 +257,9 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
             self._head_checkpoint = str(Path(head_ckpt_arg))
         else:
             ckpt_dir, ckpt_epoch = resolve_checkpoint_file(checkpoint_path)
-            self._head_checkpoint = str(Path(ckpt_dir) / f"FieldGPHead.0.{ckpt_epoch}.pt")
+            self._head_checkpoint = str(
+                Path(ckpt_dir) / f"FieldGPHead.0.{ckpt_epoch}.pt"
+            )
         self._checkpoint_dir = str(ckpt_dir)
         self._checkpoint_epoch = ckpt_epoch
         log_inference(
@@ -438,7 +440,8 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
             raw_output["mean"], raw_output["total_std"], raw_output["epistemic_std"]
         )
         log_inference(
-            "geotransolver_gp", "Decoding GP distribution (pressure + WSS, physical units)…"
+            "geotransolver_gp",
+            "Decoding GP distribution (pressure + WSS, physical units)…",
         )
         out: dict[str, FieldDistribution] = {}
         out["pressure"] = build_predictive_distribution(

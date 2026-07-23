@@ -35,6 +35,7 @@ from physicsnemo.cfd.evaluation.models.common_wrapper_utils.geotransolver_runtim
 
 
 def test_resolve_checkpoint_file_parses_epoch(tmp_path) -> None:
+    """A specific checkpoint file name resolves to ``(directory, epoch)``."""
     ckpt = tmp_path / "GeoTransolver.0.30.mdlus"
     ckpt.write_bytes(b"")  # existence not required, but harmless
     directory, epoch = resolve_checkpoint_file(str(ckpt))
@@ -45,12 +46,15 @@ def test_resolve_checkpoint_file_parses_epoch(tmp_path) -> None:
 
 
 def test_resolve_checkpoint_file_rejects_directory_and_epochless(tmp_path) -> None:
+    """A directory, empty path, or epoch-less file name is rejected (no silent latest-epoch)."""
     with pytest.raises(ValueError):
         resolve_checkpoint_file(str(tmp_path))  # directory -> ambiguous epoch
     with pytest.raises(ValueError):
         resolve_checkpoint_file("")  # empty
     with pytest.raises(ValueError):
-        resolve_checkpoint_file(str(tmp_path / "GeoTransolver.mdlus"))  # no epoch in name
+        resolve_checkpoint_file(
+            str(tmp_path / "GeoTransolver.mdlus")
+        )  # no epoch in name
 
 
 # --------------------------------------------------------------------------------------------
@@ -59,6 +63,7 @@ def test_resolve_checkpoint_file_rejects_directory_and_epochless(tmp_path) -> No
 
 
 def test_make_forward_permutation_covers_all_points() -> None:
+    """The per-case forward permutation is a full bijection over all points (no dropped indices)."""
     n = 137
     batch = {"embeddings": torch.zeros(1, n, 3)}
     perm = make_forward_permutation(batch)
@@ -73,6 +78,7 @@ def test_make_forward_permutation_covers_all_points() -> None:
 
 
 def test_uq_std_field_names_fallback_and_override() -> None:
+    """Std field names auto-derive from the prediction name unless explicitly overridden."""
     # No config -> derive from the prediction name (what comparison meshes attach by default).
     assert uq_std_field_names("pressure") == ("pressureStd", "pressureEpistemicStd")
     # Configured names win.
@@ -90,6 +96,7 @@ def test_uq_std_field_names_fallback_and_override() -> None:
 
 
 def test_uq_wrappers_registered_with_expected_contract() -> None:
+    """The three UQ wrappers are registered and expose the expected SUPPORTS_UQ/UQ_METHOD contract."""
     # Importing the wrappers package registers every model wrapper.
     import physicsnemo.cfd.evaluation.models.wrappers  # noqa: F401
     from physicsnemo.cfd.evaluation.models.model_registry import get_model_wrapper

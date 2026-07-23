@@ -169,7 +169,9 @@ class GeoTransolverEnsembleDrivAerStarWrapper(CFDModel):
                 )
             self._surface_factors = None
         else:
-            log_inference("ensemble", f"Loading surface normalization from {stats_path}")
+            log_inference(
+                "ensemble", f"Loading surface normalization from {stats_path}"
+            )
             self._surface_factors = load_transolver_surface_factors(stats_path, device)
             self._volume_factors = None
 
@@ -203,7 +205,9 @@ class GeoTransolverEnsembleDrivAerStarWrapper(CFDModel):
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:
         """Build the surface/volume batch once per case (shared by every member)."""
         if not self._models:
-            raise RuntimeError("GeoTransolverEnsembleDrivAerStarWrapper: call load() first")
+            raise RuntimeError(
+                "GeoTransolverEnsembleDrivAerStarWrapper: call load() first"
+            )
         result = build_transolver_batch(
             case=case,
             inference_mode=self._inference_mode,
@@ -254,14 +258,20 @@ class GeoTransolverEnsembleDrivAerStarWrapper(CFDModel):
         the same fixed block-partition permutation so the spread is model-only.
         """
         if not self._models or self._datapipe is None:
-            raise RuntimeError("GeoTransolverEnsembleDrivAerStarWrapper: call load() first")
+            raise RuntimeError(
+                "GeoTransolverEnsembleDrivAerStarWrapper: call load() first"
+            )
         perm = make_forward_permutation(model_input["batch"])
-        return (self._forward_member(model, model_input, perm) for model in self._models)
+        return (
+            self._forward_member(model, model_input, perm) for model in self._models
+        )
 
     def predict(self, model_input: ModelInput) -> RawOutput:
         """Deterministic fallback (first member). The engine uses :meth:`predict_ensemble` for UQ."""
         if not self._models or self._datapipe is None:
-            raise RuntimeError("GeoTransolverEnsembleDrivAerStarWrapper: call load() first")
+            raise RuntimeError(
+                "GeoTransolverEnsembleDrivAerStarWrapper: call load() first"
+            )
         return self._forward_member(self._models[0], model_input)
 
     def decode_outputs(

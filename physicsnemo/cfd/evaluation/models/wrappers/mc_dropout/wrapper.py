@@ -163,7 +163,9 @@ class GeoTransolverMCDropoutDrivAerStarWrapper(CFDModel):
         self._cfg = parse_runtime_kwargs(kw, device)
 
         if self._inference_mode == "volume":
-            log_inference("mc_dropout", f"Loading volume normalization from {stats_path}")
+            log_inference(
+                "mc_dropout", f"Loading volume normalization from {stats_path}"
+            )
             self._volume_factors = load_transolver_volume_factors(stats_path, device)
             if self._volume_factors is None:
                 raise FileNotFoundError(
@@ -172,7 +174,9 @@ class GeoTransolverMCDropoutDrivAerStarWrapper(CFDModel):
                 )
             self._surface_factors = None
         else:
-            log_inference("mc_dropout", f"Loading surface normalization from {stats_path}")
+            log_inference(
+                "mc_dropout", f"Loading surface normalization from {stats_path}"
+            )
             self._surface_factors = load_transolver_surface_factors(stats_path, device)
             self._volume_factors = None
 
@@ -224,7 +228,9 @@ class GeoTransolverMCDropoutDrivAerStarWrapper(CFDModel):
     def prepare_inputs(self, case: CanonicalCase) -> ModelInput:
         """Build the surface/volume data dict, lazily (re)create the datapipe, and run it."""
         if self._model is None:
-            raise RuntimeError("GeoTransolverMCDropoutDrivAerStarWrapper: call load() first")
+            raise RuntimeError(
+                "GeoTransolverMCDropoutDrivAerStarWrapper: call load() first"
+            )
         result = build_transolver_batch(
             case=case,
             inference_mode=self._inference_mode,
@@ -252,7 +258,9 @@ class GeoTransolverMCDropoutDrivAerStarWrapper(CFDModel):
         is held fixed across passes (from :meth:`prepare_inputs`) so only the dropout varies.
         """
         if self._model is None or self._datapipe is None:
-            raise RuntimeError("GeoTransolverMCDropoutDrivAerStarWrapper: call load() first")
+            raise RuntimeError(
+                "GeoTransolverMCDropoutDrivAerStarWrapper: call load() first"
+            )
         raw = geotransolver_forward(
             model=self._model,
             batch=model_input["batch"],

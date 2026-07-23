@@ -166,7 +166,9 @@ class _PooledUQMetric:
         ):
             contrib = self._per_point(y, mu, sig, epi)
             for stat, val in contrib.items():
-                stats[f"{chan}::{stat}"] = stats.get(f"{chan}::{stat}", 0.0) + float(val)
+                stats[f"{chan}::{stat}"] = stats.get(f"{chan}::{stat}", 0.0) + float(
+                    val
+                )
         return stats
 
     def finalize(self, summed: dict[str, float]) -> float | dict[str, float]:
@@ -396,7 +398,9 @@ class _SampleAUSE:
         return stats
 
     @staticmethod
-    def _regroup(collected: dict[str, list[float]]) -> dict[str, dict[str, list[float]]]:
+    def _regroup(
+        collected: dict[str, list[float]],
+    ) -> dict[str, dict[str, list[float]]]:
         """Regroup ``{channel}::{err|unc}`` -> ``{channel: {"err": [...], "unc": [...]}}``."""
         by_channel: dict[str, dict[str, list[float]]] = {}
         for key, vals in collected.items():
@@ -464,7 +468,7 @@ class _SampleAUSE:
 # independent is exact for spatially-uncorrelated uncertainty but a lower bound for
 # spatially-correlated (i.e. epistemic) uncertainty, which dominates a coherent surface integral.
 # This is the decision-relevant panel: does the field UQ flag the geometries whose drag we predict
-# worst? Direct port of ``field_gp_utils.compute_drag_uq_stats``, but reading physical-unit 
+# worst? Direct port of ``field_gp_utils.compute_drag_uq_stats``, but reading physical-unit
 # fields straight off the benchmark comparison mesh (so no normalization factors are needed).
 
 
@@ -631,18 +635,21 @@ class _SampleDragUQ:
         wss_std = _cell_array(geom, std_w)
         p_epi = _cell_array(geom, epi_p)
         wss_epi = _cell_array(geom, epi_w)
-        if any(
-            a is None
-            for a in (p_pred, wss_pred, p_true, wss_true, p_std, wss_std)
-        ):
+        if any(a is None for a in (p_pred, wss_pred, p_true, wss_true, p_std, wss_std)):
             return {}
 
         drag_pred, drag_total_std = _drag_mean_and_std(
             normals, area, direction, p_pred, wss_pred, p_std, wss_std, used_coeff
         )
         drag_true, _ = _drag_mean_and_std(
-            normals, area, direction, p_true, wss_true,
-            np.zeros_like(p_true), np.zeros_like(wss_true), used_coeff,
+            normals,
+            area,
+            direction,
+            p_true,
+            wss_true,
+            np.zeros_like(p_true),
+            np.zeros_like(wss_true),
+            used_coeff,
         )
         stats = {
             "abs_err": abs(drag_pred - drag_true),
