@@ -21,10 +21,10 @@ subclass (no inheritance from the deterministic GeoTransolver wrappers). It reus
 GeoTransolver + ``TransolverDataPipe`` plumbing in
 :mod:`physicsnemo.cfd.evaluation.models.common_wrapper_utils.geotransolver_runtime` (backbone
 construction, VTP → model inputs) and swaps the deterministic readout for a pointwise multitask GP
-head (:class:`physicsnemo.experimental.uq.FieldGPHead`): the GP posterior mean is the per-point
-surface field and the posterior variance is the per-point uncertainty, in **one forward pass**. It
-is a lift-and-shift of the standalone GP inference path
-(``examples/.../transformer_models/src/inference_field_gp_zarr._predict_chunked``).
+head (:class:`physicsnemo.experimental.uq.FieldVariationalGPHead`): the GP posterior mean is the
+per-point surface field and the posterior variance is the per-point uncertainty, in **one forward
+pass**. It is a lift-and-shift of the standalone GP inference path from the ``transformer_models``
+field-GP recipe.
 
 It targets ``transformer_models`` (physical-target) checkpoints, so predictions are re-standardized
 only — no dynamic-pressure re-dimensionalization (:attr:`REDIMENSIONALIZE_OUTPUTS` = ``False``).
@@ -37,30 +37,28 @@ metrics consume them directly.
 
 Surface only (the GP head predicts 4 surface tasks: pressure + 3 wall-shear components).
 
-This wrapper loads **two** checkpoints — the GeoTransolver backbone and the ``FieldGPHead`` — and
-both are named explicitly:
+This wrapper loads **two** checkpoints — the GeoTransolver backbone and the GP head — and both are
+named explicitly:
 
 - ``checkpoint`` must point at a **specific backbone file** whose name encodes the epoch
   (``GeoTransolver.0.<epoch>.mdlus``); the epoch is parsed from that name. Pointing at a directory
   (or an epoch-less name) is rejected — this removes the old ``checkpoint_epoch`` kwarg and the risk
   of the backbone drifting to a "latest" epoch.
-- ``gp_head_checkpoint`` should point at the matching ``FieldGPHead.0.<epoch>.pt``. The **exact
-  file named here is loaded** (via :func:`physicsnemo.utils.load_model_weights`), so a missing or
-  mistyped path raises rather than silently leaving the head randomly initialized (no cross-
-  validation against the backbone — passing matching checkpoints is the caller's responsibility).
-  It is **optional**: when omitted the wrapper falls back to the backbone's sibling
-  ``FieldGPHead.0.<epoch>.pt`` (which must exist). Either way the exact head file it loads is logged.
+- ``gp_head_checkpoint`` should point at the matching head file. The **exact file named here is
+  loaded** (via :func:`physicsnemo.utils.load_model_weights`), so a missing or mistyped path raises
+  rather than silently leaving the head randomly initialized (no cross-validation against the
+  backbone — passing matching checkpoints is the caller's responsibility). It is **optional**: when
+  omitted the wrapper falls back to the backbone's sibling head file, accepting either
+  ``FieldVariationalGPHead.0.<epoch>.pt`` (written by current runs) or the older
+  ``FieldGPHead.0.<epoch>.pt`` — the head class was renamed and ``save_checkpoint`` derives the file
+  stem from the class name. Either way the exact head file it loads is logged.
 
 Model kwargs (``model.kwargs`` in config), matching the trained checkpoint's GP settings:
 
-- ``gp_head_checkpoint`` (path): the ``FieldGPHead.0.<epoch>.pt`` to load (see above).
-- ``gp_feature_norm`` (``"none"`` | ``"l2"`` | ``"layernorm"`` | ``"l2_radial"``): must match training.
+- ``gp_head_checkpoint`` (path): the head checkpoint to load (see above).
+- ``gp_feature_norm`` (``"none"`` | ``"l2_radial"``): must match training.
 - ``gp_lengthscale_range`` / ``gp_lengthscale_prior`` / ``gp_outputscale_prior``: GP kernel config.
 - ``gp_n_inducing`` (default 256), ``gp_mlp_hidden`` (optional DKL MLP), ``num_tasks`` (default 4).
-- ``gp_spectral_norm_coeff`` (float, default 0.0) / ``gp_dkl_residual`` (bool, default True):
-  DUE-style bi-Lipschitz DKL. When ``gp_spectral_norm_coeff > 0`` the head uses a spectral-
-  normalised + residual feature extractor (van Amersfoort et al., 2021) instead of the plain DKL
-  MLP; both must match training. The defaults reproduce the plain MLP (non-DUE) path unchanged.
 - ``gp_noise_mlp_hidden`` (list, default ``None``) / ``gp_noise_std_range`` (default ``(1e-3, 10.0)``):
   heteroscedastic (input-dependent) observation-noise head. A non-empty list (e.g. ``[64, 64]``)
   makes the aleatoric std vary per point instead of one learned scalar per channel; it adds
@@ -110,7 +108,7 @@ from physicsnemo.cfd.evaluation.models.model_registry import (
 )
 
 try:
-    from physicsnemo.experimental.uq import FieldGPHead
+    from physicsnemo.experimental.uq import FieldVariationalGPHead
     from physicsnemo.utils import load_model_weights
 
     _GP_AVAILABLE = True
@@ -120,9 +118,13 @@ except ImportError:
 #: Surface field channels predicted by the GP head: pressure, wall-shear (x, y, z).
 NUM_SURFACE_TASKS = 4
 
+#: Head-checkpoint stems to try when falling back to the backbone's sibling file. ``save_checkpoint``
+#: derives the stem from the class name, so runs predating the rename wrote ``FieldGPHead.0.*.pt``.
+_HEAD_CKPT_STEMS = ("FieldVariationalGPHead", "FieldGPHead")
+
 
 class GeoTransolverGPDrivAerStarWrapper(CFDModel):
-    """GeoTransolver backbone + ``FieldGPHead`` for analytic per-point surface UQ.
+    """GeoTransolver backbone + ``FieldVariationalGPHead`` for analytic per-point surface UQ.
 
     Trained on ``transformer_models`` (physical-target) checkpoints, so predictions are
     re-standardized only (no dynamic-pressure re-dimensionalization):
@@ -164,7 +166,7 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
         self._datapipe_geometry_effective: Optional[int] = None
         self._surface_factors: Any = None
         self._cfg: GeoTransolverRuntimeConfig = GeoTransolverRuntimeConfig()
-        self._head: Optional[FieldGPHead] = None
+        self._head: Optional[FieldVariationalGPHead] = None
         self._gp_kw: dict[str, Any] = {}
         self._checkpoint_epoch: Optional[int] = None
         self._head_checkpoint: Optional[str] = None
@@ -181,13 +183,13 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
     ) -> "GeoTransolverGPDrivAerStarWrapper":
         """Build the GeoTransolver backbone + surface factors, and prepare the GP head.
 
-        The backbone is constructed via the shared runtime helpers; the ``FieldGPHead`` is built
-        lazily on the first :meth:`predict` (its input dim is probed from the backbone features).
+        The backbone is constructed via the shared runtime helpers; the head is built lazily on the
+        first :meth:`predict` (its input dim is probed from the backbone features).
         """
         if not _GP_AVAILABLE or not geotransolver_available():
             raise RuntimeError(
                 "GeoTransolverGPDrivAerStarWrapper requires physicsnemo with GeoTransolver + "
-                "physicsnemo.experimental.uq.FieldGPHead."
+                "physicsnemo.experimental.uq.FieldVariationalGPHead."
             )
         kw = dict(kwargs)
         # Surface-only; validate and force the routing hint before building the datapipe.
@@ -197,10 +199,23 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
         # GP-head hyperparameters (must match the trained checkpoint). Pulled off here so they
         # are not consumed by the shared runtime-kwargs parsing.
         self._gp_chunk_size = int(kw.pop("gp_inference_chunk_size", 51200))
-        # Explicit GP-head checkpoint file (optional). When omitted we fall back to the backbone's
-        # sibling ``FieldGPHead.0.<epoch>.pt``. No cross-checking against the backbone — passing a
-        # matching pair is the caller's responsibility.
+        # Explicit GP-head checkpoint file (optional). When omitted we fall back to a sibling of the
+        # backbone, trying each stem in ``_HEAD_CKPT_STEMS``. No cross-checking against the backbone
+        # — passing a matching pair is the caller's responsibility.
         head_ckpt_arg = kw.pop("gp_head_checkpoint", None)
+        # The DUE-style bi-Lipschitz DKL extractor was dropped from the head, so these keys no
+        # longer describe anything buildable. Reject them explicitly: leftover model kwargs are
+        # forwarded to the datapipe splitter, which would swallow them, and a config asking for a
+        # spectral-normalised extractor would then silently build a plain MLP whose parameter
+        # layout does not match its checkpoint.
+        for dead_key in ("gp_spectral_norm_coeff", "gp_dkl_residual"):
+            if kw.pop(dead_key, None) is not None:
+                raise ValueError(
+                    f"{dead_key!r} is no longer supported: the DUE-style spectral-normalised "
+                    "DKL extractor has been removed from FieldVariationalGPHead. Drop it from "
+                    "model.kwargs. Checkpoints trained with gp_spectral_norm_coeff > 0 cannot be "
+                    "reconstructed and must be retrained with the plain DKL MLP."
+                )
         self._gp_kw = {
             "num_tasks": int(kw.pop("num_tasks", NUM_SURFACE_TASKS)),
             "n_inducing": int(kw.pop("gp_n_inducing", 256)),
@@ -221,19 +236,12 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
                 else kw.pop("gp_outputscale_prior", None)
             ),
             "feature_norm": str(kw.pop("gp_feature_norm", "none")),
-            # DUE-style bi-Lipschitz DKL extractor (van Amersfoort et al., 2021). When
-            # ``gp_spectral_norm_coeff > 0`` the head builds a spectral-normalised + residual
-            # feature extractor instead of the plain DKL MLP, so this MUST match training or the
-            # ``FieldGPHead`` state dict will not reconstruct. Defaults (0.0 / True) keep the plain
-            # MLP path, so existing (non-DUE) GP checkpoints are unaffected.
-            "spectral_norm_coeff": float(kw.pop("gp_spectral_norm_coeff", 0.0)),
-            "dkl_residual": bool(kw.pop("gp_dkl_residual", True)),
             # Input-dependent (heteroscedastic) observation-noise MLP. A non-empty list turns on a
             # per-point noise head so the aleatoric std varies across the surface (vs one learned
             # scalar per channel); this adds ``noise_head.*`` parameters that MUST match training or
-            # the ``FieldGPHead`` state dict will not reconstruct. ``None``/``[]`` keeps the
-            # homoscedastic likelihood, so existing GP checkpoints are unaffected. ``noise_std_range``
-            # is the hard clamp on the per-point noise std (matches the training default when omitted).
+            # the head state dict will not reconstruct. ``None``/``[]`` keeps the homoscedastic
+            # likelihood, so existing GP checkpoints are unaffected. ``noise_std_range`` is the hard
+            # clamp on the per-point noise std (matches the training default when omitted).
             "noise_mlp_hidden": (
                 list(kw.pop("gp_noise_mlp_hidden"))
                 if kw.get("gp_noise_mlp_hidden")
@@ -266,7 +274,7 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
         )
 
         # The head is loaded from the EXACT ``gp_head_checkpoint`` file when given (so the file the
-        # user names is the one read), else from the backbone's sibling ``FieldGPHead.0.<epoch>.pt``.
+        # user names is the one read), else from the first matching backbone sibling.
         # Either way the file must exist (no cross-validation of contents — passing matching
         # checkpoints is the caller's responsibility).
         if head_ckpt_arg is not None:
@@ -275,14 +283,18 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
             self._head_checkpoint = str(Path(head_ckpt_arg))
         else:
             ckpt_dir, self._checkpoint_epoch = resolve_checkpoint_file(checkpoint_path)
-            self._head_checkpoint = str(
-                Path(ckpt_dir) / f"FieldGPHead.0.{self._checkpoint_epoch}.pt"
-            )
-            if not Path(self._head_checkpoint).is_file():
+            candidates = [
+                Path(ckpt_dir) / f"{stem}.0.{self._checkpoint_epoch}.pt"
+                for stem in _HEAD_CKPT_STEMS
+            ]
+            found = next((c for c in candidates if c.is_file()), None)
+            if found is None:
                 raise FileNotFoundError(
-                    "GP head checkpoint not found next to the backbone: "
-                    f"{self._head_checkpoint!r}. Pass model.kwargs.gp_head_checkpoint explicitly."
+                    "GP head checkpoint not found next to the backbone; tried "
+                    f"{[str(c) for c in candidates]}. Pass model.kwargs.gp_head_checkpoint "
+                    "explicitly."
                 )
+            self._head_checkpoint = str(found)
         log_inference(
             "geotransolver_gp",
             f"GP checkpoints -> backbone: {checkpoint_path} | head: {self._head_checkpoint}",
@@ -310,14 +322,14 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
         """Probe the backbone feature dim on ``batch``, build the GP head, load ONLY its weights.
 
         The backbone was already loaded from its own ``checkpoint`` in :meth:`load`; here we load
-        just the ``FieldGPHead`` from the EXACT ``self._head_checkpoint`` file (the one named by
+        just the GP head from the EXACT ``self._head_checkpoint`` file (the one named by
         ``gp_head_checkpoint``, or the validated backbone sibling). Loading only the head from its
         own file avoids reloading — or silently overwriting — the backbone, and a missing file
         raises rather than leaving the head randomly initialized.
         """
         dev = torch.device(self._cfg.device)
         feature_dim = self._probe_feature_dim(batch)
-        self._head = FieldGPHead(
+        self._head = FieldVariationalGPHead(
             input_dim=feature_dim,
             n_train=1,  # unused at inference
             **self._gp_kw,
@@ -329,7 +341,7 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
         self._head.likelihood.eval()
         log_inference(
             "geotransolver_gp",
-            f"Loaded FieldGPHead from {self._head_checkpoint} "
+            f"Loaded FieldVariationalGPHead from {self._head_checkpoint} "
             f"(epoch {self._checkpoint_epoch}); feature_dim={feature_dim}, "
             f"gp_dim={getattr(self._head, 'gp_input_dim', '?')}",
         )

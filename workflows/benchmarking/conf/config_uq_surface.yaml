@@ -100,26 +100,32 @@ benchmark:
       stats_path: *surface_stats
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
 
-    # (2) Analytic GP field head. This wrapper loads TWO checkpoints, both named
-    # explicitly: `checkpoint` is the GeoTransolver backbone (epoch parsed from the file name) and
-    # `gp_head_checkpoint` is the matching FieldGPHead (read as given; pass matching files). The GP
-    # hyperparameters here MUST match the training run so the FieldGPHead reconstructs before the
-    # state dict loads.
-
+    # (2) Analytic GP field head. This wrapper loads TWO checkpoints, both named explicitly:
+    # `checkpoint` is the GeoTransolver backbone (epoch parsed from the file name) and
+    # `gp_head_checkpoint` is the matching FieldVariationalGPHead (read as given; pass matching
+    # files). The GP hyperparameters here MUST match the training run so the head reconstructs
+    # before the state dict loads -- these mirror the training config's defaults
+    # (`transformer_models/src/conf/geotransolver_surface_field_gp.yaml`).
+    #
+    # `stats_path` must be the SAME normalization the checkpoint was trained with. DrivAerStar
+    # surface fields are in raw physical units, so field-GP runs use
+    # `transformer_models/src/normalization/drivaerstar/surface_fields_normalization.npz`, NOT the
+    # nondimensional stats in `transformer_models/src/` (which belong to the DrivAer AWS runs).
     - name: geotransolver_gp_surface
       inference_domain: surface
-      checkpoint: /path/to/run_field_gp_due/checkpoints_field_gp/GeoTransolver.0.100.mdlus
+      checkpoint: /path/to/run_field_gp/checkpoints_field_gp/GeoTransolver.0.100.mdlus
       stats_path: *surface_stats
       kwargs:
-        gp_head_checkpoint: /path/to/run_field_gp_due/checkpoints_field_gp/FieldGPHead.0.100.pt
+        gp_head_checkpoint: /path/to/run_field_gp/checkpoints_field_gp/FieldVariationalGPHead.0.100.pt
         gp_feature_norm: "l2_radial"
         gp_n_inducing: 1024
-        gp_mlp_hidden: [128, 128, 16]
-        gp_spectral_norm_coeff: 0.95      # > 0 -> DUE bi-Lipschitz extractor
-        gp_dkl_residual: true
+        gp_mlp_hidden: [128, 16]
         gp_lengthscale_range: [0.01, 2.0]
         gp_lengthscale_prior: [2.0, 3.0]
         gp_outputscale_prior: [2.0, 0.5]
+        # Heteroscedastic noise head -- must match training (adds `noise_head.*` parameters).
+        gp_noise_mlp_hidden: [64, 64]
+        gp_noise_std_range: [0.01, 10.0]
         num_tasks: 4
         gp_inference_chunk_size: 51200
         geometry_sampling: 300000
