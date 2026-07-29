@@ -364,10 +364,11 @@ def _save_inference_mesh_if_requested(
     # same numeric case ids) do not overwrite one another's meshes. Falls back to model+case only.
     ext = ".vtp" if m_dom == "surface" else ".vtu"
     label_tok = _sanitize_path_token(dataset_label) if dataset_label else ""
+    model_tok = _sanitize_path_token(model_config.display_name)
     stem = (
-        f"inference_{model_config.name}_{label_tok}_{case_id}"
+        f"inference_{model_tok}_{label_tok}_{case_id}"
         if label_tok
-        else f"inference_{model_config.name}_{case_id}"
+        else f"inference_{model_tok}_{case_id}"
     )
     out_path = Path(output_dir) / f"{stem}{ext}"
     log_dataset(
@@ -578,6 +579,12 @@ def _run_single(
     # name) so the same adapter at different roots can appear as distinct dataset rows (e.g. one
     # DrivAerStar adapter over estateback / fastback / notchback). Caching stays on ``name`` + root.
     ds_label = dataset_config.display_name
+    # Wrapper/assets/kwargs are resolved from ``model_config.name``; the result rows and per-case
+    # metric-cache blobs are keyed by ``display_name`` (== label or name) so the same wrapper can
+    # score several checkpoints/heads as distinct rows (e.g. two ``geotransolver_gp_surface`` rows
+    # labeled ``gp_due`` / ``gp_hetnoise``). The cache *fingerprint* stays on ``name`` + checkpoint +
+    # kwargs, so unlabeled rows keep byte-identical fingerprints (existing caches remain valid).
+    m_label = model_config.display_name
     m_dom = _effective_inference_domain(model_config)
     d_dom = adapter_class.inference_domain_from_kwargs(dataset_config.kwargs)
     if m_dom != d_dom:
@@ -592,7 +599,7 @@ def _run_single(
             )
             return (
                 {
-                    "model": model_config.name,
+                    "model": m_label,
                     "dataset": ds_label,
                     "skipped": True,
                     "skip_reason": reason,
@@ -630,7 +637,7 @@ def _run_single(
     if not cases:
         return (
             {
-                "model": model_config.name,
+                "model": m_label,
                 "dataset": ds_label,
                 "cases": [],
                 "metrics": {},
@@ -699,7 +706,7 @@ def _run_single(
             if (
                 blob is not None
                 and blob.get("fingerprint") == fingerprint
-                and blob.get("model") == model_config.name
+                and blob.get("model") == m_label
                 and blob.get("dataset") == dataset_config.name
                 and blob.get("case_id") == cid
             ):
@@ -896,7 +903,8 @@ def _run_single(
                     # Disambiguate by model + dataset label: the comparison mesh carries this model's
                     # predictions, and case ids repeat across body-style classes.
                     _lbl = _sanitize_path_token(dataset_config.display_name)
-                    cmp_p = sub / f"{model_config.name}_{_lbl}_{cid}_comparison{ext}"
+                    _mlbl = _sanitize_path_token(m_label)
+                    cmp_p = sub / f"{_mlbl}_{_lbl}_{cid}_comparison{ext}"
                     try:
                         comparison_mesh.save(str(cmp_p))
                         row["comparison_mesh_path"] = str(cmp_p.resolve())
@@ -915,7 +923,7 @@ def _run_single(
                 write_metrics_cache(
                     cache_file,
                     fingerprint=fingerprint,
-                    model=model_config.name,
+                    model=m_label,
                     dataset=dataset_config.name,
                     case_id=cid,
                     case_metrics=case_metrics,
@@ -952,7 +960,7 @@ def _run_single(
 
     return (
         {
-            "model": model_config.name,
+            "model": m_label,
             "dataset": ds_label,
             "cases": cases,
             "metrics": metrics_summary,
@@ -1256,6 +1264,7 @@ def _config_to_dict(c: Config) -> dict:
         },
         "model": {
             "name": c.model.name,
+            "label": c.model.label,
             "checkpoint": c.model.checkpoint,
             "stats_path": c.model.stats_path,
             "kwargs": c.model.kwargs,

@@ -161,6 +161,17 @@ class ModelConfig:
     # Optional surface/volume routing; omit to derive from wrappers (merged ``model.kwargs`` and
     # optional :meth:`~physicsnemo.cfd.evaluation.models.model_registry.CFDModel.inference_domain_from_kwargs`).
     inference_domain: str | None = None
+    #: Optional display label for benchmark result rows. Defaults to :attr:`name`. Set this to give
+    #: the SAME wrapper multiple distinct rows in one matrix run (e.g. two ``geotransolver_gp_surface``
+    #: rows scoring different GP checkpoints/heads labeled ``gp_due`` / ``gp_hetnoise``). The wrapper
+    #: is always resolved from :attr:`name`; only the reported/cached model key changes. (Mirrors
+    #: :attr:`DatasetConfig.label`.)
+    label: str | None = None
+
+    @property
+    def display_name(self) -> str:
+        """Label used as the ``model`` key in results/cache (falls back to the wrapper :attr:`name`)."""
+        return self.label or self.name
 
     def merged_kwargs_for_load(self) -> dict[str, Any]:
         """``model.kwargs`` plus ``inference_domain`` so wrappers can branch surface vs volume."""

@@ -61,6 +61,11 @@ Model kwargs (``model.kwargs`` in config), matching the trained checkpoint's GP 
   DUE-style bi-Lipschitz DKL. When ``gp_spectral_norm_coeff > 0`` the head uses a spectral-
   normalised + residual feature extractor (van Amersfoort et al., 2021) instead of the plain DKL
   MLP; both must match training. The defaults reproduce the plain MLP (non-DUE) path unchanged.
+- ``gp_noise_mlp_hidden`` (list, default ``None``) / ``gp_noise_std_range`` (default ``(1e-3, 10.0)``):
+  heteroscedastic (input-dependent) observation-noise head. A non-empty list (e.g. ``[64, 64]``)
+  makes the aleatoric std vary per point instead of one learned scalar per channel; it adds
+  ``noise_head.*`` parameters that must match training. ``None``/``[]`` keeps the homoscedastic
+  likelihood, so existing GP checkpoints are unaffected.
 - ``gp_inference_chunk_size`` (default 51200): points per backbone+GP chunk (drawn from a random
   permutation, then inverted — see the standalone script for why contiguous chunks degrade preds).
 - ``cuda_bf16_autocast`` (bool, default False): run forwards under bf16 autocast.
@@ -223,6 +228,18 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
             # MLP path, so existing (non-DUE) GP checkpoints are unaffected.
             "spectral_norm_coeff": float(kw.pop("gp_spectral_norm_coeff", 0.0)),
             "dkl_residual": bool(kw.pop("gp_dkl_residual", True)),
+            # Input-dependent (heteroscedastic) observation-noise MLP. A non-empty list turns on a
+            # per-point noise head so the aleatoric std varies across the surface (vs one learned
+            # scalar per channel); this adds ``noise_head.*`` parameters that MUST match training or
+            # the ``FieldGPHead`` state dict will not reconstruct. ``None``/``[]`` keeps the
+            # homoscedastic likelihood, so existing GP checkpoints are unaffected. ``noise_std_range``
+            # is the hard clamp on the per-point noise std (matches the training default when omitted).
+            "noise_mlp_hidden": (
+                list(kw.pop("gp_noise_mlp_hidden"))
+                if kw.get("gp_noise_mlp_hidden")
+                else kw.pop("gp_noise_mlp_hidden", None)
+            ),
+            "noise_std_range": tuple(kw.pop("gp_noise_std_range", (1e-3, 10.0))),
         }
 
         self._cfg = parse_runtime_kwargs(kw, device)
