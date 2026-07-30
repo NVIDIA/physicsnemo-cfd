@@ -99,7 +99,7 @@ geometry).
 
 **Uncertainty-quantification (UQ) models** set two more class variables
 (`SUPPORTS_UQ`, `UQ_METHOD`) and implement extra hooks — `decode_distribution`
-(analytic), or for sampling a stochastic `predict` plus
+(closed-form), or for sampling a stochastic `predict` plus
 `predict_deterministic` (and optionally `predict_ensemble`). This is fully
 additive: deterministic wrappers leave the defaults (`SUPPORTS_UQ=False`) and
 are unaffected. See the "Uncertainty quantification" section below.
@@ -330,7 +330,7 @@ Then use `model.name: my_model` in any YAML config.
 ## Uncertainty quantification (UQ) wrappers
 
 If the model produces **uncertainty**, not just a point estimate, it
-opts into the UQ path additively. Copy `ExampleAnalyticUQWrapper` or
+opts into the UQ path additively. Copy `ExampleClosedFormUQWrapper` or
 `ExampleSamplingUQWrapper` from `references/example_wrapper.py`, and see
 the shipped `workflows/benchmarking/conf/config_uq_surface.yaml` for a
 complete four-row example config.
@@ -339,13 +339,13 @@ complete four-row example config.
 
 ```python
 SUPPORTS_UQ: ClassVar[bool] = True
-UQ_METHOD:   ClassVar[str]  = "analytic"   # or "sampling"; default "none"
+UQ_METHOD:   ClassVar[str]  = "closed_form"   # or "sampling"; default "none"
 ```
 
 There are exactly **two archetypes**, split by *how the predictive
 distribution is produced*:
 
-- **`UQ_METHOD="analytic"`** — the model emits the distribution (or its
+- **`UQ_METHOD="closed_form"`** — the model emits the distribution (or its
   parameters) in **one** forward pass: GP head, mean–variance /
   heteroscedastic net, evidential, SNGP/DUQ, quantile regression.
   Implement **`decode_distribution(raw, case, model_input=None) ->
@@ -373,7 +373,7 @@ Deterministic wrappers keep `SUPPORTS_UQ=False`; UQ metrics simply report
 
 ### `FieldDistribution` payload
 
-`decode_distribution` (analytic) and the engine's aggregator (sampling)
+`decode_distribution` (closed-form) and the engine's aggregator (sampling)
 both yield a `FieldDistribution` per field. Build it with
 `build_predictive_distribution(...)` (the UQ analogue of
 `build_predictions_dict`):
@@ -392,7 +392,7 @@ FieldDistribution(
   channels before returning — metrics never touch normalization stats.
   Means invert with `x*std + mean`; std/variance channels scale by `std`
   **only** (the additive offset drops out).
-- **Epistemic vs aleatoric.** Analytic: the wrapper splits them (a GP
+- **Epistemic vs aleatoric.** Closed-form: the wrapper splits them (a GP
   gives posterior variance = epistemic, noise floor = aleatoric).
   Sampling: the across-pass spread is **epistemic**; total std equals it
   unless each pass is *itself* a distribution (ensemble of mean–variance
@@ -415,7 +415,7 @@ Turn UQ on in the run config and add the pooled metrics you want:
 run:
   uq:
     enabled: true
-    num_samples: 32       # passes for UQ_METHOD="sampling" (ignored by analytic/ensemble)
+    num_samples: 32       # passes for UQ_METHOD="sampling" (ignored by closed-form/ensemble)
 metrics:
   - nlpd
   - calibration_zrms
@@ -430,7 +430,7 @@ Export std companions to inspected `.vtp`s via
 `output.std_mesh_field_names` / `epistemic_std_mesh_field_names` (auto
 -derived as `*Std` / `*EpistemicStd` if omitted). See
 `workflows/benchmarking/conf/config_uq_surface.yaml` for a complete
-four-row example (deterministic + analytic GP + MC-Dropout + ensemble).
+four-row example (deterministic + closed-form GP + MC-Dropout + ensemble).
 
 ## Gotchas
 
@@ -455,7 +455,7 @@ four-row example (deterministic + analytic GP + MC-Dropout + ensemble).
 
 - `references/example_wrapper.py` — complete `CFDModel` templates to copy
   and adapt (bundled; available without the repo on disk): deterministic
-  surface + volume, plus `ExampleAnalyticUQWrapper` and
+  surface + volume, plus `ExampleClosedFormUQWrapper` and
   `ExampleSamplingUQWrapper` for the two UQ archetypes.
 - `assets/global_stats.example.json` — sample mean/std stats layout for
   surface and volume.

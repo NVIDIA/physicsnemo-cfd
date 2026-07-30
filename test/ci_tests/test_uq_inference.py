@@ -199,18 +199,22 @@ def test_finalize_sample_metrics_emits_nan_for_configured_but_absent() -> None:
 
 def test_select_inference_path_master_switch() -> None:
     """``run.uq.enabled`` is the master switch: off -> every wrapper goes deterministic."""
-    # UQ enabled: sampling / analytic wrappers take their UQ path.
+    # UQ enabled: sampling / closed-form wrappers take their UQ path.
     assert (
         select_inference_path(supports_uq=True, uq_method="sampling", uq_enabled=True)
         == "sampling"
     )
     assert (
-        select_inference_path(supports_uq=True, uq_method="analytic", uq_enabled=True)
-        == "analytic"
+        select_inference_path(
+            supports_uq=True, uq_method="closed_form", uq_enabled=True
+        )
+        == "closed_form"
     )
-    # Master switch OFF: EVERY wrapper (incl. analytic GP) goes deterministic -> no UQ metrics.
+    # Master switch OFF: EVERY wrapper (incl. closed-form GP) goes deterministic -> no UQ metrics.
     assert (
-        select_inference_path(supports_uq=True, uq_method="analytic", uq_enabled=False)
+        select_inference_path(
+            supports_uq=True, uq_method="closed_form", uq_enabled=False
+        )
         == "deterministic"
     )
     assert (

@@ -127,7 +127,7 @@ class _StochasticDropoutWrapper(CFDModel):
 
 
 def test_predict_deterministic_default_delegates_to_predict() -> None:
-    """The base hook simply calls predict() (correct for deterministic / analytic wrappers)."""
+    """The base hook simply calls predict() (correct for deterministic / closed-form wrappers)."""
     w = _EchoWrapper()
     assert w.predict_deterministic("x") == w.predict("x") == "x"
 
@@ -190,8 +190,8 @@ def test_uq_wrappers_registered_with_expected_contract() -> None:
     mc = get_model_wrapper("geotransolver_mc_dropout_surface")
     ens = get_model_wrapper("geotransolver_ensemble_surface")
 
-    # Analytic GP head: single-pass distribution.
-    assert gp.SUPPORTS_UQ is True and gp.UQ_METHOD == "analytic"
+    # Closed-form GP head: single-pass distribution.
+    assert gp.SUPPORTS_UQ is True and gp.UQ_METHOD == "closed_form"
     # Sampling wrappers: repeated-pass spread.
     assert mc.SUPPORTS_UQ is True and mc.UQ_METHOD == "sampling"
     assert ens.SUPPORTS_UQ is True and ens.UQ_METHOD == "sampling"

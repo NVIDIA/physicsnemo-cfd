@@ -755,7 +755,7 @@ def _run_single(
                 case_cache[case_key] = case
         seed_inference_rng(run_config.seed, cid)
         model_input = wrapper.prepare_inputs(case)
-        # ``run.uq.enabled`` is the master switch: when off, EVERY wrapper (sampling AND analytic)
+        # ``run.uq.enabled`` is the master switch: when off, EVERY wrapper (sampling AND closed-form)
         # takes the deterministic path — a single ``predict_deterministic`` + ``decode_outputs`` —
         # so no distributions are emitted and no UQ metrics are produced, enabling apples-to-apples
         # deterministic comparison runs. ``predict_deterministic`` (not ``predict``) is used so a
@@ -777,7 +777,7 @@ def _run_single(
                 case_id=cid,
                 retain_samples=run_config.uq.retain_samples,
             )
-        elif inference_path == "analytic":
+        elif inference_path == "closed_form":
             raw = wrapper.predict(model_input)
             predictions = wrapper.decode_distribution(raw, case, model_input)
         else:

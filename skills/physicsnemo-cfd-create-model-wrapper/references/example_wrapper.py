@@ -19,8 +19,8 @@
 These are complete, correct ``CFDModel`` implementations to **adapt** when writing a
 new wrapper. They cover:
   * ``ExampleSurfaceWrapper`` / ``ExampleVolumeWrapper`` — deterministic models.
-  * ``ExampleAnalyticUQWrapper`` — a single-pass UQ model (GP head / mean-variance /
-    evidential): ``UQ_METHOD="analytic"``, returns a predictive distribution directly.
+  * ``ExampleClosedFormUQWrapper`` — a single-pass UQ model (GP head / mean-variance /
+    evidential): ``UQ_METHOD="closed_form"``, returns a predictive distribution directly.
   * ``ExampleSamplingUQWrapper`` — a multi-pass UQ model (MC-Dropout / deep ensemble):
     ``UQ_METHOD="sampling"``, the engine drives the passes and aggregates them.
 
@@ -252,12 +252,12 @@ class ExampleVolumeWrapper(CFDModel):
         return tensor * std + mean
 
 
-class ExampleAnalyticUQWrapper(CFDModel):
-    """Single-pass UQ model (GP head / mean-variance / evidential): ``UQ_METHOD="analytic"``.
+class ExampleClosedFormUQWrapper(CFDModel):
+    """Single-pass UQ model (GP head / mean-variance / evidential): ``UQ_METHOD="closed_form"``.
 
     The model itself emits the predictive distribution (or its parameters) in ONE forward
     pass. The extra contract vs a deterministic wrapper is:
-      * declare ``SUPPORTS_UQ = True`` and ``UQ_METHOD = "analytic"``;
+      * declare ``SUPPORTS_UQ = True`` and ``UQ_METHOD = "closed_form"``;
       * implement ``decode_distribution`` to return a ``FieldDistribution`` per field.
     ``decode_outputs`` is still provided (the distribution *mean*) so the deterministic
     metrics (L2 / drag / lift) and non-UQ runs keep working unchanged.
@@ -267,7 +267,7 @@ class ExampleAnalyticUQWrapper(CFDModel):
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
     # (5) UQ CONTRACT: one forward pass -> a distribution, materialized in decode_distribution.
     SUPPORTS_UQ: ClassVar[bool] = True
-    UQ_METHOD: ClassVar[str] = "analytic"
+    UQ_METHOD: ClassVar[str] = "closed_form"
 
     def __init__(self) -> None:
         self._model: torch.nn.Module | None = None
@@ -281,13 +281,13 @@ class ExampleAnalyticUQWrapper(CFDModel):
 
     def load(
         self, checkpoint_path: str, stats_path: str, device: str, **kwargs: Any
-    ) -> "ExampleAnalyticUQWrapper":
+    ) -> "ExampleClosedFormUQWrapper":
         """Build the architecture + UQ head, load weights and normalization stats."""
         self._device = device
         # Build the architecture + UQ head and load weights here (e.g. a GP head whose
         # hyperparameters come from kwargs and MUST match training so the state dict loads).
         self._stats = load_global_stats(stats_path, device)
-        log_inference("example_analytic_uq", f"Loaded from {checkpoint_path}")
+        log_inference("example_closed_form_uq", f"Loaded from {checkpoint_path}")
         return self
 
     def prepare_inputs(self, case: CanonicalCase) -> torch.Tensor:
@@ -510,5 +510,5 @@ class ExampleSamplingUQWrapper(CFDModel):
 # Registration: do this once at import time so the engine can resolve the name.
 register_model("example_surface", ExampleSurfaceWrapper)
 register_model("example_volume", ExampleVolumeWrapper)
-register_model("example_analytic_uq", ExampleAnalyticUQWrapper)
+register_model("example_closed_form_uq", ExampleClosedFormUQWrapper)
 register_model("example_sampling_uq", ExampleSamplingUQWrapper)

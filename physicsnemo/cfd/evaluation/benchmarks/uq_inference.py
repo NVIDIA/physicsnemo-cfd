@@ -265,17 +265,17 @@ def is_uq_partial_key(key: str) -> bool:
 def select_inference_path(
     *, supports_uq: bool, uq_method: str, uq_enabled: bool
 ) -> str:
-    """Engine per-case dispatch: ``"sampling"`` | ``"analytic"`` | ``"deterministic"``.
+    """Engine per-case dispatch: ``"sampling"`` | ``"closed_form"`` | ``"deterministic"``.
 
     ``uq_enabled`` (``run.uq.enabled``) is the master switch: when it is off, EVERY wrapper takes
-    the deterministic path regardless of ``SUPPORTS_UQ`` / ``UQ_METHOD`` — so an analytic GP head
+    the deterministic path regardless of ``SUPPORTS_UQ`` / ``UQ_METHOD`` — so a closed-form GP head
     is not executed as a distribution and produces no UQ metrics, matching the documented behavior
     and enabling apples-to-apples deterministic comparison runs.
     """
     if uq_enabled and supports_uq and uq_method == "sampling":
         return "sampling"
-    if uq_enabled and supports_uq and uq_method == "analytic":
-        return "analytic"
+    if uq_enabled and supports_uq and uq_method == "closed_form":
+        return "closed_form"
     return "deterministic"
 
 

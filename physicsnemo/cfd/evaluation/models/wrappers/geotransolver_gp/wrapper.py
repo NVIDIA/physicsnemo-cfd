@@ -14,9 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""GeoTransolver + Gaussian-Process field-head wrapper (analytic surface UQ).
+"""GeoTransolver + Gaussian-Process field-head wrapper (closed-form surface UQ).
 
-This is the ``UQ_METHOD="analytic"`` archetype and a **completely independent** :class:`CFDModel`
+This is the ``UQ_METHOD="closed_form"`` archetype and a **completely independent** :class:`CFDModel`
 subclass (no inheritance from the deterministic GeoTransolver wrappers). It reuses the shared
 GeoTransolver + ``TransolverDataPipe`` plumbing in
 :mod:`physicsnemo.cfd.evaluation.models.common_wrapper_utils.geotransolver_runtime` (backbone
@@ -123,7 +123,7 @@ _HEAD_CKPT_STEM = "FieldVariationalGPHead"
 
 
 class GeoTransolverGPDrivAerStarWrapper(CFDModel):
-    """GeoTransolver backbone + ``FieldVariationalGPHead`` for analytic per-point surface UQ.
+    """GeoTransolver backbone + ``FieldVariationalGPHead`` for closed-form per-point surface UQ.
 
     Trained on ``transformer_models`` (physical-target) checkpoints, so predictions are
     re-standardized only (no dynamic-pressure re-dimensionalization):
@@ -135,7 +135,7 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
     INFERENCE_DOMAIN: ClassVar[InferenceDomain | None] = "surface"
     OUTPUT_LOCATION: ClassVar[OutputLocation] = "cell"
     SUPPORTS_UQ: ClassVar[bool] = True
-    UQ_METHOD: ClassVar[str] = "analytic"
+    UQ_METHOD: ClassVar[str] = "closed_form"
 
     @property
     def output_location(self) -> OutputLocation:

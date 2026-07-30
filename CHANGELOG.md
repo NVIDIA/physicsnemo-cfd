@@ -23,7 +23,7 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 - **Probabilistic / uncertainty-quantification (UQ) benchmarking:**
   additive UQ path across the evaluation stack.
   - **`CFDModel` capability model:** `SUPPORTS_UQ` / `UQ_METHOD`
-    (`"none"` | `"analytic"` | `"sampling"`) class flags plus an optional
+    (`"none"` | `"closed_form"` | `"sampling"`) class flags plus an optional
     `decode_distribution` hook; deterministic wrappers are unchanged
     (`SUPPORTS_UQ=False` -> UQ metrics report `NaN`).
   - **`FieldDistribution`** payload (`datasets/schema.py`) carrying
@@ -45,22 +45,22 @@ Versioning](https://semver.org/spec/v2.0.0.html).
     companion arrays exported to inference / comparison meshes
     (`output.std_mesh_field_names`, `output.epistemic_std_mesh_field_names`).
   - **Example UQ model wrappers** (GeoTransolver family, one per
-    archetype): `geotransolver_gp_surface` (analytic GP field head),
+    archetype): `geotransolver_gp_surface` (closed-form GP field head),
     `geotransolver_mc_dropout_surface` (Concrete-Dropout sampling), and
     `geotransolver_ensemble_surface` (explicit multi-member ensemble),
     alongside the deterministic `geotransolver_drivaerstar_surface`. Shared
     inference plumbing in
     `models/common_wrapper_utils/geotransolver_runtime.py`.
   - **Example config:** `workflows/benchmarking/conf/config_uq_surface.yaml`
-    scores deterministic + analytic GP + MC-Dropout + ensemble on the same
+    scores deterministic + closed-form GP + MC-Dropout + ensemble on the same
     cases.
 
 ### Changed
 
 - **`physicsnemo-cfd-create-model-wrapper` skill:** documents the UQ
-  wrapper contract (capability flags, `FieldDistribution`, analytic vs.
+  wrapper contract (capability flags, `FieldDistribution`, closed-form vs.
   sampling archetypes, the engine sampling loop, and UQ metrics/config),
-  with `ExampleAnalyticUQWrapper` / `ExampleSamplingUQWrapper` reference
+  with `ExampleClosedFormUQWrapper` / `ExampleSamplingUQWrapper` reference
   implementations.
 
 ### Deprecated

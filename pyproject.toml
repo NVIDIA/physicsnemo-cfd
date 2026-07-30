@@ -49,8 +49,14 @@ gpu = [
     "cuml-cu13>=25.10.0",
     "warp-lang>=1.13.0",
 ]
+# gpytorch for the closed-form UQ wrappers, whose GP head
+# (physicsnemo.experimental.uq.FieldVariationalGPHead) requires it at import time.
+# Every other evaluation wrapper, and the sampling UQ path, install without it.
+evaluation-uq = [
+    "gpytorch>=1.11",
+]
 all = [
-    "nvidia-physicsnemo-cfd[dev,gpu,evaluation-hf]",
+    "nvidia-physicsnemo-cfd[dev,gpu,evaluation-hf,evaluation-uq]",
 ]
 docs = [
     "sphinx>=6.0.0",

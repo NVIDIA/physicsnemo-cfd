@@ -105,7 +105,7 @@ class UQConfig:
     num_samples : int
         Number of stochastic passes / ensemble members the engine drives for
         ``UQ_METHOD="sampling"`` wrappers (MC-Dropout, ensembles).
-        Ignored by ``UQ_METHOD="analytic"`` wrappers (GP), which emit the distribution in one
+        Ignored by ``UQ_METHOD="closed_form"`` wrappers (GP), which emit the distribution in one
         pass. Enters the metrics-cache fingerprint so cached sampling results are invalidated
         when it changes.
     retain_samples : bool

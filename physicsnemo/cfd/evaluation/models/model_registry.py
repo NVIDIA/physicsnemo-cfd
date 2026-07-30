@@ -58,12 +58,12 @@ class CFDModel(ABC):
     #: ``NaN`` for them (consistent with the engine's recoverable-metric behavior).
     SUPPORTS_UQ: ClassVar[bool] = False
     #: How the predictive distribution is produced:
-    #: ``"analytic"`` — one forward pass emits the distribution/params (GP, mean-variance,
+    #: ``"closed_form"`` — one forward pass emits the distribution/params (GP, mean-variance,
     #: evidential); the wrapper overrides :meth:`decode_distribution`.
     #: ``"sampling"`` — the distribution is built from statistics over ``N`` stochastic
     #: passes / ensemble members; the engine drives the passes and aggregates.
     #: ``"none"`` — deterministic.
-    UQ_METHOD: ClassVar[Literal["none", "analytic", "sampling"]] = "none"
+    UQ_METHOD: ClassVar[Literal["none", "closed_form", "sampling"]] = "none"
 
     @classmethod
     def inference_domain_from_kwargs(
@@ -111,7 +111,7 @@ class CFDModel(ABC):
 
         The engine calls this (not :meth:`predict`) on the deterministic path so that turning UQ
         off yields a true point prediction for *every* wrapper. The default simply delegates to
-        :meth:`predict`, which is correct for deterministic and analytic wrappers (their
+        :meth:`predict`, which is correct for deterministic and closed-form wrappers (their
         :meth:`predict` is already deterministic).
 
         **Sampling** wrappers whose :meth:`predict` is stochastic (e.g. MC-Dropout keeps dropout
@@ -143,7 +143,7 @@ class CFDModel(ABC):
     ) -> dict[str, "FieldDistribution"]:
         """Map raw output to a per-field predictive distribution (physical units).
 
-        **Analytic** UQ wrappers (``UQ_METHOD="analytic"``, e.g. a GP head) override this to
+        **Closed-form** UQ wrappers (``UQ_METHOD="closed_form"``, e.g. a GP head) override this to
         return :class:`~physicsnemo.cfd.evaluation.datasets.schema.FieldDistribution` with a
         real ``std`` / ``epistemic_std``. The default wraps :meth:`decode_outputs` as
         **degenerate** distributions (``std=None``) so callers can uniformly request a

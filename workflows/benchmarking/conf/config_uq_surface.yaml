@@ -25,7 +25,7 @@
 #
 #   * geotransolver_drivaerstar_surface     -> deterministic (SUPPORTS_UQ=False).
 #         UQ metrics finalize to NaN; included for the det-vs-UQ contrast.
-#   * geotransolver_gp_surface              -> UQ_METHOD="analytic" (GP field head):
+#   * geotransolver_gp_surface              -> UQ_METHOD="closed_form" (GP field head):
 #         one forward pass returns the posterior; decode_distribution() emits
 #         mean + total/epistemic std.
 #   * geotransolver_mc_dropout_surface      -> UQ_METHOD="sampling" (one model, N
@@ -69,7 +69,7 @@ run:
   # ---- Uncertainty-quantification controls (additive; default off) ----
   uq:
     enabled: true
-    # Stochastic passes per case for UQ_METHOD="sampling" wrappers. Ignored by analytic /
+    # Stochastic passes per case for UQ_METHOD="sampling" wrappers. Ignored by closed-form /
     # deterministic rows, and by the ensemble (its pass count is its number of members).
     num_samples: 32
     # Keep the raw per-pass samples on the FieldDistribution (memory-heavy; only for CRPS / debugging).
@@ -100,7 +100,7 @@ benchmark:
       stats_path: *surface_stats
       kwargs: { batch_resolution: 60000, geometry_sampling: 300000 }
 
-    # (2) Analytic GP field head. This wrapper loads TWO checkpoints, both named explicitly:
+    # (2) Closed-form GP field head. This wrapper loads TWO checkpoints, both named explicitly:
     # `checkpoint` is the GeoTransolver backbone (epoch parsed from the file name) and
     # `gp_head_checkpoint` is the matching FieldVariationalGPHead (read as given; pass matching
     # files). The GP hyperparameters here MUST match the training run so the head reconstructs
@@ -212,7 +212,7 @@ metrics:
   - sparsification_ause
   - sparsification_ause_epistemic
   # Decision-relevant drag sparsification: rank geometries by uncertainty propagated into the Cd
-  # integral (drag std) vs |Cd_pred - Cd_true|. NOTE: this applies to BOTH analytic (GP) and
+  # integral (drag std) vs |Cd_pred - Cd_true|. NOTE: this applies to BOTH closed-form (GP) and
   # sampling (MC-Dropout / ensemble) rows, because drag_uq propagates the per-cell MARGINAL std the
   # engine produces for every method. That diagonal (per-cell independent) propagation is exact for
   # spatially-uncorrelated uncertainty but a lower bound for spatially-correlated (i.e. epistemic)

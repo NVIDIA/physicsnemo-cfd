@@ -111,7 +111,7 @@ def test_uq_metrics_are_registered_as_reducers() -> None:
 
 
 def test_pooled_calibration_on_synthetic_gaussian() -> None:
-    """A perfectly calibrated Gaussian gives cov95≈0.95, zrms≈1, and the analytic NLPD."""
+    """A perfectly calibrated Gaussian gives cov95≈0.95, zrms≈1, and the exact NLPD."""
     rng = np.random.default_rng(0)
     metrics = _make_uq_metrics()
     n, sigma = 400_000, 1.0
