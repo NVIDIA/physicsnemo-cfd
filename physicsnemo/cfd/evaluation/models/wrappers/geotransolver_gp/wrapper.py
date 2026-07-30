@@ -48,10 +48,9 @@ named explicitly:
   loaded** (via :func:`physicsnemo.utils.load_model_weights`), so a missing or mistyped path raises
   rather than silently leaving the head randomly initialized (no cross-validation against the
   backbone — passing matching checkpoints is the caller's responsibility). It is **optional**: when
-  omitted the wrapper falls back to the backbone's sibling head file, accepting either
-  ``FieldVariationalGPHead.0.<epoch>.pt`` (written by current runs) or the older
-  ``FieldGPHead.0.<epoch>.pt`` — the head class was renamed and ``save_checkpoint`` derives the file
-  stem from the class name. Either way the exact head file it loads is logged.
+  omitted the wrapper falls back to the backbone's sibling ``FieldVariationalGPHead.0.<epoch>.pt``
+  (``save_checkpoint`` derives the file stem from the class name). Either way the exact head file it
+  loads is logged.
 
 Model kwargs (``model.kwargs`` in config), matching the trained checkpoint's GP settings:
 
@@ -118,9 +117,9 @@ except ImportError:
 #: Surface field channels predicted by the GP head: pressure, wall-shear (x, y, z).
 NUM_SURFACE_TASKS = 4
 
-#: Head-checkpoint stems to try when falling back to the backbone's sibling file. ``save_checkpoint``
-#: derives the stem from the class name, so runs predating the rename wrote ``FieldGPHead.0.*.pt``.
-_HEAD_CKPT_STEMS = ("FieldVariationalGPHead", "FieldGPHead")
+#: Head-checkpoint stem used when falling back to the backbone's sibling file. ``save_checkpoint``
+#: derives the stem from the class name.
+_HEAD_CKPT_STEM = "FieldVariationalGPHead"
 
 
 class GeoTransolverGPDrivAerStarWrapper(CFDModel):
@@ -199,8 +198,8 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
         # GP-head hyperparameters (must match the trained checkpoint). Pulled off here so they
         # are not consumed by the shared runtime-kwargs parsing.
         self._gp_chunk_size = int(kw.pop("gp_inference_chunk_size", 51200))
-        # Explicit GP-head checkpoint file (optional). When omitted we fall back to a sibling of the
-        # backbone, trying each stem in ``_HEAD_CKPT_STEMS``. No cross-checking against the backbone
+        # Explicit GP-head checkpoint file (optional). When omitted we fall back to the
+        # ``_HEAD_CKPT_STEM`` sibling of the backbone. No cross-checking against the backbone
         # — passing a matching pair is the caller's responsibility.
         head_ckpt_arg = kw.pop("gp_head_checkpoint", None)
         # The DUE-style bi-Lipschitz DKL extractor was dropped from the head, so these keys no
@@ -283,18 +282,15 @@ class GeoTransolverGPDrivAerStarWrapper(CFDModel):
             self._head_checkpoint = str(Path(head_ckpt_arg))
         else:
             ckpt_dir, self._checkpoint_epoch = resolve_checkpoint_file(checkpoint_path)
-            candidates = [
-                Path(ckpt_dir) / f"{stem}.0.{self._checkpoint_epoch}.pt"
-                for stem in _HEAD_CKPT_STEMS
-            ]
-            found = next((c for c in candidates if c.is_file()), None)
-            if found is None:
+            sibling = (
+                Path(ckpt_dir) / f"{_HEAD_CKPT_STEM}.0.{self._checkpoint_epoch}.pt"
+            )
+            if not sibling.is_file():
                 raise FileNotFoundError(
-                    "GP head checkpoint not found next to the backbone; tried "
-                    f"{[str(c) for c in candidates]}. Pass model.kwargs.gp_head_checkpoint "
-                    "explicitly."
+                    f"GP head checkpoint not found next to the backbone; tried {sibling}. "
+                    "Pass model.kwargs.gp_head_checkpoint explicitly."
                 )
-            self._head_checkpoint = str(found)
+            self._head_checkpoint = str(sibling)
         log_inference(
             "geotransolver_gp",
             f"GP checkpoints -> backbone: {checkpoint_path} | head: {self._head_checkpoint}",
