@@ -17,10 +17,23 @@
 """Re-export bench metric registry for ``physicsnemo.cfd.evaluation``."""
 
 from physicsnemo.cfd.postprocessing_tools.metric_registry import (  # noqa: F401
+    ReducerMetric,
+    SampleMetric,
     get_metric,
+    is_reducer_metric,
+    is_sample_metric,
     list_metrics,
     register_metric,
     unregister_metric,
 )
 
-__all__ = ["register_metric", "unregister_metric", "get_metric", "list_metrics"]
+__all__ = [
+    "register_metric",
+    "unregister_metric",
+    "get_metric",
+    "list_metrics",
+    "ReducerMetric",
+    "is_reducer_metric",
+    "SampleMetric",
+    "is_sample_metric",
+]

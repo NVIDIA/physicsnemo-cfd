@@ -18,7 +18,11 @@
 
 from physicsnemo.cfd.evaluation.datasets.schema import (
     CanonicalCase,
+    FieldDistribution,
+    as_distribution,
     build_predictions_dict,
+    build_predictive_distribution,
+    distribution_mean,
 )
 from physicsnemo.cfd.evaluation.datasets.adapter_registry import (
     get_adapter,
@@ -31,6 +35,10 @@ import physicsnemo.cfd.evaluation.datasets.adapters  # noqa: F401 - register dri
 __all__ = [
     "CanonicalCase",
     "build_predictions_dict",
+    "FieldDistribution",
+    "build_predictive_distribution",
+    "as_distribution",
+    "distribution_mean",
     "DatasetAdapter",
     "register_adapter",
     "get_adapter",

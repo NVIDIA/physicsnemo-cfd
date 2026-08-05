@@ -92,6 +92,7 @@ def metrics_cache_fingerprint(
     output_dict: dict[str, Any],
     metric_specs: list[tuple[str, dict[str, Any]]],
     run_seed: int = 42,
+    run_uq: dict[str, Any] | None = None,
 ) -> str:
     """
     Build a SHA-256 fingerprint for cache lookup and invalidation.
@@ -170,7 +171,7 @@ def metrics_cache_fingerprint(
         },
         "output": _fingerprint_jsonify(output_dict),
         "metrics": specs_serializable,
-        "run": {"seed": int(run_seed)},
+        "run": {"seed": int(run_seed), "uq": _fingerprint_jsonify(run_uq or {})},
     }
     return hashlib.sha256(_stable_json(payload).encode("utf-8")).hexdigest()
 

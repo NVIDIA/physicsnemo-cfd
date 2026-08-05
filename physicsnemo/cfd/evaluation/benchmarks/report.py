@@ -31,7 +31,12 @@ from physicsnemo.cfd.evaluation.datasets.progress import log_dataset
 
 
 def _sanitize_for_strict_json(obj: Any) -> Any:
-    """Recursively replace NaN/Inf floats with None for RFC 8259–valid JSON."""
+    """Recursively coerce a result payload into RFC 8259–valid JSON.
+
+    Replaces NaN/Inf floats with ``None`` and defensively converts NumPy scalars/arrays
+    (which ``json.dump`` cannot serialize) into plain Python types so a stray array in a
+    metric payload can never crash the whole report.
+    """
     if isinstance(obj, float):
         return None if (math.isnan(obj) or math.isinf(obj)) else obj
     if isinstance(obj, dict):
@@ -40,6 +45,15 @@ def _sanitize_for_strict_json(obj: Any) -> Any:
         return [_sanitize_for_strict_json(x) for x in obj]
     if isinstance(obj, tuple):
         return tuple(_sanitize_for_strict_json(x) for x in obj)
+    # NumPy types are not JSON-serializable; coerce to native Python and recurse.
+    if (
+        hasattr(obj, "item")
+        and not isinstance(obj, type)
+        and getattr(obj, "ndim", None) == 0
+    ):
+        return _sanitize_for_strict_json(obj.item())
+    if hasattr(obj, "tolist") and getattr(obj, "ndim", None) is not None:
+        return _sanitize_for_strict_json(obj.tolist())
     return obj
 
 

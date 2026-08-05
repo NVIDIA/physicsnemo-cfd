@@ -22,3 +22,6 @@ venv/
 .cursor/
 .vscode/
 .idea/
+
+# Local, machine-specific benchmark configs (real paths); not for the repo
+*.local.yaml
