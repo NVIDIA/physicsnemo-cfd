@@ -64,8 +64,9 @@ def _compute_sdf_np(
 
     Thin numpy-in / numpy-out wrapper around the v2
     ``physicsnemo.nn.functional.signed_distance_field`` op, which is itself
-    torch-only and returns ``(sdf, hit_points, hit_faces)`` (no
-    ``include_hit_points`` kwarg). This wrapper discards ``hit_faces``.
+    torch-only and returns at least ``(sdf, hit_points)`` (no
+    ``include_hit_points`` kwarg). This wrapper discards any additional
+    return values provided by newer PhysicsNeMo versions.
 
     Args:
         mesh_vertices: Mesh vertex coordinates, shape ``(n_vertices, 3)``.
@@ -87,7 +88,7 @@ def _compute_sdf_np(
         ``input_points.shape[:-1]`` and ``hit_points`` has shape
         ``input_points.shape``. Returned on CPU regardless of input device.
     """
-    sdf, hit_points, _ = signed_distance_field(
+    sdf, hit_points, *_ = signed_distance_field(
         mesh_vertices=torch.as_tensor(mesh_vertices, device=device),
         mesh_indices=torch.as_tensor(mesh_indices, device=device),
         input_points=torch.as_tensor(input_points, device=device),
