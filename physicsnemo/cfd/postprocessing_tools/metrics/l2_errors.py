@@ -337,7 +337,7 @@ def compute_error_vs_sdf(
         query_points_np, dtype=torch.float32, device=torch_device
     )
 
-    sdf_field, _ = signed_distance_field(
+    sdf_field, *_ = signed_distance_field(
         stl_vertices, stl_indices, query_points, use_sign_winding_number=True
     )
     sdf_field = sdf_field.detach().cpu().numpy()
