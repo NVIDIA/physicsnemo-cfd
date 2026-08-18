@@ -151,7 +151,7 @@ def build_domin_surface_datadict(
     normed_stl_vertices_cp = normalize(stl_vertices_t, s_max, s_min)
     surf_grid_normed = normalize(surf_grid, s_max, s_min)
 
-    sdf_surf_grid, _ = signed_distance_field(
+    sdf_surf_grid, _, _ = signed_distance_field(
         normed_stl_vertices_cp,
         mesh_indices_flattened_t,
         surf_grid_normed,
@@ -329,7 +329,7 @@ def build_domin_volume_datadict(
     normed_stl_vertices_cp = normalize(stl_vertices_t, s_max, s_min)
     surf_grid_normed = normalize(surf_grid, s_max, s_min)
 
-    sdf_surf_grid, _ = signed_distance_field(
+    sdf_surf_grid, _, _ = signed_distance_field(
         normed_stl_vertices_cp,
         mesh_indices_flattened_t,
         surf_grid_normed,
@@ -426,14 +426,14 @@ def build_domin_volume_datadict(
         center_of_mass_normalized = center_of_mass
         normed_stl_vertices_vol = stl_vertices_t
 
-    sdf_grid, _ = signed_distance_field(
+    sdf_grid, _, _ = signed_distance_field(
         normed_stl_vertices_vol,
         mesh_indices_flattened_t,
         grid,
         use_sign_winding_number=True,
     )
 
-    sdf_nodes, sdf_node_closest_point = signed_distance_field(
+    sdf_nodes, sdf_node_closest_point, _ = signed_distance_field(
         normed_stl_vertices_vol,
         mesh_indices_flattened_t,
         volume_coordinates,
