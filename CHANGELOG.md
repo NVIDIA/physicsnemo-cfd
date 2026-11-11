@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic
 Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.0.3a0] - 2026-XX-YY
+## [0.0.3] - 2026-11-11
 
 ### Added
 
@@ -69,9 +69,14 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Handle both two-field and three-field signed-distance-function results.
+
 ### Security
 
 ### Dependencies
+
+- Refresh the development lockfile against the published PhysicsNeMo 2.2.0
+  release, replacing the previous Git revision and including the UQ extra.
 
 ## [0.0.2] - 2026-06-09
 
