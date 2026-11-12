@@ -40,3 +40,11 @@ jobs:
           Variance(mode='tensor', correction=0)"
       - name: Run CI tests
         run: .venv/bin/pytest -q test/ci_tests/
+      - name: Check distributed UQ layouts
+        if: contains(matrix.physicsnemo, 'git+')
+        env:
+          OMP_NUM_THREADS: "1"
+        run: |
+          .venv/bin/torchrun --standalone --nproc-per-node=2 workflows/benchmarking/uq_member_parallel.py --member-groups=1
+          .venv/bin/torchrun --standalone --nproc-per-node=2 workflows/benchmarking/uq_member_parallel.py --member-groups=2
+          .venv/bin/torchrun --standalone --nproc-per-node=4 workflows/benchmarking/uq_member_parallel.py

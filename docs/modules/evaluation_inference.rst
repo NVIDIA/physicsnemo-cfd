@@ -66,3 +66,35 @@ rejects ShardTensor inputs. Application-owned member/domain workflows use the
 shared tensor statistics directly, then construct the existing
 ``FieldDistribution``. Configuring ``statistics_backend`` alone does not change
 the benchmark engine's scheduler.
+
+Member/domain parallel example
+------------------------------
+
+``workflows/benchmarking/uq_member_parallel.py`` demonstrates a separate same-case
+workflow with five members and ten spatial points. With four ranks it uses two
+member groups and two uneven spatial partitions (3 and 7 points). One group runs
+out of members first and contributes an empty shard while still participating in
+collectives. The field statistics retain spatial sharding; only the final
+summaries are gathered with ``full_tensor()`` for existing CFD metrics.
+
+.. code-block:: bash
+
+   torchrun --standalone --nproc-per-node=4 workflows/benchmarking/uq_member_parallel.py
+
+Two-rank runs isolate either spatial or member parallelism:
+
+.. code-block:: bash
+
+   torchrun --standalone --nproc-per-node=2 workflows/benchmarking/uq_member_parallel.py --member-groups=1
+   torchrun --standalone --nproc-per-node=2 workflows/benchmarking/uq_member_parallel.py --member-groups=2
+
+The example runs with CPU/Gloo or GPU/NCCL and checks analytic reference values,
+GP within-/between-member variance, a pressure-derived force observable, existing
+coverage metrics, and isolation between different cases. Predictions are already
+decoded into physical units. Replace the analytic predictor with model outputs
+using the same point ordering on each member group.
+
+The force statistic measures variation of member mean forces. Propagating a GP's
+uncertainty to an integrated force additionally needs joint predictive samples or
+cross-point covariance; pointwise variances alone are insufficient. This example
+does not change the benchmark engine's case-parallel scheduler.
