@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic
 Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Opt-in `run.uq.statistics_backend: physicsnemo` for sampling inference,
+  using tensor-mode streaming mean/variance on decoded physical-unit fields.
+  NumPy remains the default; tensor outputs stay on their device until the
+  summary is finalized, unless retaining individual samples is requested.
+
 ## [0.0.3] - 2026-11-11
 
 ### Added

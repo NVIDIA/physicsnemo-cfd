@@ -677,6 +677,7 @@ def _run_single(
                 "enabled": run_config.uq.enabled,
                 "num_samples": run_config.uq.num_samples,
                 "retain_samples": run_config.uq.retain_samples,
+                "statistics_backend": run_config.uq.statistics_backend,
             },
         )
         log_dataset(
@@ -776,6 +777,7 @@ def _run_single(
                 run_seed=run_config.seed,
                 case_id=cid,
                 retain_samples=run_config.uq.retain_samples,
+                statistics_backend=run_config.uq.statistics_backend,
             )
         elif inference_path == "closed_form":
             raw = wrapper.predict(model_input)
@@ -1257,6 +1259,7 @@ def _config_to_dict(c: Config) -> dict:
                 "num_samples": c.run.uq.num_samples,
                 "retain_samples": c.run.uq.retain_samples,
                 "device_metrics": c.run.uq.device_metrics,
+                "statistics_backend": c.run.uq.statistics_backend,
             },
             "distributed": c.run.distributed,
             "fail_on_all_skipped": c.run.fail_on_all_skipped,

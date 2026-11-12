@@ -355,21 +355,101 @@ class _Welford:
         return self.mean, total_std, epistemic_std, aleatoric_std
 
 
+def _require_tensor_statistics():
+    """Load the opt-in API, with an actionable error for older PhysicsNeMo releases."""
+    from inspect import signature
+
+    from physicsnemo.metrics.general.ensemble_metrics import Mean, Variance
+
+    if any("mode" not in signature(cls).parameters for cls in (Mean, Variance)):
+        raise RuntimeError(
+            "statistics_backend='physicsnemo' requires PhysicsNeMo's tensor-mode "
+            "Mean/Variance API (introduced in NVIDIA/physicsnemo#2188). "
+            "Upgrade PhysicsNeMo or use statistics_backend='numpy'."
+        )
+    return Mean, Variance
+
+
+class _SharedMoments:
+    """Adapt shared PhysicsNeMo statistics to decoded CFD prediction arrays.
+
+    Preserve float64 accumulation, population variance, and missing within-pass
+    variance as zero. Decoding still happens once per pass, in physical units.
+    Tensor inputs stay on their device until finalization. Ordinary tensors stay
+    local under distributed case-level execution, so unrelated cases never mix.
+    """
+
+    def __init__(self) -> None:
+        import torch
+
+        Mean, Variance = _require_tensor_statistics()
+
+        self._between = Variance(mode="tensor", correction=0, dtype=torch.float64)
+        self._within = Mean(mode="tensor", dtype=torch.float64)
+        self._has_aleatoric = False
+
+    def update(self, x: Any, aleatoric_var: Any | None = None) -> None:
+        import torch
+
+        value = torch.as_tensor(x).detach().to(dtype=torch.float64)
+        if getattr(value, "placements", None) is not None:
+            raise ValueError(
+                "The case-parallel engine expects ordinary tensors. Use an explicit "
+                "member/domain workflow for ShardTensor predictions."
+            )
+        within = (
+            torch.zeros_like(value)
+            if aleatoric_var is None
+            else torch.as_tensor(aleatoric_var, device=value.device)
+            .detach()
+            .to(torch.float64)
+        )
+        within = torch.broadcast_to(within, value.shape)
+        self._between.update(value, dim=None)
+        self._within.update(within, dim=None)
+        self._has_aleatoric |= aleatoric_var is not None
+
+    def result(
+        self,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None] | None:
+        """Return the same physical-unit arrays as the original CFD accumulator."""
+        if not self._between.count:
+            return None
+        mean = self._between.mean.cpu().numpy()
+        epi_var = self._between.finalize().clamp_min(0).cpu().numpy()
+        epistemic_std = np.sqrt(epi_var)
+        if self._has_aleatoric:
+            within = self._within.finalize().cpu().numpy()
+            aleatoric_std = np.sqrt(np.clip(within, 0.0, None))
+            total_std = np.sqrt(np.clip(epi_var + within, 0.0, None))
+        else:
+            aleatoric_std = None
+            total_std = epistemic_std
+        return mean, total_std, epistemic_std, aleatoric_std
+
+
 def _decode_pass_to_arrays(
-    wrapper: Any, raw: Any, case: Any, model_input: Any
-) -> dict[str, tuple[np.ndarray, np.ndarray | None]]:
-    """Decode one pass to ``{field: (mean_array, aleatoric_var_or_None)}`` (physical units)."""
+    wrapper: Any, raw: Any, case: Any, model_input: Any, *, tensor_output: bool = False
+) -> dict[str, tuple[Any, Any | None]]:
+    """Decode physical-unit fields, optionally preserving ordinary tensors on device."""
     preds = wrapper.decode_outputs(raw, case, model_input)
-    out: dict[str, tuple[np.ndarray, np.ndarray | None]] = {}
+
+    def convert(value: Any) -> Any:
+        """Promote before squaring scales and detach the statistics input."""
+        if tensor_output:
+            import torch
+
+            return torch.as_tensor(value).detach().to(dtype=torch.float64)
+        return np.asarray(value, dtype=np.float64)
+
+    out: dict[str, tuple[Any, Any | None]] = {}
     for key, value in preds.items():
         if isinstance(value, FieldDistribution):
-            mean = np.asarray(value.mean, dtype=np.float64)
-            ale_var = None
-            if value.std is not None:
-                ale_var = np.asarray(value.std, dtype=np.float64) ** 2
+            mean = convert(value.mean)
+            ale_var = None if value.std is None else convert(value.std) ** 2
             out[key] = (mean, ale_var)
         else:
-            out[key] = (np.asarray(value, dtype=np.float64), None)
+            out[key] = (convert(value), None)
     return out
 
 
@@ -382,6 +462,7 @@ def run_sampling_inference(
     run_seed: int,
     case_id: str,
     retain_samples: bool = False,
+    statistics_backend: str = "numpy",
 ) -> dict[str, FieldDistribution]:
     """Drive ``n`` stochastic passes and aggregate to a distribution per field.
 
@@ -389,21 +470,41 @@ def run_sampling_inference(
     output at a time, e.g. a generator over ensemble members), else calls
     ``wrapper.predict(model_input)`` ``n`` times, reseeding per pass from
     ``(run_seed, case_id, pass_index)`` so each pass has a distinct, reproducible RNG state.
+    ``statistics_backend="physicsnemo"`` opts into shared tensor-aware Mean/Variance;
+    ``"numpy"`` retains the existing accumulator. Both operate on decoded outputs.
+    Shared statistics preserve tensor devices until finalization; returned distributions
+    retain the existing NumPy format. Retaining samples explicitly copies each draw to CPU.
     """
+    if statistics_backend not in {"numpy", "physicsnemo"}:
+        raise ValueError("statistics_backend must be 'numpy' or 'physicsnemo'")
+    accumulator_type = (
+        _SharedMoments if statistics_backend == "physicsnemo" else _Welford
+    )
     if n < 1:
         raise ValueError(f"num_samples must be >= 1 for sampling inference, got {n}")
 
+    if statistics_backend == "physicsnemo":
+        _require_tensor_statistics()
+
     ensemble = wrapper.predict_ensemble(model_input, n)
 
-    accumulators: dict[str, _Welford] = {}
+    accumulators: dict[str, _Welford | _SharedMoments] = {}
     samples: dict[str, list[np.ndarray]] = {}
 
     def _consume(raw: Any) -> None:
         for key, (mean, ale_var) in _decode_pass_to_arrays(
-            wrapper, raw, case, model_input
+            wrapper,
+            raw,
+            case,
+            model_input,
+            tensor_output=statistics_backend == "physicsnemo",
         ).items():
-            accumulators.setdefault(key, _Welford()).update(mean, ale_var)
+            if key not in accumulators:
+                accumulators[key] = accumulator_type()
+            accumulators[key].update(mean, ale_var)
             if retain_samples:
+                if statistics_backend == "physicsnemo":
+                    mean = mean.cpu().numpy().copy()
                 samples.setdefault(key, []).append(mean)
 
     if ensemble is not None:
