@@ -11,6 +11,9 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A self-checking member/domain-parallel UQ example with unequal member counts,
+  uneven spatial partitions, GP total variance and a pressure-force observable.
+  It runs with two or four processes on CPU or GPU.
 - Opt-in `run.uq.statistics_backend: physicsnemo` for sampling inference,
   using tensor-mode streaming mean/variance on decoded physical-unit fields.
   NumPy remains the default; tensor outputs stay on their device until the
