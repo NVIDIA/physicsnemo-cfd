@@ -74,6 +74,8 @@ run:
     num_samples: 32
     # Keep the raw per-pass samples on the FieldDistribution (memory-heavy; only for CRPS / debugging).
     retain_samples: false
+    # Opt into shared tensor statistics with a matching PhysicsNeMo version.
+    statistics_backend: numpy
     device_metrics: false
 
 # ---- Edit these to your environment --------------------------------------

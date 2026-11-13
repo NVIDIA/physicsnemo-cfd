@@ -21,6 +21,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+import pytest
 
 # Registers built-in metrics (including the pooled UQ reducers) into the registry.
 import physicsnemo.cfd.evaluation.metrics  # noqa: F401
@@ -297,3 +298,258 @@ def test_ensemble_predict_ensemble_honors_num_samples_budget() -> None:
     w_big = _BudgetEnsembleWrapper(members)
     run_sampling_inference(w_big, None, None, n=32, run_seed=0, case_id="c")
     assert w_big.yielded == 5
+
+
+@pytest.fixture
+def tensor_statistics():
+    """New-backend tests run in the dedicated core-API CI job, and skip on 2.2.0."""
+    from physicsnemo.cfd.evaluation.benchmarks.uq_inference import (
+        _require_tensor_statistics,
+    )
+
+    try:
+        return _require_tensor_statistics()
+    except RuntimeError:
+        pytest.skip("PhysicsNeMo tensor-mode statistics are not available")
+
+
+@pytest.mark.parametrize("shape", [(7,), (5, 3), ()])
+@pytest.mark.parametrize("with_variance", [False, True, "mixed"])
+def test_shared_statistics_matches_original(shape, with_variance, tensor_statistics):
+    """Shared moments preserve population/total variance, units, and empty behavior."""
+    from physicsnemo.cfd.evaluation.benchmarks.uq_inference import _SharedMoments
+
+    reference, shared = _Welford(), _SharedMoments()
+    assert shared.result() is None
+    rng = np.random.default_rng(12)
+    for i in range(9):
+        value = 1e6 + rng.normal(size=shape)
+        variance = (
+            rng.uniform(0.1, 3.0, size=shape)
+            if with_variance is True or (with_variance == "mixed" and i % 2)
+            else None
+        )
+        reference.update(value, variance)
+        shared.update(value, variance)
+    for expected, actual in zip(reference.result(), shared.result()):
+        if expected is None:
+            assert actual is None
+        else:
+            np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-9)
+
+
+@pytest.mark.parametrize("backend", ["numpy", "physicsnemo"])
+def test_decoded_units_and_retained_samples(backend, request):
+    """Both paths reduce decoded fields and preserve samples and within-member variance."""
+
+    if backend == "physicsnemo":
+        request.getfixturevalue("tensor_statistics")
+
+    class DecodingWrapper(_EnsembleWrapper):
+        """Decode standardized samples into pressure and pressure uncertainty."""
+
+        def decode_outputs(self, raw, case, model_input=None):
+            """Apply distinct affine mean and multiplicative scale transforms."""
+            return {
+                "pressure": FieldDistribution(
+                    mean=raw * 10 + 100, std=np.ones_like(raw) * 20
+                )
+            }
+
+    values = [np.array([1.0, 2.0]), np.array([3.0, 4.0])]
+    result = run_sampling_inference(
+        DecodingWrapper(values),
+        None,
+        None,
+        n=2,
+        run_seed=0,
+        case_id="units",
+        retain_samples=True,
+        statistics_backend=backend,
+    )["pressure"]
+    np.testing.assert_allclose(result.mean, [120.0, 130.0])
+    np.testing.assert_allclose(result.epistemic_std, [10.0, 10.0])
+    np.testing.assert_allclose(result.aleatoric_std, [20.0, 20.0])
+    np.testing.assert_allclose(result.std, np.sqrt([500.0, 500.0]))
+    np.testing.assert_allclose(result.samples, [[110.0, 120.0], [130.0, 140.0]])
+
+
+def test_shared_backend_config_validation():
+    """The opt-in is explicit and typos fail before inference."""
+    from physicsnemo.cfd.evaluation.config import UQConfig
+
+    assert UQConfig().statistics_backend == "numpy"
+    assert (
+        UQConfig(statistics_backend="physicsnemo").statistics_backend == "physicsnemo"
+    )
+    with pytest.raises(ValueError, match="statistics_backend"):
+        UQConfig(statistics_backend="typo")
+    with pytest.raises(ValueError, match="statistics_backend"):
+        run_sampling_inference(
+            _EnsembleWrapper([]),
+            None,
+            None,
+            n=1,
+            run_seed=0,
+            case_id="invalid",
+            statistics_backend="typo",
+        )
+
+
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+@pytest.mark.parametrize("retain_samples", [False, True])
+def test_shared_statistics_tensor_decoding(device, retain_samples, tensor_statistics):
+    """GPU/CPU decoding stays detached and preserves physical units and legacy outputs."""
+    import torch
+
+    from physicsnemo.cfd.evaluation.benchmarks.uq_inference import _SharedMoments
+
+    if device == "cuda" and not torch.cuda.is_available():
+        pytest.skip("CUDA required")
+
+    class TensorDecoder(_EnsembleWrapper):
+        """Keep decoded means/scales on the model's device."""
+
+        def decode_outputs(self, raw, case, model_input=None):
+            """Decode means and a half-precision scale whose square exceeds fp16."""
+            return {
+                "pressure": FieldDistribution(
+                    mean=raw * 10 + 100,
+                    std=torch.full_like(raw, 300, dtype=torch.float16),
+                )
+            }
+
+    values = [
+        torch.tensor([1.0, 2.0], device=device, requires_grad=True),
+        torch.tensor([3.0, 4.0], device=device, requires_grad=True),
+    ]
+    accumulator = _SharedMoments()
+    for value in values:
+        accumulator.update(value)
+    assert accumulator._between.mean.device.type == device
+    assert not accumulator._between.mean.requires_grad
+    result = run_sampling_inference(
+        TensorDecoder(values),
+        None,
+        None,
+        n=2,
+        run_seed=0,
+        case_id="tensor-units",
+        retain_samples=retain_samples,
+        statistics_backend="physicsnemo",
+    )["pressure"]
+    assert isinstance(result.mean, np.ndarray)
+    assert result.mean.dtype == np.float32
+    np.testing.assert_allclose(result.mean, [120.0, 130.0])
+    np.testing.assert_allclose(result.epistemic_std, 10)
+    np.testing.assert_allclose(result.aleatoric_std, 300)
+    np.testing.assert_allclose(result.std, np.sqrt(90100))
+    if retain_samples:
+        np.testing.assert_allclose(result.samples, [[110.0, 120.0], [130.0, 140.0]])
+    else:
+        assert result.samples is None
+
+
+def test_old_physicsnemo_fails_before_sampling(monkeypatch):
+    """An unavailable opt-in API must not invoke an expensive model forward."""
+    import physicsnemo.metrics.general.ensemble_metrics as metrics
+
+    class LegacyStatistic:
+        """Match the constructor contract before tensor mode was added."""
+
+        def __init__(self, input_shape, **kwargs):
+            pass
+
+    monkeypatch.setattr(metrics, "Mean", LegacyStatistic)
+    monkeypatch.setattr(metrics, "Variance", LegacyStatistic)
+    with pytest.raises(RuntimeError, match="statistics_backend='numpy'"):
+        run_sampling_inference(
+            object(),
+            None,
+            None,
+            n=1,
+            run_seed=0,
+            case_id="old-core",
+            statistics_backend="physicsnemo",
+        )
+
+
+@pytest.mark.parametrize("backend", ["numpy", "physicsnemo"])
+def test_single_draw_has_zero_epistemic_variance(backend, request):
+    """Population variance is valid for one prediction and keeps its within variance."""
+    if backend == "physicsnemo":
+        request.getfixturevalue("tensor_statistics")
+    result = run_sampling_inference(
+        _EnsembleWrapper([np.array([3.0, 4.0])], hetero_std=np.array([2.0, 5.0])),
+        None,
+        None,
+        n=1,
+        run_seed=0,
+        case_id="single",
+        statistics_backend=backend,
+    )["pressure"]
+    np.testing.assert_array_equal(result.mean, [3.0, 4.0])
+    np.testing.assert_array_equal(result.epistemic_std, [0.0, 0.0])
+    np.testing.assert_array_equal(result.std, [2.0, 5.0])
+
+
+def test_sampling_backends_reproduce_seeded_draws(tensor_statistics):
+    """The fallback sampling loop uses the same case/pass seeds in both backends."""
+
+    class StochasticWrapper(_EnsembleWrapper):
+        """Sample one decoded field per pass without an explicit ensemble."""
+
+        def predict_ensemble(self, model_input, n):
+            """Use the repeated-predict path."""
+            return None
+
+        def predict(self, model_input):
+            """Draw from the seeded NumPy RNG."""
+            return np.random.normal(size=7)
+
+    results = [
+        run_sampling_inference(
+            StochasticWrapper([]),
+            None,
+            None,
+            n=5,
+            run_seed=17,
+            case_id="stochastic",
+            retain_samples=True,
+            statistics_backend=backend,
+        )["pressure"]
+        for backend in ("numpy", "physicsnemo")
+    ]
+    for field in ("mean", "std", "epistemic_std", "samples"):
+        np.testing.assert_allclose(
+            getattr(results[0], field), getattr(results[1], field)
+        )
+    assert np.any(results[1].std > 0)
+
+
+def test_shared_retained_samples_own_their_storage(tensor_statistics):
+    """A decoder may reuse its buffer without corrupting previously retained draws."""
+    import torch
+
+    class ReusingWrapper(_EnsembleWrapper):
+        """Yield one mutable tensor repeatedly, as an inference buffer might."""
+
+        def predict_ensemble(self, model_input, n):
+            """Overwrite storage between draws."""
+            value = torch.zeros(2, dtype=torch.float64)
+            for i in range(n):
+                value.fill_(i)
+                yield value
+
+    result = run_sampling_inference(
+        ReusingWrapper([]),
+        None,
+        None,
+        n=3,
+        run_seed=0,
+        case_id="buffer",
+        retain_samples=True,
+        statistics_backend="physicsnemo",
+    )["pressure"]
+    np.testing.assert_array_equal(result.samples, [[0, 0], [1, 1], [2, 2]])
+    np.testing.assert_allclose(result.mean, [1, 1])

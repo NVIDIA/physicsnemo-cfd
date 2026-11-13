@@ -7,7 +7,9 @@ on:
   push:
     branches: [main, master]
   pull_request:
-    branches: [main, master]
+    # Filters target branches: temporarily include the stack so PR #53 runs CI.
+    # Remove the codex/cfd-uq-* entry and these comments in #53 after retargeting to main.
+    branches: [main, master, "codex/cfd-uq-*"]
 
 jobs:
   pytest:
@@ -15,6 +17,10 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.12"]
+        physicsnemo:
+          - "nvidia-physicsnemo==2.2.0"
+          # First merged tensor-statistics API; pin for reproducible integration tests.
+          - "nvidia-physicsnemo @ git+https://github.com/NVIDIA/physicsnemo.git@84b61257c567cbfe014dc6d45a10113e579b8f87"
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -25,6 +31,12 @@ jobs:
       - name: Install package and dev deps
         run: |
           uv venv --clear --python ${{ matrix.python-version }}
-          uv pip install --python .venv/bin/python -e ".[dev]"
+          uv pip install --python .venv/bin/python -e ".[dev,evaluation-uq]" "${{ matrix.physicsnemo }}"
+      - name: Verify the new API in the integration environment
+        if: contains(matrix.physicsnemo, 'git+')
+        run: >-
+          .venv/bin/python -c
+          "from physicsnemo.metrics.general.ensemble_metrics import Variance;
+          Variance(mode='tensor', correction=0)"
       - name: Run CI tests
         run: .venv/bin/pytest -q test/ci_tests/
