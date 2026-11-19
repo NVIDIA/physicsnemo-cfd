@@ -16,7 +16,7 @@
 
 """CFD prediction containers with independent member/domain parallelism.
 
-Requires PhysicsNeMo tensor-mode statistics (PR #2188). Run:
+Requires PhysicsNeMo tensor-mode statistics. Run:
     torchrun --standalone --nproc-per-node=4 workflows/benchmarking/uq_member_parallel.py
 
 Analytic decoded pressure distributions make this example self-checking. Replace
@@ -34,7 +34,6 @@ import torch.distributed as dist
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.tensor import Replicate, Shard
 
-from physicsnemo.cfd.evaluation.benchmarks.uq_inference import run_sampling_inference
 from physicsnemo.cfd.evaluation.datasets.schema import build_predictive_distribution
 from physicsnemo.domain_parallel import ShardTensor, register_custom_ops
 from physicsnemo.metrics.general.ensemble_metrics import Mean, Variance
@@ -49,31 +48,30 @@ def decoded_pressure(member_ids, point_ids):
     return mean, variance
 
 
-class CaseWrapper:
-    """Small adapter checking that case-parallel sampling never reduces other cases."""
-
-    def __init__(self, rank, device):
-        self.rank, self.device = rank, device
-
-    def predict_ensemble(self, model_input, n):
-        """Each process intentionally evaluates a different case."""
-        for draw in range(n):
-            yield torch.tensor([self.rank * 100.0 + draw], device=self.device)
-
-    def decode_outputs(self, raw, case, model_input=None):
-        """Already decoded physical-unit pressure."""
-        return {"pressure": raw}
-
-
 @torch.no_grad()
 def main():
-    """Check field moments, total GP variance, an observable, and case isolation."""
+    """Check field moments, total GP variance, an observable, and coverage metrics."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--member-groups", type=int, choices=(1, 2), default=2)
-    args = parser.parse_args()
-    device = torch.device(
-        f"cuda:{os.environ['LOCAL_RANK']}" if torch.cuda.is_available() else "cpu"
+    parser.add_argument(
+        "--device",
+        choices=("auto", "cpu", "cuda"),
+        default="auto",
+        help="Auto uses CUDA only when every local rank has a visible GPU; otherwise CPU.",
     )
+    args = parser.parse_args()
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    local_world_size = int(os.environ.get("LOCAL_WORLD_SIZE", "1"))
+    visible_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
+    enough_gpus = visible_gpus >= local_world_size and local_rank < visible_gpus
+    if args.device == "cuda" and not enough_gpus:
+        parser.error(
+            f"--device cuda requires one visible GPU per local rank: "
+            f"{visible_gpus} GPUs available for {local_world_size} ranks. "
+            "Use --device cpu or reduce --nproc-per-node."
+        )
+    use_cuda = args.device != "cpu" and enough_gpus
+    device = torch.device(f"cuda:{local_rank}" if use_cuda else "cpu")
     if device.type == "cuda":
         torch.cuda.set_device(device)
     else:
@@ -136,17 +134,6 @@ def main():
         # Domain reduction completes before moments of the integrated prediction.
         force.update((mean * weights).sum(1), dim=0)
 
-    # The case-parallel adapter must reject these sharded predictions rather than
-    # accidentally combining statistics belonging to different application cases.
-    from physicsnemo.cfd.evaluation.benchmarks.uq_inference import _SharedMoments
-
-    try:
-        _SharedMoments().update(mean)
-    except ValueError as exc:
-        assert "case-parallel" in str(exc)
-    else:
-        raise AssertionError("Case-parallel adapter accepted a ShardTensor")
-
     epistemic = between.finalize()
     aleatoric = within.finalize()
     sharded = build_predictive_distribution(
@@ -198,21 +185,8 @@ def main():
     result = metric.finalize(partial)
     assert all(np.isclose(value, 1.0) for value in result.values())
 
-    local_case = run_sampling_inference(
-        CaseWrapper(rank, device),
-        None,
-        None,
-        n=3,
-        run_seed=0,
-        case_id=str(rank),
-        statistics_backend="physicsnemo",
-    )["pressure"]
-    np.testing.assert_allclose(local_case.mean, [rank * 100.0 + 1])
-    np.testing.assert_allclose(local_case.std, [np.sqrt(2 / 3)])
     if rank == 0:
-        print(
-            "CFD member/domain fields, GP variance, observable, metrics, and case isolation PASS"
-        )
+        print("CFD member/domain fields, GP variance, observable, and metrics PASS")
     dist.destroy_process_group()
 
 

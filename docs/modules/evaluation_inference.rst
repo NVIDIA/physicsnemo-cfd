@@ -79,22 +79,31 @@ summaries are gathered with ``full_tensor()`` for existing CFD metrics.
 
 .. code-block:: bash
 
-   torchrun --standalone --nproc-per-node=4 workflows/benchmarking/uq_member_parallel.py
+   torchrun --standalone --nproc-per-node=4 \
+     workflows/benchmarking/uq_member_parallel.py --device cpu
 
 Two-rank runs isolate either spatial or member parallelism:
 
 .. code-block:: bash
 
-   torchrun --standalone --nproc-per-node=2 workflows/benchmarking/uq_member_parallel.py --member-groups=1
-   torchrun --standalone --nproc-per-node=2 workflows/benchmarking/uq_member_parallel.py --member-groups=2
+   torchrun --standalone --nproc-per-node=2 \
+     workflows/benchmarking/uq_member_parallel.py --device cpu --member-groups=1
+   torchrun --standalone --nproc-per-node=2 \
+     workflows/benchmarking/uq_member_parallel.py --device cpu --member-groups=2
 
 The example runs with CPU/Gloo or GPU/NCCL and checks analytic reference values,
-GP within-/between-member variance, a pressure-derived force observable, existing
-coverage metrics, and isolation between different cases. Predictions are already
-decoded into physical units. Replace the analytic predictor with model outputs
-using the same point ordering on each member group.
+GP within-/between-member variance, a pressure-derived force observable, and
+existing coverage metrics. Predictions are already decoded into physical units.
+Replace the analytic predictor with model outputs using the same point ordering
+on each member group.
 
 The force statistic measures variation of member mean forces. Propagating a GP's
 uncertainty to an integrated force additionally needs joint predictive samples or
 cross-point covariance; pointwise variances alone are insufficient. This example
 does not change the benchmark engine's case-parallel scheduler.
+
+Device selection defaults to ``--device auto``: CUDA/NCCL is used only when there
+is one visible GPU per local rank; otherwise the example uses CPU/Gloo. The
+commands above explicitly select CPU, including on machines with fewer GPUs than
+ranks. Use ``--device cuda`` to require GPU execution; insufficient visible GPUs
+produce an error before process-group initialization.
