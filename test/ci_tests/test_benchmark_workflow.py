@@ -85,3 +85,23 @@ def test_benchmark_policy_fail_on_all_skipped() -> None:
             cfg,
             [{"skipped": True, "metrics": {}, "model": "a", "dataset": "b"}],
         )
+
+
+def test_uq_statistics_backend_hydra_override() -> None:
+    """The shipped UQ config accepts an ordinary CLI override and preserves it."""
+    if not _BENCHMARK_CONF.is_dir():
+        pytest.skip("benchmarking/conf not in tree")
+    with initialize_config_dir(version_base="1.3", config_dir=str(_BENCHMARK_CONF)):
+        cfg = compose(
+            config_name="config_uq_surface",
+            overrides=["run.uq.statistics_backend=physicsnemo"],
+        )
+    raw, _ = hydra_config_to_benchmark_dict(cfg)
+    from physicsnemo.cfd.evaluation.benchmarks.engine import _config_to_dict
+
+    parsed = Config.from_dict(raw)
+    assert parsed.run.uq.statistics_backend == "physicsnemo"
+    assert (
+        Config.from_dict(_config_to_dict(parsed)).run.uq.statistics_backend
+        == "physicsnemo"
+    )

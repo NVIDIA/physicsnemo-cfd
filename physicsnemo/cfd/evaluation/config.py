@@ -111,6 +111,9 @@ class UQConfig:
     retain_samples : bool
         Keep per-point per-pass samples on the :class:`FieldDistribution` (for sampling-based
         metrics such as CRPS). Default ``False`` — only streaming mean/variance are kept.
+    statistics_backend : str
+        Streaming accumulator: ``"numpy"`` (existing default) or ``"physicsnemo"``
+        (shared Mean/Variance; requires PhysicsNeMo's tensor-mode API).
     device_metrics : bool
         Reserved for the on-device pooled-metric fast-path. Currently a
         no-op placeholder; pooled UQ metrics run on host.
@@ -120,6 +123,11 @@ class UQConfig:
     num_samples: int = 32
     retain_samples: bool = False
     device_metrics: bool = False
+    statistics_backend: str = "numpy"
+
+    def __post_init__(self) -> None:
+        if self.statistics_backend not in {"numpy", "physicsnemo"}:
+            raise ValueError("statistics_backend must be 'numpy' or 'physicsnemo'")
 
 
 @dataclass
@@ -375,6 +383,7 @@ class Config:
                 num_samples=int(uq_raw.get("num_samples", 32)),
                 retain_samples=_parse_bool(uq_raw.get("retain_samples"), default=False),
                 device_metrics=_parse_bool(uq_raw.get("device_metrics"), default=False),
+                statistics_backend=str(uq_raw.get("statistics_backend", "numpy")),
             ),
             distributed=bool(run_raw.get("distributed", True)),
             fail_on_all_skipped=bool(run_raw.get("fail_on_all_skipped", False)),

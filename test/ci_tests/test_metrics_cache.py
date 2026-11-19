@@ -14,12 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for benchmark metrics cache (no heavy dependencies)."""
+"""Tests for benchmark metrics caching and engine compatibility."""
 
 from __future__ import annotations
 
 import math
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -235,3 +236,88 @@ def test_config_metrics_cache_enabled_string_false() -> None:
         {"run": {"metrics_cache": {"enabled": "false", "path": ""}}},
     )
     assert cfg.run.metrics_cache.enabled is False
+
+
+@pytest.mark.parametrize("uq_enabled", [False, True])
+@pytest.mark.parametrize("backend", ["numpy", "physicsnemo"])
+def test_engine_reuses_legacy_cache_only_for_default_backend(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, uq_enabled: bool, backend: str
+) -> None:
+    """Old cache entries skip inference unless a different accumulator is selected."""
+    from physicsnemo.cfd.evaluation.benchmarks import engine
+    from physicsnemo.cfd.evaluation.config import (
+        DatasetConfig,
+        MetricsCacheConfig,
+        ModelConfig,
+        RunConfig,
+        UQConfig,
+    )
+
+    model = ModelConfig(name="cache_test_model", inference_domain="surface")
+    dataset = DatasetConfig(name="cache_test_dataset", root=str(tmp_path / "data"))
+    output = OutputConfig()
+    run = RunConfig(
+        device="cpu",
+        metrics_cache=MetricsCacheConfig(enabled=True, path=str(tmp_path / "cache")),
+        uq=UQConfig(enabled=uq_enabled, statistics_backend=backend),
+    )
+    metrics = [("l2_pressure", {})]
+    # This is the fingerprint input before statistics_backend was introduced.
+    legacy_fingerprint = metrics_cache_fingerprint(
+        model_name=model.name,
+        model_checkpoint="",
+        model_stats_path="",
+        model_kwargs={},
+        model_inference_domain="surface",
+        dataset_name=dataset.name,
+        dataset_root=dataset.root,
+        dataset_kwargs_resolved={},
+        output_dict=output_config_to_fingerprint_dict(output),
+        metric_specs=metrics,
+        run_seed=run.seed,
+        run_uq={"enabled": uq_enabled, "num_samples": 32, "retain_samples": False},
+    )
+    cache_file = metrics_cache_file_path(
+        Path(run.metrics_cache.path), legacy_fingerprint, "case_1"
+    )
+    write_metrics_cache(
+        cache_file,
+        fingerprint=legacy_fingerprint,
+        model=model.name,
+        dataset=dataset.name,
+        case_id="case_1",
+        case_metrics={"l2_pressure": 0.125},
+    )
+    adapter_class = Mock()
+    adapter_class.inference_domain_from_kwargs.return_value = "surface"
+    wrapper_class = Mock(side_effect=AssertionError("Inference would run"))
+    monkeypatch.setattr(engine, "get_adapter", lambda name: adapter_class)
+    monkeypatch.setattr(engine, "get_model_wrapper", lambda name: wrapper_class)
+    monkeypatch.setattr(
+        engine, "resolve_model_assets", lambda *args: ("", "", None, {})
+    )
+    read_cache = Mock(wraps=read_metrics_cache)
+    monkeypatch.setattr(engine, "read_metrics_cache", read_cache)
+
+    kwargs = dict(
+        model_config=model,
+        dataset_config=dataset,
+        metric_names=metrics,
+        device="cpu",
+        output_dir=str(tmp_path / "results"),
+        case_ids=["case_1"],
+        output_config=output,
+        run_config=run,
+    )
+    if backend == "numpy":
+        result, _ = engine._run_single(**kwargs)
+        assert result["metrics"]["l2_pressure"] == 0.125
+        read_cache.assert_called_once_with(cache_file)
+        wrapper_class.assert_not_called()
+        adapter_class.return_value.load_case.assert_not_called()
+    else:
+        with pytest.raises(AssertionError, match="Inference would run"):
+            engine._run_single(**kwargs)
+        read_cache.assert_called_once()
+        assert read_cache.call_args.args[0] != cache_file
+        wrapper_class.assert_called_once()
