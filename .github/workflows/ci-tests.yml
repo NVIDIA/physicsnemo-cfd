@@ -18,7 +18,7 @@ jobs:
       matrix:
         python-version: ["3.12"]
         physicsnemo:
-          - "nvidia-physicsnemo==2.2.0"
+          - "nvidia-physicsnemo"
           # First merged tensor-statistics API; pin for reproducible integration tests.
           - "nvidia-physicsnemo @ git+https://github.com/NVIDIA/physicsnemo.git@84b61257c567cbfe014dc6d45a10113e579b8f87"
     steps:
@@ -31,7 +31,7 @@ jobs:
       - name: Install package and dev deps
         run: |
           uv venv --clear --python ${{ matrix.python-version }}
-          uv pip install --python .venv/bin/python -e ".[dev,evaluation-uq]" "${{ matrix.physicsnemo }}"
+          uv pip install --python .venv/bin/python -e ".[dev]" "${{ matrix.physicsnemo }}"
       - name: Verify the new API in the integration environment
         if: contains(matrix.physicsnemo, 'git+')
         run: >-

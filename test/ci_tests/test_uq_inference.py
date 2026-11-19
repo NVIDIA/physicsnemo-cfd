@@ -302,7 +302,7 @@ def test_ensemble_predict_ensemble_honors_num_samples_budget() -> None:
 
 @pytest.fixture
 def tensor_statistics():
-    """New-backend tests run in the dedicated core-API CI job, and skip on 2.2.0."""
+    """New-backend tests run in the dedicated core-API CI job, and skip when unavailable."""
     from physicsnemo.cfd.evaluation.benchmarks.uq_inference import (
         _require_tensor_statistics,
     )
@@ -553,3 +553,32 @@ def test_shared_retained_samples_own_their_storage(tensor_statistics):
     )["pressure"]
     np.testing.assert_array_equal(result.samples, [[0, 0], [1, 1], [2, 2]])
     np.testing.assert_allclose(result.mean, [1, 1])
+
+
+def test_shared_statistics_rejects_shard_tensor(tensor_statistics, tmp_path):
+    """Case-parallel inference rejects sharded predictions even on a one-rank mesh."""
+    import torch
+    import torch.distributed as dist
+    from torch.distributed.device_mesh import init_device_mesh
+    from torch.distributed.tensor import Shard
+
+    from physicsnemo.cfd.evaluation.benchmarks.uq_inference import _SharedMoments
+    from physicsnemo.domain_parallel import ShardTensor, register_custom_ops
+
+    register_custom_ops()
+    owns_group = not dist.is_initialized()
+    if owns_group:
+        dist.init_process_group(
+            "gloo",
+            init_method=(tmp_path / "rendezvous").as_uri(),
+            rank=0,
+            world_size=1,
+        )
+    try:
+        mesh = init_device_mesh("cpu", (dist.get_world_size(),))
+        value = ShardTensor.from_local(torch.ones(3), mesh, [Shard(0)])
+        with pytest.raises(ValueError, match="case-parallel"):
+            _SharedMoments().update(value)
+    finally:
+        if owns_group:
+            dist.destroy_process_group()

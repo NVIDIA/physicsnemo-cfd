@@ -51,8 +51,8 @@ error before sampling.
 Both paths decode each prediction before accumulating it and retain float64
 statistics in physical units. Population variance across member means is added
 to the mean within-member variance for GP ensembles. Prediction containers,
-retained samples, and metric interpretation remain the same. The option enters
-the metrics-cache fingerprint.
+retained samples, and metric interpretation remain the same. Only the non-default backend enters
+the metrics-cache fingerprint, preserving existing NumPy caches.
 
 NumPy decoder outputs accumulate on CPU. Ordinary tensor decoder outputs stay on
 their device until finalization; accumulation is detached and casts to float64
