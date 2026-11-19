@@ -677,7 +677,12 @@ def _run_single(
                 "enabled": run_config.uq.enabled,
                 "num_samples": run_config.uq.num_samples,
                 "retain_samples": run_config.uq.retain_samples,
-                "statistics_backend": run_config.uq.statistics_backend,
+                # Preserve existing cache keys for the default NumPy backend.
+                **(
+                    {"statistics_backend": run_config.uq.statistics_backend}
+                    if run_config.uq.statistics_backend != "numpy"
+                    else {}
+                ),
             },
         )
         log_dataset(
